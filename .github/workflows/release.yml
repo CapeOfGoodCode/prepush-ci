@@ -25,7 +25,7 @@ jobs:
             echo "::error::$GITHUB_REF_NAME tags a commit that is not on main"
             exit 1
           fi
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.0
       # pyproject.toml is the one place the version is written.
       - name: tag matches the package version
         run: |
@@ -35,7 +35,7 @@ jobs:
             exit 1
           fi
       - run: uv build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -48,7 +48,7 @@ jobs:
       id-token: write   # PyPI trusted publishing
       contents: write   # gh release create
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
