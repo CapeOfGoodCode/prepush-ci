@@ -52,7 +52,8 @@ relative_files = true   # the coverage comment action reads paths relative to th
 patch = ["subprocess"]  # hooks run the CLI in a subprocess via git; measure that too
 
 [tool.coverage.report]
-# Gates live in scripts/ci: 100% of core from tests/unit alone, 95% overall.
+# Gates live in scripts/ci: 100% of core from tests/unit alone, 95% overall. patch=subprocess
+# measures the CLI when tests start it as `sys.executable -m prepush_ci`, and combines automatically.
 show_missing = true
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:"]
 
