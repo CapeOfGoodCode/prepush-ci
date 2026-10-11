@@ -33,7 +33,7 @@ issue ──bruce-lee──▶ PR [turn:spec-review] ──robocop──▶ [tur
 4. **Review** (robocop): checks out the head commit, runs `scripts/ci` itself, reproduces the proof, checks every scenario has a test, scope is limited to the change, and no test was weakened. Approve → `turn:human` and notify the human; reject → `turn:build` with the reasons.
 5. **Merge** (human): reads the proof, merges (rebase). The issue closes.
 
-Bugs found by terminator, and follow-ups found by anyone, enter as issues. Bruce-lee triages them: a bug that changes no spec'd behavior goes straight to `turn:build` as an issue and chuck-norris opens the PR (`fix/<issue>-<name>`); anything else gets a change as above.
+Bugs found by terminator, and follow-ups found by anyone, enter as issues; a bug uses the headings of `.github/ISSUE_TEMPLATE/bug.yml`. Bruce-lee triages them: a bug that changes no spec'd behavior goes straight to `turn:build` as an issue and chuck-norris opens the PR (`fix/<issue>-<name>`); anything else gets a change as above.
 
 ## Labels
 

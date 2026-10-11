@@ -1,0 +1,20 @@
+name: Feature proposal
+description: Suggest something prepush-ci should do
+labels: [proposal]
+body:
+  - type: markdown
+    attributes:
+      value: Proposals are read and decided by a maintainer before anyone works on them.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
