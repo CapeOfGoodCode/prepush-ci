@@ -33,6 +33,8 @@ The rulebook for everyone who changes this repository, human or agent. `README.m
   Loop: <loop name>
   ```
 
+- **Nothing private in public text.** This repository is public: no session links (`Claude-Session:`), local paths, e-mail addresses or other links only you can open, in commits, pull requests or issues.
+
 ## Branches and pull requests
 
 - **One branch per issue**: `<type>/<issue>-<name>`, e.g. `feat/4-pre-push-hook`. Nothing but bootstrap is committed on `main`.
