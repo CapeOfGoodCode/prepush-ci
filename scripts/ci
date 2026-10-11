@@ -12,7 +12,6 @@ COVERAGE_FILE=.coverage-unit uv run coverage run -m pytest -q tests/unit
 COVERAGE_FILE=.coverage-unit uv run coverage report --include='*/core/*' --fail-under=100
 echo "==> all tests: 95% branch coverage overall"
 uv run coverage run -m pytest -q
-uv run coverage combine -q --append 2>/dev/null || true   # subprocess data files, if any
 uv run coverage report --fail-under=95 --skip-covered
 echo "==> openspec validate";   npx --no-install openspec validate --all --strict --no-interactive
 echo "==> full check passed"

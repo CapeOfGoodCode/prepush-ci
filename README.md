@@ -29,7 +29,7 @@ This repository is also an example of agentic engineering:
 ```sh
 uv sync && npm ci          # Python tooling, OpenSpec CLI
 uv run pre-commit install  # commit-msg, pre-commit and pre-push hooks
-scripts/ci                 # the full check, exactly as CI runs it
+sh scripts/ci              # the full check, exactly as CI runs it
 ```
 
 ## License

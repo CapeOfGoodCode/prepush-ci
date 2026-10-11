@@ -1,7 +1,8 @@
 """PreToolUse hook: refuse the few shell commands that would break this repository's invariants.
 
-Agents here may run with every permission granted, so this is the last line before the server-side
-rules (branch ruleset, token scope). It stops slips, not a determined actor. Blocked:
+A safeguard for Claude Code sessions opened in this repository (it runs only when the session's
+working directory is the repository). The hard limits are server-side: the rulesets on main and on
+release tags, and the bot's token scope. This stops slips, not a determined actor. Blocked:
 
 - merging a pull request (`gh pr merge`, the merge API): only a human merges, after reading the proof;
 - pushing to `main` or force-pushing without a lease: `main` changes only through merged pull requests;

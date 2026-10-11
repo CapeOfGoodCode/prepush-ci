@@ -25,8 +25,7 @@ repos:
         types_or: [python, pyi]
         require_serial: true
 
-      # The full check, exactly as CI runs it. Once prepush-ci can do it, this hook is replaced by
-      # prepush-ci's own hooks (dogfooding); until then every push runs the full check.
+      # The full check, exactly as CI runs it.
       - id: full-check
         name: scripts/ci (full check)
         entry: sh scripts/ci   # via sh: Windows has no /bin/sh for the shebang

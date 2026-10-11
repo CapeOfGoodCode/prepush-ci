@@ -42,9 +42,10 @@ The rulebook for everyone who changes this repository, human or agent. `README.m
 ## Testing
 
 - **Tests are specs**: they live in `tests/`, files are named `*_spec.py` (pytest collects nothing else), and test names read as sentences about behavior: `test_pre_push_refuses_a_trailer_commit_when_the_worktree_is_dirty`.
-- **Two tiers, both run by `scripts/ci`**:
+- **Tiers, all run by `scripts/ci`**:
   - `tests/unit/`: pure logic, no I/O (trailer parsing, config, ref lines, the `verify` decision). Keep that logic in modules that do no I/O so it can be tested here.
-  - `tests/integration/`: the behavior a user sees, against real temporary git repositories (`git init` in `tmp_path`), with hooks run by real `git commit`/`git push`. Never mock git.
+  - `tests/integration/`: the behavior a user sees, against real temporary git repositories (`git init` in `tmp_path`), with hooks run by real `git commit`/`git push`. Never mock git. Start the CLI as `sys.executable -m prepush_ci` (in hook scripts too), never via `uvx` or `PATH`, so coverage measures it.
+  - `tests/harness/`: the repository's own tooling (agent hooks); not part of the product.
 - End-to-end use of the released tool (`uvx` in throwaway repositories) is not part of the suite; terminator does it (`LOOP.md`).
 - **Never weaken a test to make it pass**, never skip one silently. A test that cannot run fails.
 - **Coverage** (branch, gated in `scripts/ci`): `src/prepush_ci/core/` at **100% from `tests/unit` alone** (a branch only an integration test reaches does not count), everything at **95%** overall, including code the tests start as a subprocess through git. `core/` does no I/O (a unit spec enforces it). Every `# pragma: no cover` carries a comment saying why.
@@ -62,7 +63,7 @@ The rulebook for everyone who changes this repository, human or agent. `README.m
 
 ## Working in this repository
 
-- **uv for Python, npm only for the OpenSpec CLI**: `uv sync && npm ci`, then `uv run <tool>`.
-- **Layout**: `src/prepush_ci/` (the tool, standard library only), `tests/` (specs), `openspec/` (specs and changes), `scripts/ci` (the full check), `.claude/` (agent hooks and skills).
+- **uv for Python, npm only for the OpenSpec CLI**: `uv sync && npm ci`, then `uv run <tool>`. GitHub CLI 2.100 or newer (`gh issue create --type/--parent/--blocked-by`).
+- **Layout**: `src/prepush_ci/` (the tool, standard library only; `core/` without I/O), `tests/` (specs), `openspec/` (specs and changes), `skills/` (the agent skill the tool ships), `scripts/ci` (the full check), `.claude/` (hooks and skills for agents working on this repository).
 - **No runtime dependencies** unless an OpenSpec change argues for one: `uvx prepush-ci` should start fast and install nothing.
 - **Decide and proceed**: make implementation decisions (file layout, internal APIs, test structure) yourself, with a one-line rationale in the commit body. Pause only when a decision changes the intent's scope or contradicts a spec.
