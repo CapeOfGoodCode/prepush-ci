@@ -1,0 +1,44 @@
+name: Bug report
+description: prepush-ci does something wrong
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `prepush-ci --version`
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, git version, Python version, and whether this is a Claude Code cloud session
+    validations:
+      required: true
+  - type: dropdown
+    id: hook-manager
+    attributes:
+      label: Hook manager
+      options: [native (core.hooksPath), pre-commit, husky, lefthook, other]
+    validations:
+      required: true
+  - type: textarea
+    id: existing-hooks
+    attributes:
+      label: Hooks that existed before prepush-ci
+      description: Any pre-push or commit-msg hooks the repository had, and how they were installed. "none" is a fine answer.
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Commands from a fresh repository (`git init`) to the failure, with their output.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
