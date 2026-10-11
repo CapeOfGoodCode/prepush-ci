@@ -1,6 +1,6 @@
 name: Bug report
 description: prepush-ci does something wrong
-labels: [bug]
+type: Bug
 body:
   - type: input
     id: version
