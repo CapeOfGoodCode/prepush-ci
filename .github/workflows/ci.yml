@@ -1,0 +1,62 @@
+name: ci
+
+# Pull requests run only once they are ready for review: drafts are work in progress, and the loop
+# that reviews them runs scripts/ci itself. main always runs in full; it is the backstop.
+# Description edits do not trigger this workflow (proof.yml checks those), so an edit can never
+# cancel a running check and leave a skipped, "passing" one behind.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    if: github.event_name == 'push' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: uv sync --frozen
+      - run: npm ci
+      # The same entry point the pre-push hook runs.
+      - run: sh scripts/ci
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: .coverage
+          include-hidden-files: true
+
+  # Write permissions live here, away from the job that runs the tests.
+  coverage:
+    needs: check
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # the badge goes to the action's data branch (main only)
+      pull-requests: write   # the coverage comment on pull requests
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage
+      - uses: py-cov-action/python-coverage-comment-action@v4.5
+        with:
+          GITHUB_TOKEN: ${{ github.token }}

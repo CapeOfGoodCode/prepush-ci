@@ -1,0 +1,17 @@
+[commit]
+# https://www.conventionalcommits.org
+conventional_commits = true
+subject_capitalized = false
+subject_imperative = true
+subject_max_length = 100
+allow_commit_types = ["feat", "fix", "docs", "refactor", "test", "chore"]
+allow_merge_commits = false
+allow_wip_commits = false
+allow_empty_commits = false
+# AGENTS.md requires an AI-attribution trailer on agent commits; never flip this to "forbid".
+ai_attribution = "ignore"
+
+[branch]
+# https://conventionalbranch.org; reuses the commit types as branch prefixes.
+conventional_branch = true
+allow_branch_types = ["feat", "fix", "docs", "refactor", "test", "chore"]

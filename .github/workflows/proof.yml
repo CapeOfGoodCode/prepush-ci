@@ -1,0 +1,32 @@
+name: proof
+
+# The human merges on the proof (LOOP.md). A ready pull request without one is not reviewable.
+# Separate from ci.yml so that editing the description re-runs only this.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: proof-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proof:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: the pull request carries a proof
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          proof=$(printf '%s\n' "$BODY" | tr -d '\r' \
+            | awk '/^## Proof/{on=1; next} /^## /{on=0} on' \
+            | grep -v '^<!--.*-->$' | grep -v '^[[:space:]]*$' || true)
+          if [ -z "$proof" ]; then
+            echo "::error::The pull request description has no '## Proof' section with content. See LOOP.md, Proof."
+            exit 1
+          fi
+          echo "Proof section present ($(printf '%s\n' "$proof" | wc -l) lines)."

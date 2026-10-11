@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest something prepush-ci should do, or do better
+type: Feature
+labels: [proposal]
+body:
+  - type: markdown
+    attributes:
+      value: A maintainer reads and decides every feature request before anyone works on it.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true

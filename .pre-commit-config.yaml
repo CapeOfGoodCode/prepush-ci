@@ -1,0 +1,35 @@
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/commit-check/commit-check
+    rev: v2.18.3
+    hooks:
+      - id: check-message
+        stages: [commit-msg]
+      - id: check-branch
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check --fix
+        entry: uv run ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      # The full check, exactly as CI runs it.
+      - id: full-check
+        name: scripts/ci (full check)
+        entry: sh scripts/ci   # via sh: Windows has no /bin/sh for the shebang
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
