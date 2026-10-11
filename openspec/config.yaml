@@ -1,0 +1,19 @@
+schema: spec-driven
+
+context: |
+  prepush-ci runs the full CI check in the pre-push hook of an AI agent's cloud session (or any
+  machine that opts in) and lets pull request CI skip commits that provably went through it.
+  The default branch always runs CI in full. The intent, design and edge cases are in GitHub
+  issue #1 (CapeOfGoodCode/prepush-ci) and its comments: read it before proposing a change.
+
+  Pieces: a Python CLI (`prepush-ci`, standard library only, Python >= 3.11, distributed via
+  PyPI and run with `uvx prepush-ci`), git hooks (commit-msg, pre-push) for native hooks,
+  pre-commit, husky and lefthook, a `verify` command any CI calls, CI gate examples, and a
+  SKILL.md that tells an agent how to set the tool up in a repository.
+
+  Invariant every change must keep: a commit with the trailer on the remote implies the full
+  check passed on exactly that commit, as long as every push path runs the hook.
+
+  Rules: one change per issue, named <issue>-<name>; small changes that can be built and reviewed
+  in one sitting; every scenario is testable against a real temporary git repository; anything
+  outside issue #1 is a `proposal` issue, not a change.

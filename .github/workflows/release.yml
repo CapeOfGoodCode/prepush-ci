@@ -1,0 +1,59 @@
+name: release
+
+# A pushed tag vX.Y.Z (semantic versioning) is a release; only a human pushes one. This workflow
+# refuses a tag that disagrees with the package or is not on main, then builds, publishes to PyPI
+# through trusted publishing (no token stored anywhere) and creates the GitHub release.
+on:
+  push:
+    tags: ['v*']
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # main takes rebase merges only: a commit tagged elsewhere is not the one that landed.
+      - name: tagged commit is on main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME tags a commit that is not on main"
+            exit 1
+          fi
+      - uses: astral-sh/setup-uv@v10
+      # pyproject.toml is the one place the version is written.
+      - name: tag matches the package version
+        run: |
+          version=$(uv version --short)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match the package version $version"
+            exit 1
+          fi
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # PyPI trusted publishing
+      contents: write   # gh release create
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
