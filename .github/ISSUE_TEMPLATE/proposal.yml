@@ -1,5 +1,6 @@
 name: Feature proposal
 description: Suggest something prepush-ci should do
+type: Feature
 labels: [proposal]
 body:
   - type: markdown

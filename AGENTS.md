@@ -9,8 +9,9 @@ The rulebook for everyone who changes this repository, human or agent. `README.m
 ## Scope and backlog
 
 - **Issue #1 is the intent.** It is the scope contract for the first release. Decisions it leaves open are made by whoever picks them up, with a one-line rationale in the commit body (the intent asks for exactly this).
-- **Every piece of work is an issue.** Ideas, follow-ups and bugs become issues right away (`gh issue create`), never TODO comments. Anything outside the intent gets the label `proposal` and waits for a human.
-- **Dependencies** are written as `Depends on #<n>` in the issue body. Pick up an issue only when its dependencies are merged.
+- **Every piece of work is an issue** with an issue type: `Epic` (issue #1), `Feature`, `Bug`, `Improvement`, `Refactoring` or `Task`. Ideas, follow-ups and bugs become issues right away (`gh issue create --type …`), never TODO comments. Anything outside the intent gets the label `proposal` and waits for a human.
+- **Structure is native, not prose**: slices of the intent are sub-issues of #1 (`--parent 1`); dependencies are "blocked by" relations (`--blocked-by <n>`). Pick up an issue only when nothing blocks it.
+- **Types say what an issue is; labels say whose move it is** (`LOOP.md`).
 
 ## OpenSpec
 
