@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+.coverage
+reports/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Node (OpenSpec CLI)
+node_modules/
+
+# Local agent/tool state
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.nwave/
+.env
+.coverage-unit
+.coverage.*

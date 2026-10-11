@@ -1,0 +1,12 @@
+{
+  "name": "prepush-ci-tooling",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Tooling root: pins the OpenSpec CLI. The tool itself is Python under src/.",
+  "scripts": {
+    "spec:validate": "openspec validate --all --strict"
+  },
+  "devDependencies": {
+    "@fission-ai/openspec": "^1.14.1"
+  }
+}

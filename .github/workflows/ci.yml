@@ -1,0 +1,75 @@
+name: ci
+
+# Pull requests run only once they are ready for review: drafts are work in progress, and the loop
+# that reviews them runs scripts/ci itself. main always runs in full; it is the backstop.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    if: github.event_name == 'push' || (!github.event.pull_request.draft && github.event.action != 'edited')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # the coverage action pushes the badge to its data branch (main only)
+      pull-requests: write   # ...and comments coverage on pull requests
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: uv sync --frozen
+      - run: npm ci
+      # The same entry point the pre-push hook runs.
+      - run: scripts/ci
+      - name: coverage comment and badge
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: py-cov-action/python-coverage-comment-action@v4
+        with:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  commit-check:
+    if: github.event_name == 'pull_request' && !github.event.pull_request.draft && github.event.action != 'edited'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: commit-check/commit-check-action@v2
+        with:
+          message: true
+          branch: true
+
+  # The human merges on the proof (LOOP.md). A ready pull request without one is not reviewable.
+  proof:
+    if: github.event_name == 'pull_request' && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: the pull request carries a proof
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          proof=$(printf '%s\n' "$BODY" | tr -d '\r' \
+            | awk '/^## Proof/{on=1; next} /^## /{on=0} on' \
+            | grep -v '^<!--.*-->$' | grep -v '^[[:space:]]*$' || true)
+          if [ -z "$proof" ]; then
+            echo "::error::The pull request description has no '## Proof' section with content. See LOOP.md, Proof."
+            exit 1
+          fi
+          echo "Proof section present ($(printf '%s\n' "$proof" | wc -l) lines)."

@@ -1,0 +1,69 @@
+[project]
+name = "prepush-ci"
+version = "0.0.0"
+description = "Run the full CI check in the pre-push hook and let pull request CI skip commits that provably went through it"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"   # tomllib in the standard library; uvx brings its own Python anyway
+dependencies = []
+keywords = ["git", "pre-push", "ci", "git-hooks", "ai-agents", "claude-code"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+
+[project.urls]
+Homepage = "https://github.com/CapeOfGoodCode/prepush-ci"
+Issues = "https://github.com/CapeOfGoodCode/prepush-ci/issues"
+
+[project.scripts]
+prepush-ci = "prepush_ci.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.8,<0.13"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "coverage[toml]>=7.10",
+    "mypy>=1.18",
+    "pre-commit>=4.3",
+    "pytest>=8.4",
+    "ruff>=0.13",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "*_spec.py"   # tests are specs; pytest collects nothing else
+addopts = "--import-mode=importlib"
+
+[tool.coverage.run]
+source = ["prepush_ci"]
+branch = true
+relative_files = true   # the coverage comment action reads paths relative to the repository
+patch = ["subprocess"]  # hooks run the CLI in a subprocess via git; measure that too
+
+[tool.coverage.report]
+# Gates live in scripts/ci: 100% of core from tests/unit alone, 95% overall.
+show_missing = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:"]
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]   # the formatter owns line length
+
+[tool.mypy]
+strict = true
+files = ["src"]
+python_version = "3.11"
