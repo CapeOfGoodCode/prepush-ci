@@ -29,7 +29,7 @@ repos:
       # prepush-ci's own hooks (dogfooding); until then every push runs the full check.
       - id: full-check
         name: scripts/ci (full check)
-        entry: scripts/ci
+        entry: sh scripts/ci   # via sh: Windows has no /bin/sh for the shebang
         language: system
         pass_filenames: false
         always_run: true
