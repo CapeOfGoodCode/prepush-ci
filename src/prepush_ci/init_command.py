@@ -1,9 +1,12 @@
 """`prepush-ci init`: config, hooks, SessionStart hook and CI gate in one command."""
 
+import contextlib
+import io
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from prepush_ci import install_command
 from prepush_ci.core.config import ConfigError
 from prepush_ci.core.config_source import (
     PREPUSH_CI_FILE,
@@ -71,7 +74,19 @@ def run(options: Options, cwd: Path) -> int:
         print(f"written: {PREPUSH_CI_FILE}")
     else:
         print(f"kept: {_source(root)}")
-    return 0
+    return _install(options.hooks, cwd)
+
+
+def _install(hooks: str | None, cwd: Path) -> int:
+    """Run `install`, show what it printed; its refusal ends `init` with its message."""
+    if hooks == "none":
+        print("skipped: hooks (--hooks none)")
+        return 0
+    printed = io.StringIO()
+    with contextlib.redirect_stdout(printed):
+        code = install_command.run(cwd, hooks)
+    print(printed.getvalue(), end="")
+    return code
 
 
 def _source(root: Path) -> str:

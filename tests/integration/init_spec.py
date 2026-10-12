@@ -236,3 +236,118 @@ def test_a_config_in_pyproject_is_used_and_no_file_is_made_for_it(repo: Path) ->
 
     assert result.returncode == 0, result.stderr
     assert not (repo / ".prepush-ci.toml").exists()
+
+
+def test_a_detected_manager_gets_the_block_and_git_is_left_alone(
+    repo: Path, git: Git
+) -> None:
+    (repo / ".pre-commit-config.yaml").write_text(
+        "repos:\n  - repo: local\n    hooks: []\n"
+    )
+
+    result = init(repo, "--non-interactive", "--check", "scripts/ci")
+
+    assert result.returncode == 0, result.stderr
+    assert "prepush-ci: begin" in (repo / ".pre-commit-config.yaml").read_text()
+    assert hooks_path(repo, git) == ""
+
+
+def push_after_init(
+    repo: Path, tmp_path: Path, git: Git, team_hook: str | None
+) -> "subprocess.CompletedProcess[str]":
+    """Run `init`, commit what it wrote and one more file with the trailer, and push them to a
+    bare remote; `team_hook` is the body of an existing `.git/hooks/pre-push`, if any."""
+    git(tmp_path, "init", "-q", "--bare", str(tmp_path / "remote.git"))
+    git(repo, "symbolic-ref", "HEAD", "refs/heads/main")
+    git(repo, "remote", "add", "origin", str(tmp_path / "remote.git"))
+    if team_hook is not None:
+        hook = repo / ".git" / "hooks" / "pre-push"
+        hook.write_text(f"#!/bin/sh\n{team_hook}\n")
+        hook.chmod(0o755)
+    result = init(
+        repo,
+        "--non-interactive",
+        "--check",
+        "true",
+        "--require-up-to-date",
+        "false",
+    )
+    assert result.returncode == 0, result.stderr
+    assert hooks_path(repo, git).endswith(".git/prepush-ci/hooks")
+    git(repo, "add", ".prepush-ci.toml")
+    git(repo, "commit", "-q", "-m", "add init files", env={"PREPUSH_CI": "full"})
+    return git(repo, "push", "-q", "origin", "main", check=False)
+
+
+def test_an_existing_pre_push_hook_still_refuses_a_push_after_init(
+    repo: Path, tmp_path: Path, git: Git
+) -> None:
+    mark = tmp_path / "team-hook-ran"
+
+    push = push_after_init(
+        repo, tmp_path, git, f"echo ran > '{mark.as_posix()}'; exit 1"
+    )
+
+    assert push.returncode != 0
+    assert mark.read_text().strip() == "ran"
+    assert "worktree is not clean" not in push.stderr
+    assert git(tmp_path, "ls-remote", str(tmp_path / "remote.git")).stdout == ""
+
+
+def test_the_same_push_goes_through_without_the_existing_pre_push_hook(
+    repo: Path, tmp_path: Path, git: Git
+) -> None:
+    push = push_after_init(repo, tmp_path, git, None)
+
+    assert push.returncode == 0, push.stderr
+    assert (
+        "refs/heads/main"
+        in git(tmp_path, "ls-remote", str(tmp_path / "remote.git")).stdout
+    )
+
+
+def test_no_local_hooks_leaves_git_and_the_hook_files_alone(
+    repo: Path, git: Git
+) -> None:
+    result = init(repo, "--non-interactive", "--check", "scripts/ci", "--hooks", "none")
+
+    assert result.returncode == 0, result.stderr
+    assert hooks_path(repo, git) == ""
+    assert not (repo / ".git" / "prepush-ci").exists()
+
+
+def test_native_hooks_set_core_hooks_path_and_show_what_install_printed(
+    repo: Path, git: Git
+) -> None:
+    result = init(
+        repo, "--non-interactive", "--check", "scripts/ci", "--hooks", "native"
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert hooks_path(repo, git).endswith(".git/prepush-ci/hooks")
+    assert "installed:" in result.stdout
+
+
+def test_one_command_sets_a_repository_up(repo: Path, git: Git) -> None:
+    result = init(
+        repo, "--non-interactive", "--check", "scripts/ci", "--hooks", "native"
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (repo / ".prepush-ci.toml").is_file()
+    assert hooks_path(repo, git).endswith(".git/prepush-ci/hooks")
+
+
+def test_two_managers_end_init_with_the_refusal_before_the_session_hook(
+    repo: Path,
+) -> None:
+    (repo / ".pre-commit-config.yaml").write_text(
+        "repos:\n  - repo: local\n    hooks: []\n"
+    )
+    (repo / "lefthook.yml").write_text("")
+
+    result = init(repo, "--non-interactive", "--check", "scripts/ci")
+
+    assert result.returncode == 1
+    assert "--hooks" in result.stderr
+    assert not (repo / ".claude").exists()
