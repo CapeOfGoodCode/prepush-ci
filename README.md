@@ -23,6 +23,7 @@ This repository is also an example of agentic engineering:
 - [`LOOP.md`](LOOP.md) describes the loops that build the tool: their roles, the label state machine they share, what each may touch, and where a human decides.
 - [`openspec/`](openspec/) holds the specifications. Every feature starts as an OpenSpec change.
 - [`scripts/ci`](scripts/ci) is the one entry point for the full check; CI and the pre-push hook run the same script.
+- [`docs/agentic-engineering.md`](docs/agentic-engineering.md) maps the practices from [loop-engineering](https://github.com/cobusgreyling/loop-engineering) this repository adopts, and where it deviates.
 
 ## Development
 
