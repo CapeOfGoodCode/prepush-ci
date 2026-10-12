@@ -7,9 +7,9 @@
 
 ## 2. commit-msg hook
 
-- [ ] 2.1 Add `prepush-ci hook commit-msg <file>` handling `PREPUSH_CI` unset, empty, `off`, `full` and other values; verify with integration specs that install it as `.git/hooks/commit-msg` (running `sys.executable -m prepush_ci`) and run real `git commit`
-- [ ] 2.2 Write the trailer with `git interpret-trailers --in-place --no-divider --where start --if-exists doNothing`, keep empty messages empty; verify the divider, amend, run-twice and empty-message specs
-- [ ] 2.3 Run `sh scripts/ci` and verify it passes
+- [x] 2.1 Add `prepush-ci hook commit-msg <file>` handling `PREPUSH_CI` unset, empty, `off`, `full` and other values; verify with integration specs that install it as `.git/hooks/commit-msg` (running `sys.executable -m prepush_ci`) and run real `git commit`
+- [x] 2.2 Write the trailer with `git interpret-trailers --in-place --no-divider --where start --if-exists doNothing`, keep a message that git will discard as empty (by the cleanup that applies to this commit) empty; verify the divider, amend, run-twice and empty-message specs
+- [x] 2.3 Run `sh scripts/ci` and verify it passes
 
 ## Workflow follow-up
 
