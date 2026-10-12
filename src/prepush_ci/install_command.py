@@ -90,9 +90,27 @@ def _worktree_root(cwd: Path) -> Path | None:
 
 def _found(root: Path | None) -> list[str]:
     """The managers whose files the worktree root holds."""
+    return list(found_files(root))
+
+
+def found_files(root: Path | None) -> dict[str, str]:
+    """For each manager whose files the worktree root holds, the first of them that exists."""
     if root is None:
-        return []
-    return [m for m in MANAGERS if any(_marker(root, name) for name in MARKERS[m])]
+        return {}
+    found: dict[str, str] = {}
+    for manager in MANAGERS:
+        present = [name for name in MARKERS[manager] if _marker(root, name)]
+        if present:
+            found[manager] = present[0]
+    return found
+
+
+def previous_pre_push(cwd: Path) -> Path | None:
+    """The `pre-push` hook `install` would chain to, if one is there to run."""
+    common = _resolve(cwd, git(cwd, "rev-parse", "--git-common-dir").stdout.strip())
+    directory = common.joinpath(*HOOKS_DIRECTORY)
+    hook = _previous(cwd, common, directory) / "pre-push"
+    return hook if hook.is_file() else None
 
 
 def _marker(root: Path, name: str) -> bool:

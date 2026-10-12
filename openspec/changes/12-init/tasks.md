@@ -18,9 +18,9 @@
 
 ## 4. Interactive
 
-- [ ] 4.1 Ask for each config value with a detected default (`scripts/ci`, `bin/ci`, `make ci`; `origin/HEAD`), skip the questions a flag or an existing config answers, write only the answers that differ from the built-in defaults, ask the SessionStart question; verify with specs that feed answers on standard input
-- [ ] 4.2 Ask the hooks question always, naming the manager file and the existing pre-push hook; refuse unknown answers and end of input before any write; verify with specs
-- [ ] 4.3 Run `sh scripts/ci` and verify it passes
+- [x] 4.1 Ask for each config value with a detected default (`scripts/ci`, `bin/ci`, `make ci`; `origin/HEAD`), skip the questions a flag or an existing config answers, write only the answers that differ from the built-in defaults, ask the SessionStart question; verify with specs that feed answers on standard input
+- [x] 4.2 Ask the hooks question always, naming the manager file and the existing pre-push hook; refuse unknown answers and end of input before any write; verify with specs
+- [x] 4.3 Run `sh scripts/ci` and verify it passes
 
 ## Workflow follow-up
 

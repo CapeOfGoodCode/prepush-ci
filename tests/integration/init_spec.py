@@ -890,3 +890,265 @@ def test_a_whole_first_run_with_every_step_ends_with_set_up(repo: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert "set up" in last_line(result)
     assert "already set up" not in last_line(result)
+
+
+def answers(*lines: str) -> str:
+    return "".join(f"{line}\n" for line in lines)
+
+
+EMPTY = (
+    "",
+    "",
+    "",
+    "",
+    "",
+)  # check, preflight, require_env, default_branch, up-to-date
+
+
+def test_detected_defaults_are_shown_and_taken_on_an_empty_answer(
+    repo: Path, git: Git
+) -> None:
+    (repo / "scripts").mkdir()
+    (repo / "scripts" / "ci").write_text("#!/bin/sh\n")
+    git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
+
+    result = init(repo, "--hooks", "none", stdin=answers(*EMPTY, ""))
+
+    assert result.returncode == 0, result.stderr
+    assert "[scripts/ci]" in result.stdout
+    assert "[trunk]" in result.stdout
+    config = config_of(repo)
+    assert (config.check, config.default_branch) == ("scripts/ci", "trunk")
+
+
+def test_a_typed_check_is_what_the_config_holds(repo: Path) -> None:
+    result = init(repo, "--hooks", "none", stdin=answers("make ci", "", "", "", "", ""))
+
+    assert result.returncode == 0, result.stderr
+    assert config_of(repo).check == "make ci"
+
+
+def test_a_flag_answers_its_question(repo: Path) -> None:
+    result = init(
+        repo,
+        "--check",
+        "scripts/ci",
+        "--hooks",
+        "none",
+        stdin=answers("", "", "", "", ""),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "runs your full CI check" not in result.stdout
+    assert "preflight" in result.stdout
+
+
+def test_declining_the_session_hook_writes_none(repo: Path) -> None:
+    result = init(
+        repo,
+        "--check",
+        "scripts/ci",
+        "--hooks",
+        "none",
+        stdin=answers("", "", "", "", "n"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not (repo / ".claude").exists()
+
+
+def test_the_branch_default_is_main_without_origin_head(repo: Path) -> None:
+    result = init(
+        repo, "--check", "x", "--hooks", "none", stdin=answers("", "", "", "", "")
+    )
+
+    assert "[main]" in result.stdout
+
+
+def test_a_makefile_target_is_the_default_check(repo: Path) -> None:
+    (repo / "Makefile").write_text("all:\n\ttrue\n\nci: all\n\ttrue\n")
+
+    result = init(repo, "--hooks", "none", stdin=answers(*EMPTY, "n"))
+
+    assert "[make ci]" in result.stdout
+    assert config_of(repo).check == "make ci"
+
+
+def test_a_makefile_without_a_ci_target_is_no_default(repo: Path) -> None:
+    (repo / "Makefile").write_text("all:\n\ttrue\n")
+
+    result = init(repo, "--hooks", "none", stdin=answers(*EMPTY, "n"))
+
+    assert result.returncode == 1
+    assert "check" in result.stderr
+    assert files(repo) == {"Makefile"}
+
+
+def test_bin_ci_comes_after_scripts_ci(repo: Path) -> None:
+    (repo / "bin").mkdir()
+    (repo / "bin" / "ci").write_text("#!/bin/sh\n")
+
+    result = init(repo, "--hooks", "none", stdin=answers(*EMPTY, "n"))
+
+    assert config_of(repo).check == "bin/ci"
+    assert result.returncode == 0, result.stderr
+
+
+def test_the_answer_false_switches_the_up_to_date_check_off(repo: Path) -> None:
+    result = init(
+        repo, "--hooks", "none", stdin=answers("make ci", "", "", "", "false", "n")
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert config_of(repo).require_up_to_date is None
+
+
+def test_answers_equal_to_the_built_in_defaults_are_not_written(
+    repo: Path, git: Git
+) -> None:
+    git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+
+    init(repo, "--hooks", "none", stdin=answers("make ci", "", "", "", "", "n"))
+
+    assert (repo / ".prepush-ci.toml").read_text() == 'check = "make ci"\n'
+
+
+def test_an_answer_that_differs_is_written_and_a_default_is_not(repo: Path) -> None:
+    init(repo, "--hooks", "none", stdin=answers("make ci", "", "", "trunk", "", "n"))
+
+    text = (repo / ".prepush-ci.toml").read_text()
+    assert 'default_branch = "trunk"' in text
+    assert "require_up_to_date" not in text
+    assert "preflight" not in text
+
+
+def test_the_other_answers_are_written_when_given(repo: Path) -> None:
+    init(
+        repo,
+        "--hooks",
+        "none",
+        stdin=answers("make ci", "make up", "A, B", "", "upstream/main", "n"),
+    )
+
+    config = config_of(repo)
+    assert config.preflight == "make up"
+    assert config.require_env == ("A", "B")
+    assert config.require_up_to_date == "upstream/main"
+
+
+def test_a_flag_is_written_as_given_even_when_it_equals_the_default(repo: Path) -> None:
+    init(
+        repo,
+        "--check",
+        "make ci",
+        "--default-branch",
+        "main",
+        "--hooks",
+        "none",
+        stdin=answers("", "", "", "n"),
+    )
+
+    assert 'default_branch = "main"' in (repo / ".prepush-ci.toml").read_text()
+
+
+def test_an_existing_config_asks_no_config_question(repo: Path) -> None:
+    (repo / ".prepush-ci.toml").write_text('check = "scripts/ci"\n')
+
+    result = init(repo, "--hooks", "none", stdin=answers("n"))
+
+    assert result.returncode == 0, result.stderr
+    assert "preflight" not in result.stdout
+    assert not (repo / ".claude").exists()
+
+
+def test_an_existing_pre_push_hook_is_named_in_the_hooks_question(repo: Path) -> None:
+    hook = repo / ".git" / "hooks" / "pre-push"
+    hook.write_text("#!/bin/sh\nexit 0\n")
+    hook.chmod(0o755)
+
+    result = init(repo, "--check", "x", stdin=answers("", "", "", "", "none", "n"))
+
+    assert ".git/hooks/pre-push" in result.stdout
+
+
+def test_a_manager_is_named_and_is_the_default_answer(repo: Path) -> None:
+    (repo / "lefthook.yml").write_text("")
+
+    result = init(repo, "--check", "x", stdin=answers("", "", "", "", "", "n"))
+
+    assert result.returncode == 0, result.stderr
+    assert "lefthook.yml" in result.stdout
+    assert "prepush-ci: begin" in (repo / "lefthook.yml").read_text()
+
+
+def test_the_answer_none_installs_no_hooks(repo: Path, git: Git) -> None:
+    result = init(repo, "--check", "x", stdin=answers("", "", "", "", "none", "n"))
+
+    assert result.returncode == 0, result.stderr
+    assert hooks_path(repo, git) == ""
+    assert not (repo / ".git" / "prepush-ci").exists()
+
+
+def test_with_nothing_found_all_five_choices_are_listed_and_native_is_the_default(
+    repo: Path, git: Git
+) -> None:
+    result = init(repo, "--check", "x", stdin=answers("", "", "", "", "", "n"))
+
+    for choice in ("native", "pre-commit", "husky", "lefthook", "none"):
+        assert choice in result.stdout
+    assert "[native]" in result.stdout
+    assert hooks_path(repo, git).endswith(".git/prepush-ci/hooks")
+
+
+def test_several_managers_leave_no_default_and_an_empty_answer_is_refused(
+    repo: Path,
+) -> None:
+    (repo / ".pre-commit-config.yaml").write_text(
+        "repos:\n  - repo: local\n    hooks: []\n"
+    )
+    (repo / "lefthook.yml").write_text("")
+
+    result = init(repo, "--check", "x", stdin=answers("", "", "", "", "", "n"))
+
+    assert result.returncode == 1
+    assert "pre-commit" in result.stderr and "none" in result.stderr
+    assert not (repo / ".prepush-ci.toml").exists()
+
+
+def test_an_unknown_hooks_answer_names_the_valid_ones_and_writes_nothing(
+    repo: Path,
+) -> None:
+    result = init(repo, "--check", "x", stdin=answers("", "", "", "", "jenkins", "n"))
+
+    assert result.returncode == 1
+    for choice in ("native", "pre-commit", "husky", "lefthook", "none"):
+        assert choice in result.stderr
+    assert files(repo) == set()
+
+
+def test_an_unknown_session_hook_answer_names_the_valid_ones_and_writes_nothing(
+    repo: Path,
+) -> None:
+    result = init(repo, "--check", "x", stdin=answers("", "", "", "", "none", "maybe"))
+
+    assert result.returncode == 1
+    assert "y" in result.stderr and "n" in result.stderr
+    assert files(repo) == set()
+
+
+def test_input_that_ends_early_names_non_interactive_and_writes_nothing(
+    repo: Path,
+) -> None:
+    result = init(repo, stdin="")
+
+    assert result.returncode == 1
+    assert "--non-interactive" in result.stderr
+    assert files(repo) == set()
+
+
+def test_the_session_hook_script_gets_the_hooks_that_were_chosen(repo: Path) -> None:
+    (repo / ".husky").mkdir()
+
+    init(repo, "--check", "x", stdin=answers("", "", "", "", "husky", ""))
+
+    assert "prepush-ci install --hooks husky\n" in (repo / SESSION_HOOK).read_text()
