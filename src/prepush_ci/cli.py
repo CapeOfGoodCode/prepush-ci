@@ -6,7 +6,7 @@ import sys
 from importlib.metadata import version
 from pathlib import Path
 
-from prepush_ci import commit_msg_hook, pre_push_hook, verify_command
+from prepush_ci import commit_msg_hook, pre_push_hook, strip_command, verify_command
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -43,7 +43,18 @@ def main(argv: list[str] | None = None) -> int:
     pre_push.add_argument(
         "git_args", nargs="*", help="the remote name and url git passes (unused)"
     )
+    strip = commands.add_parser(
+        "strip",
+        help="remove the trailer from the commits since <base>, so a push needs no check",
+    )
+    strip.add_argument(
+        "base",
+        nargs="*",
+        help="the commit before yours (default: the merge base with the default branch)",
+    )
     args = parser.parse_args(args_in)
+    if args.command == "strip":
+        return strip_command.run(args.base, Path.cwd())
     if args.command == "hook" and args.hook == "pre-push":
         return pre_push_hook.run(sys.stdin, os.environ, Path.cwd())
     if args.command == "hook":

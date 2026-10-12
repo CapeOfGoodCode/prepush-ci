@@ -14,8 +14,6 @@ from prepush_ci.core.pre_push import (
     branch_tips,
     demand_keys,
     demands_check,
-    dirty_paths,
-    hidden_paths,
     message_dirty,
     message_hidden,
     message_not_head,
@@ -23,7 +21,7 @@ from prepush_ci.core.pre_push import (
     parse_ref_lines,
     pre_commit_push,
 )
-from prepush_ci.git import GitError, committed_config, git, trailers
+from prepush_ci.git import GitError, committed_config, dirty, git, hidden, trailers
 from prepush_ci.preflight import PreflightRefused
 from prepush_ci.preflight import run as run_preflight
 from prepush_ci.repo_config import load_repository_config
@@ -86,12 +84,12 @@ def _enforce(
     others = [sha for sha in demanding if sha != head]
     if others:
         raise HookError(message_not_head(others, head))
-    dirty = dirty_paths(_status(root))
-    if dirty:
-        raise HookError(message_dirty(dirty))
-    hidden = hidden_paths(_listing(root, "the index flags", "ls-files", "-v", "-z"))
-    if hidden:
-        raise HookError(message_hidden(hidden))
+    dirty_files = dirty(root)
+    if dirty_files:
+        raise HookError(message_dirty(dirty_files))
+    hidden_files = hidden(root)
+    if hidden_files:
+        raise HookError(message_hidden(hidden_files))
     run_preflight(config, env, root)
     return _run_check(config, root)
 
@@ -101,25 +99,6 @@ def _head(cwd: Path) -> str:
     if result.returncode != 0:
         raise HookError("HEAD points to no commit, so there is nothing to check")
     return result.stdout.strip()
-
-
-def _status(cwd: Path) -> str:
-    """`git status --porcelain -z`: staged, unstaged and untracked paths, not the ignored ones."""
-    return _listing(
-        cwd,
-        "the worktree status",
-        "status",
-        "--porcelain",
-        "-z",
-        "--untracked-files=all",
-    )
-
-
-def _listing(cwd: Path, what: str, *args: str) -> str:
-    result = git(cwd, *args)
-    if result.returncode != 0:
-        raise HookError(f"{what} could not be read: {result.stderr.strip()}")
-    return result.stdout
 
 
 def _pushed_refs(stdin_text: str, env: Mapping[str, str], cwd: Path) -> list[PushedRef]:
