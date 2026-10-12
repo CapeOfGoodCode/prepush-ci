@@ -1,7 +1,8 @@
 """What `prepush-ci install` writes: the hook scripts and the files that configure them."""
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 
 HOOKS = ("commit-msg", "pre-push")
 HOOKS_DIRECTORY = ("prepush-ci", "hooks")
@@ -70,3 +71,51 @@ def desired_files(
     files[PYTHON_FILE] = python + "\n"
     files[PREVIOUS_FILE] = previous + "\n"
     return files
+
+
+@dataclass(frozen=True)
+class Existing:
+    """A file already in the hooks directory."""
+
+    content: str
+    executable: bool
+
+
+@dataclass(frozen=True)
+class Changes:
+    write: list[str]
+    remove: list[str]
+
+    @property
+    def any(self) -> bool:
+        return bool(self.write or self.remove)
+
+
+def changes(existing: Mapping[str, Existing], desired: Mapping[str, str]) -> Changes:
+    """What differs: a file is written when it is missing, different or not executable, and
+    removed when nothing wants it any more (a forwarder whose hook is gone)."""
+    write = [
+        name
+        for name, content in desired.items()
+        if existing.get(name) != Existing(content, True)
+    ]
+    remove = [name for name in existing if name not in desired]
+    return Changes(sorted(write), sorted(remove))
+
+
+def outcome(*, was_installed: bool, changed: bool) -> str:
+    """The word the report opens with."""
+    if not was_installed:
+        return "installed"
+    return "updated" if changed else "already installed"
+
+
+def report(word: str, directory: str, previous: str | None) -> str:
+    """`previous` is None when it holds no hook that is chained or forwarded."""
+    lines = [f"{word}: {directory}"]
+    if previous is not None:
+        lines.append(f"hooks kept from: {previous}")
+    return "\n".join(lines)
+
+
+NO_REPOSITORY = "prepush-ci install: there is no git repository here"

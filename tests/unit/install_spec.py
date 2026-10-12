@@ -2,10 +2,15 @@ from prepush_ci.core.install import (
     HOOKS,
     PREVIOUS_FILE,
     PYTHON_FILE,
+    Changes,
+    Existing,
+    changes,
     desired_files,
     forwardable,
     forwarder_script,
     hook_script,
+    outcome,
+    report,
 )
 
 
@@ -84,3 +89,62 @@ def test_forwarders_and_records_join_the_two_hooks() -> None:
     assert set(files) == {*HOOKS, "pre-commit", PYTHON_FILE, PREVIOUS_FILE}
     assert files[PREVIOUS_FILE] == "/old/hooks\n"
     assert files["pre-commit"] == forwarder_script("pre-commit")
+
+
+def test_nothing_differs_when_every_file_exists_executable_with_the_wanted_content() -> (
+    None
+):
+    desired = {"pre-push": "a", "python": "b"}
+    existing = {name: Existing(text, True) for name, text in desired.items()}
+
+    assert not changes(existing, desired).any
+
+
+def test_a_missing_file_is_written() -> None:
+    result = changes({}, {"pre-push": "a"})
+
+    assert result == Changes(write=["pre-push"], remove=[])
+    assert result.any
+
+
+def test_a_file_with_other_content_is_written() -> None:
+    assert changes({"python": Existing("old", True)}, {"python": "new"}).write == [
+        "python"
+    ]
+
+
+def test_a_file_that_lost_the_executable_bit_is_written() -> None:
+    assert changes({"pre-push": Existing("a", False)}, {"pre-push": "a"}).write == [
+        "pre-push"
+    ]
+
+
+def test_a_file_nothing_wants_any_more_is_removed() -> None:
+    result = changes({"post-merge": Existing("a", True)}, {})
+
+    assert result == Changes(write=[], remove=["post-merge"])
+    assert result.any
+
+
+def test_the_first_run_is_installed_whatever_it_wrote() -> None:
+    assert outcome(was_installed=False, changed=True) == "installed"
+    assert outcome(was_installed=False, changed=False) == "installed"
+
+
+def test_a_rerun_is_updated_when_something_changed_and_already_installed_otherwise() -> (
+    None
+):
+    assert outcome(was_installed=True, changed=True) == "updated"
+    assert outcome(was_installed=True, changed=False) == "already installed"
+
+
+def test_the_report_names_the_directory_and_the_previous_one_when_there_is_one() -> (
+    None
+):
+    assert report("installed", "/g/hooks", "/g/old") == (
+        "installed: /g/hooks\nhooks kept from: /g/old"
+    )
+
+
+def test_the_report_has_one_line_when_nothing_is_kept() -> None:
+    assert report("installed", "/g/hooks", None) == "installed: /g/hooks"

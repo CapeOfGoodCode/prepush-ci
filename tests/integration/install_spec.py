@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from prepush_ci import install_command
+
 Git = Callable[..., "subprocess.CompletedProcess[str]"]
 
 TRAILER = "Prepush-CI: full"
@@ -128,6 +130,12 @@ def test_the_hooks_start_the_tool_without_prepush_ci_on_path(
     assert git(pushing, "log", "-1", "--format=%B").stdout.strip().endswith(TRAILER)
 
 
+NO_EXECUTABLE_BIT = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows has no executable bit: git and sh run every hook file",
+)
+
+
 def write_hook(
     directory: Path, name: str, body: str, *, executable: bool = True
 ) -> Path:
@@ -204,6 +212,7 @@ def test_an_existing_pre_push_hook_gets_the_arguments_and_the_ref_lines_of_the_p
     assert line.startswith(f"refs/heads/main {sha} refs/heads/main ")
 
 
+@NO_EXECUTABLE_BIT
 def test_an_existing_pre_push_hook_without_the_executable_bit_is_skipped_as_git_does(
     pushing: Path, git: Git, ran: Path
 ) -> None:
@@ -248,6 +257,7 @@ def test_an_existing_pre_commit_hook_still_runs_after_install(
     assert result.returncode != 0
 
 
+@NO_EXECUTABLE_BIT
 def test_a_pre_commit_hook_without_the_executable_bit_does_not_fail_the_commit(
     pushing: Path, git: Git
 ) -> None:
@@ -373,3 +383,147 @@ def test_install_works_when_the_previous_hooks_directory_does_not_exist(
     assert push_main(pushing, git).returncode == 0
 
     assert remote_has(pushing, git, sha)
+
+
+def mtimes(directory: Path) -> dict[str, int]:
+    return {p.name: p.stat().st_mtime_ns for p in directory.iterdir()}
+
+
+def test_the_first_install_says_installed(pushing: Path) -> None:
+    result = install(pushing)
+
+    assert result.returncode == 0
+    assert result.stdout.startswith("installed")
+
+
+def test_a_second_install_says_so_and_changes_nothing(pushing: Path, git: Git) -> None:
+    write_hook(pushing / ".git" / "hooks", "pre-commit", "exit 0")
+    install(pushing)
+    files = snapshot(hooks_dir(pushing))
+    times = mtimes(hooks_dir(pushing))
+    configured = git(pushing, "config", "--local", "core.hooksPath").stdout
+
+    second = install(pushing)
+
+    assert second.returncode == 0
+    assert "already installed" in second.stdout
+    assert snapshot(hooks_dir(pushing)) == files
+    assert mtimes(hooks_dir(pushing)) == times
+    assert git(pushing, "config", "--local", "core.hooksPath").stdout == configured
+
+
+def test_a_hook_added_after_install_is_forwarded_by_the_next_install(
+    pushing: Path, git: Git, tmp_path: Path
+) -> None:
+    seen = tmp_path / "merged.log"
+    install(pushing)
+    write_hook(
+        pushing / ".git" / "hooks", "post-merge", f"echo merged > {seen.as_posix()}"
+    )
+
+    second = install(pushing)
+
+    assert "updated" in second.stdout
+    assert "already" not in second.stdout
+    git(pushing, "checkout", "-q", "-b", "topic")
+    (pushing / "y.txt").write_text("y")
+    git(pushing, "add", "y.txt")
+    git(pushing, "commit", "-q", "-m", "add y")
+    git(pushing, "checkout", "-q", "main")
+    git(pushing, "merge", "-q", "--no-ff", "-m", "merge topic", "topic")
+    assert seen.read_text().strip() == "merged"
+
+
+def test_a_hook_removed_after_install_leaves_no_forwarder_behind(
+    pushing: Path,
+) -> None:
+    hook = write_hook(pushing / ".git" / "hooks", "post-merge", "exit 0")
+    install(pushing)
+    hook.unlink()
+
+    second = install(pushing)
+
+    assert "updated" in second.stdout
+    assert not (hooks_dir(pushing) / "post-merge").exists()
+
+
+def test_install_from_another_interpreter_updates_the_recorded_one(
+    pushing: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    install(pushing)
+    capsys.readouterr()
+    other = pushing.parent / "other-python"
+    monkeypatch.setattr(
+        sys, "executable", str(other)
+    )  # what a run by another interpreter sees
+
+    assert install_command.run(pushing) == 0
+
+    assert "updated" in capsys.readouterr().out
+    assert (hooks_dir(pushing) / "python").read_text().strip() == other.as_posix()
+
+
+def test_a_hooks_path_set_by_a_manager_is_reported_as_an_update(
+    pushing: Path, git: Git
+) -> None:
+    install(pushing)
+    write_hook(pushing / "managed-hooks", "pre-push", "exit 0")
+    git(pushing, "config", "core.hooksPath", "managed-hooks")
+
+    second = install(pushing)
+
+    assert "updated" in second.stdout
+
+
+def test_the_report_names_the_hooks_directory_and_the_previous_one(
+    pushing: Path,
+) -> None:
+    write_hook(pushing / ".git" / "hooks", "pre-push", "exit 0")
+
+    result = install(pushing)
+
+    assert hooks_dir(pushing).resolve().as_posix() in result.stdout
+    assert (pushing / ".git" / "hooks").resolve().as_posix() in result.stdout
+
+
+def test_the_report_names_no_previous_directory_when_there_is_nothing_to_chain(
+    pushing: Path,
+) -> None:
+    result = install(pushing)
+
+    assert "previous" not in result.stdout
+
+
+def test_a_rerun_without_the_record_of_the_previous_directory_falls_back_to_git_hooks(
+    pushing: Path, git: Git
+) -> None:
+    write_hook(pushing / ".git" / "hooks", "pre-push", "exit 1")
+    install(pushing)
+    (hooks_dir(pushing) / "previous").unlink()
+    install(pushing)
+    sha = commit_with_trailer(pushing, git)
+
+    result = push_main(pushing, git)
+
+    assert result.returncode != 0
+    assert not remote_has(pushing, git, sha)
+
+
+def test_install_says_so_when_git_cannot_be_started(
+    pushing: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("PATH", "")
+
+    assert install_command.run(pushing) == 1
+
+    assert "cannot run git" in capsys.readouterr().err
+
+
+def test_install_outside_a_git_repository_fails_and_says_so(tmp_path: Path) -> None:
+    outside = tmp_path / "plain"
+    outside.mkdir()
+
+    result = install(outside, env={"GIT_CEILING_DIRECTORIES": str(tmp_path)})
+
+    assert result.returncode == 1
+    assert "no git repository" in result.stderr
