@@ -1,4 +1,5 @@
 import os
+import shlex
 import subprocess
 import sys
 from collections.abc import Callable
@@ -10,6 +11,12 @@ Git = Callable[..., "subprocess.CompletedProcess[str]"]
 def last_message(repo: Path, git: Git) -> str:
     """The raw message of HEAD, exactly as stored (everything after the commit headers)."""
     return git(repo, "cat-file", "commit", "HEAD").stdout.split("\n\n", 1)[1]
+
+
+def editor_command(editor: Path) -> str:
+    """`GIT_EDITOR` for a script: git runs it through `sh -c`, which eats the backslashes of a
+    Windows path, so use forward slashes and quote it against spaces."""
+    return shlex.quote(editor.as_posix())
 
 
 def run_hook(
@@ -345,7 +352,7 @@ def test_a_message_with_a_custom_comment_char_and_the_verbose_diff_gets_the_trai
         "core.commentChar=;",
         "commit",
         "-v",
-        env={"PREPUSH_CI": "full", "GIT_EDITOR": str(editor)},
+        env={"PREPUSH_CI": "full", "GIT_EDITOR": editor_command(editor)},
     )
 
     assert last_message(hooked_repo, git) == "add b\n\nPrepush-CI: full\n"
@@ -512,7 +519,7 @@ def test_a_hash_message_written_in_the_editor_gets_the_trailer_when_cleanup_is_w
         "commit",
         env={
             "PREPUSH_CI": "full",
-            "GIT_EDITOR": str(write_editor(hooked_repo, "#123 fix the bug")),
+            "GIT_EDITOR": editor_command(write_editor(hooked_repo, "#123 fix the bug")),
         },
     )
 
@@ -558,7 +565,7 @@ def test_an_edited_commit_template_gets_the_trailer_in_full_mode(
         "commit",
         env={
             "PREPUSH_CI": "full",
-            "GIT_EDITOR": str(write_editor(hooked_repo, "Real subject")),
+            "GIT_EDITOR": editor_command(write_editor(hooked_repo, "Real subject")),
         },
     )
 
