@@ -50,7 +50,7 @@ The rulebook for everyone who changes this repository, human or agent. `README.m
 
 - **One branch per issue**: `<type>/<issue>-<name>`, e.g. `feat/4-pre-push-hook`. Nothing but bootstrap is committed on `main`.
 - **Pull requests** follow `.github/pull_request_template.md`, start with `Closes #<n>`, and carry a **Proof** section a human can read in two minutes: acceptance criteria with one test each, a short demo transcript, the check result (`LOOP.md`, Proof). CI fails a pull request without it.
-- **Only a human merges**, rebase merge only. Rebase onto the latest `main` before asking for the merge; update with `git push --force-with-lease`, never `--force`.
+- **Only a human approves, and the approval merges**: the reviewer turns on auto-merge (rebase only) when it approves; no agent merges directly. Rebase onto the latest `main` before asking for the merge; update with `git push --force-with-lease`, never `--force`.
 
 ## Testing
 
