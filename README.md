@@ -13,12 +13,14 @@
 | src/prepush\_ci/core/config.py         |       88 |        0 |       34 |        0 |    100% |           |
 | src/prepush\_ci/core/config\_source.py |       31 |        0 |        8 |        0 |    100% |           |
 | src/prepush\_ci/core/pre\_push.py      |       85 |        0 |       30 |        0 |    100% |           |
+| src/prepush\_ci/core/preflight.py      |       25 |        0 |        2 |        0 |    100% |           |
 | src/prepush\_ci/core/verify.py         |       45 |        0 |       16 |        0 |    100% |           |
 | src/prepush\_ci/git.py                 |       29 |        1 |        8 |        1 |     95% |        34 |
-| src/prepush\_ci/pre\_push\_hook.py     |       94 |        0 |       32 |        0 |    100% |           |
+| src/prepush\_ci/pre\_push\_hook.py     |       97 |        0 |       32 |        0 |    100% |           |
+| src/prepush\_ci/preflight.py           |       32 |        1 |       18 |        1 |     96% |        73 |
 | src/prepush\_ci/repo\_config.py        |       17 |        0 |        2 |        0 |    100% |           |
 | src/prepush\_ci/verify\_command.py     |       49 |        1 |       14 |        1 |     97% |        81 |
-| **TOTAL**                              |  **591** |    **2** |  **192** |    **2** | **99%** |           |
+| **TOTAL**                              |  **651** |    **3** |  **212** |    **3** | **99%** |           |
 
 
 ## Setup coverage badge
