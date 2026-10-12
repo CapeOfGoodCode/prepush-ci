@@ -720,6 +720,66 @@ def test_an_interpreter_that_links_out_of_the_cache_is_still_temporary(
     assert "temporary" in result.stderr
 
 
+@SYMLINKS
+def test_install_warns_when_the_cache_directory_is_a_symbolic_link(
+    repo: Path, tmp_path: Path
+) -> None:
+    (tmp_path / "link").symlink_to(tmp_path / "real")
+    python = python_at(tmp_path / "real" / "archive-v0" / "x" / "bin" / "python")
+
+    result = install(
+        repo, python=python, env=in_package_path(UV_CACHE_DIR=str(tmp_path / "link"))
+    )
+
+    assert result.returncode == 0
+    assert "temporary" in result.stderr
+
+
+@SYMLINKS
+def test_install_warns_when_the_default_cache_lies_behind_a_symbolic_link(
+    repo: Path, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".cache").symlink_to(tmp_path / "disk")
+    python = python_at(tmp_path / "disk" / "uv" / "venv" / "bin" / "python")
+
+    result = install(
+        repo,
+        python=python,
+        env=in_package_path(**NOT_CACHED, HOME=str(home)),
+    )
+
+    assert "temporary" in result.stderr
+
+
+@SYMLINKS
+def test_a_sibling_of_the_link_target_is_not_temporary(
+    repo: Path, tmp_path: Path
+) -> None:
+    (tmp_path / "link").symlink_to(tmp_path / "real")
+    python = python_at(tmp_path / "real2" / "bin" / "python")
+
+    result = install(
+        repo, python=python, env=in_package_path(UV_CACHE_DIR=str(tmp_path / "link"))
+    )
+
+    assert result.returncode == 0
+    assert "temporary" not in result.stderr
+
+
+def test_a_cache_directory_that_does_not_exist_is_used_as_found(
+    repo: Path, tmp_path: Path
+) -> None:
+    missing = tmp_path / "no" / "such" / "uv"
+
+    result = install(repo, env={"UV_CACHE_DIR": str(missing)})
+
+    assert result.returncode == 0
+    assert "temporary" not in result.stderr
+    assert not missing.exists()
+
+
 def test_a_hook_manager_install_never_warns_about_the_interpreter(
     repo: Path,
 ) -> None:

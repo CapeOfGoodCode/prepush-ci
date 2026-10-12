@@ -113,6 +113,49 @@ def test_an_unknown_cache_directory_makes_nothing_temporary() -> None:
     assert not is_temporary("/usr/bin/python", {}, "/work")
 
 
+def test_an_interpreter_inside_the_resolved_cache_directory_is_temporary() -> None:
+    environ = {"UV_CACHE_DIR": "/link"}
+
+    assert is_temporary(
+        "/real/builds/venv/bin/python", environ, "/work", resolve=lambda d: "/real"
+    )
+
+
+def test_the_cache_directory_as_found_still_counts_when_it_resolves_elsewhere() -> None:
+    environ = {"UV_CACHE_DIR": "/link"}
+
+    assert is_temporary(
+        "/link/builds/venv/bin/python", environ, "/work", resolve=lambda d: "/real"
+    )
+
+
+def test_a_sibling_of_the_resolved_cache_directory_is_not_temporary() -> None:
+    environ = {"UV_CACHE_DIR": "/link"}
+
+    assert not is_temporary(
+        "/real2/bin/python", environ, "/work", resolve=lambda d: "/real"
+    )
+
+
+def test_the_interpreter_is_never_resolved() -> None:
+    seen: list[str] = []
+
+    def resolve(directory: str) -> str:
+        seen.append(directory)
+        return directory
+
+    is_temporary("/usr/bin/python", {"UV_CACHE_DIR": "/c"}, "/work", resolve=resolve)
+
+    assert seen == ["/c"]
+
+
+def test_nothing_is_resolved_when_the_cache_directory_is_unknown() -> None:
+    def resolve(directory: str) -> str:
+        raise AssertionError(directory)
+
+    assert not is_temporary("/usr/bin/python", {}, "/work", resolve=resolve)
+
+
 def test_the_warning_says_temporary_and_names_the_fix() -> None:
     assert "temporary" in TEMPORARY_WARNING
     assert "uv tool install prepush-ci" in TEMPORARY_WARNING
