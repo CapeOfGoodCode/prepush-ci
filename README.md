@@ -10,6 +10,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/prepush-ci)](https://pypi.org/project/prepush-ci/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Built by loops](https://img.shields.io/badge/built%20by-4%20AI%20loops-8a2be2)](LOOP.md)
+[![Loops run on Spool](https://img.shields.io/badge/loops%20run%20on-Spool-0f172a)](https://github.com/enes-alatas/spool)
 
 Run the full CI check in the `pre-push` hook of an AI agent's cloud session (or any machine that opts in), and let pull request CI skip commits that provably went through it. The default branch always runs CI in full.
 
