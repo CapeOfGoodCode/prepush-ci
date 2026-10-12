@@ -12,7 +12,7 @@ GitHub is the only shared state: issues, pull requests and their labels. A loop 
 | **chuck-norris** | Build. Implements one ready change at a time, test first, until it passes `scripts/ci`, then archives the change and writes the proof. | code, tests, docs, `openspec/` on the branch it was handed | specs of other changes, `.github/` |
 | **robocop** | Verify. Reviews specs against the intent and code against the specs. Default verdict: reject. Runs everything itself; trusts no claim. | review comments, labels | any commit, any push |
 | **mr-miyagi** | Improve. Learns from escalations, review rounds, costs and the human's corrections; proposes changes to the rules in this file, `AGENTS.md` and the pull request template. | issues labelled `proposal`, pull requests that change only those files | code, tests, specs, workflows, approving or merging its own proposals |
-| **terminator** | Break it. Once the CLI runs, uses it the way users will, in throwaway repositories, and reports what fails. | issues | any commit, any push |
+| **terminator** | Break it. Attacks every implementation before the human sees it: builds the states a user could be in and tries to break the change, in throwaway repositories; after merges, sweeps `main`. | attack verdicts, issues, labels | any commit, any push |
 
 The **human** approves, and the approval merges (below); the human also decides `proposal` and `needs-human` issues, and can stop everything (see Kill switch).
 
@@ -27,16 +27,17 @@ The `turn:*` label says whose move it is; only that loop touches the item.
 - **Off the track.** `needs-human` replaces the turn label; the human puts one back when answering. The human asks for changes with a GitHub review, *Request changes*; the review is the comment, the human moves no label. Robocop, which already watches `turn:human` pull requests for conflicts (step 5), moves such a pull request to `turn:build` linking the review: not a robocop verdict, no strike. After the fix it goes through review as usual and back to `turn:human`.
 
 ```
-issue ──bruce-lee──▶ PR [turn:spec-review] ──robocop──▶ [turn:build] ──chuck-norris──▶ [turn:review] ──robocop──▶ [turn:human] ──human approves──▶ merged
-                          ▲        │ reject                                   ▲               │ reject
-                          └────────┘ [turn:spec]                              └───────────────┘ [turn:build]
+issue ──bruce-lee──▶ PR [turn:spec-review] ──robocop──▶ [turn:build] ──chuck-norris──▶ [turn:review] ──robocop──▶ [turn:attack] ──terminator──▶ [turn:human] ──human approves──▶ merged
+                          ▲        │ reject                                   ▲               │ reject                     │ break
+                          └────────┘ [turn:spec]                              └───────────────┴────────────────────────────┘ [turn:build]
 ```
 
 1. **Spec** (bruce-lee): picks the oldest `turn:spec` issue nothing blocks, creates branch `feat/<issue>-<name>`, commits the OpenSpec change (`docs(<change>): add proposal …`), opens a **draft** PR with `Closes #<issue>`, moves the label: issue loses `turn:spec`, PR gets `turn:spec-review`.
 2. **Spec review** (robocop): checks the change against issue #1 and the existing specs: in scope, testable scenarios, nothing contradicts. Approve → `turn:build`; reject → `turn:spec` with the reasons.
 3. **Build** (chuck-norris): takes the oldest `turn:build` PR whose issue nothing blocks. Writes failing tests named after the scenarios, makes them pass, runs `scripts/ci`, archives the change, folds fixup commits, rebases onto the latest `origin/main` and reruns `scripts/ci` on the rebased head (fetch again right before the label: if `main` moved, rebase and rerun), fills in the **Proof** section, marks the PR ready (`gh pr ready`), labels it `turn:review`.
-4. **Review** (robocop): first checks that the PR merges (`gh pr view <n> --json mergeable`); a conflict goes straight back to `turn:build` with one line naming the conflicting files: nothing was reviewed, so it is not a verdict and counts no strike. Then checks out the head commit (on later rounds, `git range-diff` against the last reviewed head), runs `scripts/ci` itself, reproduces the proof, checks every scenario has a test, scope is limited to the change, and no test was weakened. Approve → auto-merge on (rebase), `turn:human`, notify the human; reject → `turn:build` with the reasons.
-5. **Merge** (human): reads the proof and approves. Robocop turned on auto-merge (rebase) when it approved, so GitHub merges as soon as the human's approval and the required checks are in. The issue closes. A push after the approval dismisses it, so nothing unapproved lands. When a merge makes a `turn:human` PR conflict with `main`, robocop moves it back to `turn:build` with one line naming the conflicting files: not a verdict, no strike, and no message to the human. After chuck-norris rebases, robocop reviews the `git range-diff` against the approved head and returns it to `turn:human`. Conflicts never reach the human.
+4. **Review** (robocop): first checks that the PR merges (`gh pr view <n> --json mergeable`); a conflict goes straight back to `turn:build` with one line naming the conflicting files: nothing was reviewed, so it is not a verdict and counts no strike. Then checks out the head commit (on later rounds, `git range-diff` against the last reviewed head), runs `scripts/ci` itself, reproduces the proof, checks every scenario has a test, scope is limited to the change, and no test was weakened. Approve → `turn:attack`, nudge terminator; a pull request that changes no code of the tool (docs, specs, this harness) skips the attack: auto-merge on (rebase), `turn:human`, notify the human. Reject → `turn:build` with the reasons.
+5. **Attack** (terminator): installs the head commit the way users will and tries to break the change, time-boxed (stop after 30 minutes): reads the diff and the spec, writes 5 to 8 hypotheses about states a user could be in that the change might not survive (existing hooks, worktrees, odd paths, interrupted runs, concurrent pushes, …), builds each state in a fresh throwaway repository and checks the result. Every break comes with a script that reproduces it from an empty directory, and is checked against `main` (a break that `main` already has is an issue, not a reason to hold this pull request). Verdict as one comment (`## Attack: PASS | BREAK`, the head SHA, a table of hypotheses and results, the scripts in a collapsed block). Break → `turn:build`; chuck-norris answers it like a review, and after the fix robocop reviews again. A gap in the spec rather than in the code → an issue for bruce-lee, the pull request passes. Pass → auto-merge on (rebase), `turn:human`, notify the human.
+6. **Merge** (human): reads the proof and approves. Terminator turned on auto-merge (rebase) when it passed, so GitHub merges as soon as the human's approval and the required checks are in. The issue closes. A push after the approval dismisses it, so nothing unapproved lands. When a merge makes a `turn:human` PR conflict with `main`, robocop moves it back to `turn:build` with one line naming the conflicting files: not a verdict, no strike, and no message to the human. After chuck-norris rebases, robocop reviews the `git range-diff` against the approved head and returns it to `turn:human`. Conflicts never reach the human.
 
 Bugs found by terminator, and follow-ups found by anyone, enter as issues of the type `AGENTS.md` names for them (a `Bug` with the headings of `.github/ISSUE_TEMPLATE/bug.yml`). Bruce-lee triages them: a bug that changes no spec'd behavior goes straight to `turn:build` as an issue and chuck-norris opens the PR (`fix/<issue>-<name>`), moving the label to it; anything else gets a change as above.
 
@@ -50,6 +51,7 @@ Issue types (see `AGENTS.md`) say what an issue is; slices of the intent are sub
 | `turn:spec-review` | PR | robocop's move: review the spec |
 | `turn:build` | issue, PR | chuck-norris's move: implement or fix |
 | `turn:review` | PR | robocop's move: review the implementation |
+| `turn:attack` | PR | terminator's move: try to break the implementation |
 | `turn:human` | PR | ready to merge, auto-merge on; the human's move: approve |
 | `needs-human` | issue, PR | blocked on a decision only the human can make; the question is the last comment |
 | `proposal` | issue | outside the intent; waits for the human to accept (→ `turn:spec`) or close |
@@ -68,14 +70,14 @@ Everything else (the full list of new test names, further transcripts, round-by-
 
 A slice whose proof does not fit is too big: split it.
 
-Robocop's approving verdict reproduces the proof with its own run. The notification to the human is one short message: PR link, one-line summary, the acceptance lines.
+Robocop's approving verdict reproduces the proof with its own run, and terminator's passing verdict says what it tried to break. The notification to the human, sent by the loop that sets `turn:human`, is one short message: PR link, one-line summary, the acceptance lines, the attack result.
 
 ## Rules for every loop
 
 - **Read this file and `AGENTS.md` when you start work here.** They override anything remembered. Some of these rules are mirrored in the loop runtime's fleet rules; this file is the source.
 - **Exit early.** Start each wake with one query for work that is yours (`gh pr list --label turn:<yours>`, `gh issue list --label turn:<yours>`). Nothing there: sleep, do nothing else.
 - **One item per wake**, the oldest first. Finish it to the next label change, or leave a comment saying where you stopped.
-- **Three strikes.** The strikes of a PR are robocop's `## Verdict: REJECT` comments in its current review, spec or code, since the human last answered an `ESCALATE` there; an answer, or approving the spec, starts the count afresh. Robocop, and only robocop, escalates: the third reject is an `ESCALATE` with `needs-human` instead.
+- **Three strikes.** The strikes of a PR are robocop's `## Verdict: REJECT` comments in its current review, spec or code, since the human last answered an `ESCALATE` there; an answer, or approving the spec, starts the count afresh. Robocop, and only robocop, escalates its reviews: the third reject is an `ESCALATE` with `needs-human` instead. Terminator counts its own `## Attack: BREAK` comments on a pull request the same way; the third is an `ESCALATE`.
 - **Form is not a strike.** A proof that misses its form (a demo a few lines too long, a misplaced section) is a note, not a reason to reject or escalate; robocop fixes the pull request description itself and says so in its verdict. Only code, tests, specs and a proof that does not prove are findings.
 - **The loops set the order.** Bruce-lee orders the backlog (slices, blocked-by relations); every loop takes the oldest unblocked item labelled for it. An item labelled `next` goes first: it is the human's override for when the order is wrong. Never set or remove `next` yourself; carry it from the issue to its pull request. If a `next` item is blocked, say so once in the group, naming the blocker.
 - **Ask, don't guess.** A question only the human can answer gets `needs-human` and the question as a comment; then move on to other work.
@@ -110,7 +112,8 @@ What each role needs to know about prepush-ci in particular; the rest of its job
 
 ### terminator
 
-- **Start** once `main` has the commit-msg and pre-push hooks and `install` or `init`.
+- **Attack** every `turn:attack` pull request (flow, step 5), oldest first; that is the work that blocks the human.
+- **Sweep** `main` after merges once `main` has `install` or `init`: the scenarios below, end to end, each in a fresh repository; failures become `Bug` issues.
 - **Install** as users will, from git until the first PyPI release: `uvx --from git+https://github.com/CapeOfGoodCode/prepush-ci@<sha> prepush-ci`. The same applies wherever `SKILL.md` says `uvx prepush-ci`.
 - **Scenarios**, each in a fresh repository with a bare repository as its remote: a fresh repository; an existing `.git/hooks/pre-push`; `core.hooksPath` already set; pre-commit, husky and lefthook setups; a `PREPUSH_CI=full` commit with a `---` line in its body; a push with a dirty worktree; a push of a commit that is not `HEAD`; a rebase keeps the trailer; tags and branch deletions are ignored; `PREPUSH_CI=off` refuses a trailer commit; `verify` on a commit without the trailer, with a legacy key, and made by a server; `run` caches, and a retried push does not run the check twice; `init --non-interactive` twice is idempotent; `SKILL.md` followed step by step as an agent would.
 
