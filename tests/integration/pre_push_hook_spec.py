@@ -414,3 +414,278 @@ def test_a_misspelled_variable_is_refused_before_any_ref_is_read(
 
     assert "garbage" not in result.stderr
     assert "PREPUSH_CI" in result.stderr
+
+
+# A demanding tip runs the check
+
+
+def test_a_passing_check_lets_the_push_through(pushing_repo: Path, git: Git) -> None:
+    commit(pushing_repo, git, "work" + TRAILER)
+
+    result = push(pushing_repo, git, "main")
+
+    assert result.returncode == 0, result.stderr
+    assert remote_has(pushing_repo, git, "refs/heads/main")
+
+
+def test_a_failing_check_aborts_the_push_and_the_output_names_the_check(
+    pushing_repo: Path, git: Git
+) -> None:
+    (pushing_repo / ".prepush-ci.toml").write_text('check = "exit 1"\n')
+    git(pushing_repo, "commit", "-q", "-a", "-m", "work" + TRAILER)
+
+    result = push(pushing_repo, git, "main")
+
+    assert result.returncode != 0
+    assert "the check failed" in result.stderr
+    assert "exit 1" in result.stderr
+    assert not remote_has(pushing_repo, git, "refs/heads/main")
+
+
+def test_the_check_runs_with_the_variable_unset(pushing_repo: Path, git: Git) -> None:
+    commit(pushing_repo, git, "work" + TRAILER)
+
+    push(pushing_repo, git, "main", env={})
+
+    assert ran(pushing_repo) == 1
+
+
+def test_the_check_runs_from_the_repository_root_when_pushing_from_a_subdirectory(
+    pushing_repo: Path, git: Git
+) -> None:
+    marker = pushing_repo.parent / "cwd.txt"
+    (pushing_repo / ".prepush-ci.toml").write_text(f'check = "pwd > {marker}"\n')
+    (pushing_repo / "sub").mkdir()
+    git(pushing_repo, "add", "-A")
+    git(pushing_repo, "commit", "-q", "-a", "-m", "work" + TRAILER)
+
+    result = push(pushing_repo / "sub", git, "main")
+
+    assert result.returncode == 0, result.stderr
+    assert marker.read_text().strip() == str(pushing_repo.resolve())
+
+
+def test_two_refs_with_the_same_tip_run_the_check_once(
+    pushing_repo: Path, git: Git
+) -> None:
+    commit(pushing_repo, git, "work" + TRAILER)
+
+    result = push(pushing_repo, git, "main:a", "main:b")
+
+    assert result.returncode == 0, result.stderr
+    assert ran(pushing_repo) == 1
+
+
+# The pushed tip must be the checked-out HEAD
+def test_a_key_set_only_by_the_tips_config_demands_the_check(
+    pushing_repo: Path, git: Git
+) -> None:
+    git(pushing_repo, "checkout", "-q", "-b", "feature")
+    (pushing_repo / ".prepush-ci.toml").write_text(
+        'check = "true"\ntrailer = { key = "Full-Check", value = "yes" }\n'
+    )
+    git(pushing_repo, "commit", "-q", "-a", "-m", "work\n\nFull-Check: yes")
+    git(pushing_repo, "checkout", "-q", "main")
+
+    result = push(pushing_repo, git, "feature")
+
+    assert result.returncode != 0
+    assert "HEAD" in result.stderr
+    assert not remote_has(pushing_repo, git, "refs/heads/feature")
+
+
+def test_pushing_another_branch_is_refused_without_a_check_and_the_reason_names_head(
+    pushing_repo: Path, git: Git
+) -> None:
+    git(pushing_repo, "checkout", "-q", "-b", "other")
+    commit(pushing_repo, git, "work" + TRAILER)
+    git(pushing_repo, "checkout", "-q", "main")
+
+    result = push(pushing_repo, git, "other")
+
+    assert result.returncode != 0
+    assert "HEAD" in result.stderr
+    assert ran(pushing_repo) == 0
+
+
+def test_pushing_an_older_commit_is_refused_without_a_check(
+    pushing_repo: Path, git: Git
+) -> None:
+    commit(pushing_repo, git, "older" + TRAILER)
+    commit(pushing_repo, git, "newer" + TRAILER)
+
+    result = push(pushing_repo, git, "HEAD~1:refs/heads/x")
+
+    assert result.returncode != 0
+    assert ran(pushing_repo) == 0
+
+
+def test_two_different_demanding_tips_are_refused_without_a_check(
+    pushing_repo: Path, git: Git
+) -> None:
+    git(pushing_repo, "checkout", "-q", "-b", "a")
+    commit(pushing_repo, git, "a" + TRAILER)
+    git(pushing_repo, "checkout", "-q", "-b", "b", "main")
+    commit(pushing_repo, git, "b" + TRAILER)
+
+    result = push(pushing_repo, git, "a", "b")
+
+    assert result.returncode != 0
+    assert ran(pushing_repo) == 0
+
+
+def test_a_detached_head_with_the_trailer_is_checked(
+    pushing_repo: Path, git: Git
+) -> None:
+    commit(pushing_repo, git, "work" + TRAILER)
+    git(pushing_repo, "checkout", "-q", "--detach")
+
+    result = push(pushing_repo, git, "HEAD:refs/heads/x")
+
+    assert result.returncode == 0, result.stderr
+    assert ran(pushing_repo) == 1
+
+
+# The worktree must be clean
+
+
+def test_an_unstaged_change_refuses_the_push_without_a_check_and_names_the_file(
+    pushing_repo: Path, git: Git
+) -> None:
+    (pushing_repo / "tracked.txt").write_text("one\n")
+    git(pushing_repo, "add", "tracked.txt")
+    git(pushing_repo, "commit", "-q", "-m", "work" + TRAILER)
+    (pushing_repo / "tracked.txt").write_text("two\n")
+
+    result = push(pushing_repo, git, "main")
+
+    assert result.returncode != 0
+    assert "tracked.txt" in result.stderr
+    assert ran(pushing_repo) == 0
+
+
+def test_a_staged_change_refuses_the_push_without_a_check(
+    pushing_repo: Path, git: Git
+) -> None:
+    commit(pushing_repo, git, "work" + TRAILER)
+    (pushing_repo / "staged.txt").write_text("x\n")
+    git(pushing_repo, "add", "staged.txt")
+
+    result = push(pushing_repo, git, "main")
+
+    assert result.returncode != 0
+    assert ran(pushing_repo) == 0
+
+
+def test_an_untracked_file_refuses_the_push_and_names_the_file(
+    pushing_repo: Path, git: Git
+) -> None:
+    commit(pushing_repo, git, "work" + TRAILER)
+    (pushing_repo / "scratch.txt").write_text("x\n")
+
+    result = push(pushing_repo, git, "main")
+
+    assert result.returncode != 0
+    assert "scratch.txt" in result.stderr
+    assert ran(pushing_repo) == 0
+
+
+def test_an_ignored_file_does_not_make_the_worktree_dirty(
+    pushing_repo: Path, git: Git
+) -> None:
+    (pushing_repo / ".gitignore").write_text("junk.txt\n")
+    git(pushing_repo, "add", ".gitignore")
+    git(pushing_repo, "commit", "-q", "-m", "work" + TRAILER)
+    (pushing_repo / "junk.txt").write_text("x\n")
+
+    result = push(pushing_repo, git, "main")
+
+    assert result.returncode == 0, result.stderr
+    assert ran(pushing_repo) == 1
+
+
+def test_an_assume_unchanged_file_refuses_the_push_without_a_check_and_names_it(
+    pushing_repo: Path, git: Git
+) -> None:
+    (pushing_repo / "tracked.txt").write_text("one\n")
+    git(pushing_repo, "add", "tracked.txt")
+    git(pushing_repo, "commit", "-q", "-m", "work" + TRAILER)
+    git(pushing_repo, "update-index", "--assume-unchanged", "tracked.txt")
+    (pushing_repo / "tracked.txt").write_text("two\n")
+    assert git(pushing_repo, "status", "--short").stdout == ""
+
+    result = push(pushing_repo, git, "main")
+
+    assert result.returncode != 0
+    assert "tracked.txt" in result.stderr
+    assert ran(pushing_repo) == 0
+    assert not remote_has(pushing_repo, git, "refs/heads/main")
+
+
+def test_a_sparse_checkout_that_hides_a_file_refuses_the_push_and_names_it(
+    pushing_repo: Path, git: Git
+) -> None:
+    (pushing_repo / "sub").mkdir()
+    (pushing_repo / "sub" / "t.sh").write_text("exit 1\n")
+    git(pushing_repo, "add", "sub/t.sh")
+    git(pushing_repo, "commit", "-q", "-m", "work" + TRAILER)
+    git(pushing_repo, "sparse-checkout", "set", "--no-cone", "/*", "!/sub/")
+    assert not (pushing_repo / "sub").exists()
+    assert git(pushing_repo, "status", "--short").stdout == ""
+
+    result = push(pushing_repo, git, "main")
+
+    assert result.returncode != 0
+    assert "sub/t.sh" in result.stderr
+    assert ran(pushing_repo) == 0
+    assert not remote_has(pushing_repo, git, "refs/heads/main")
+
+
+def test_a_hidden_file_does_not_matter_for_a_tip_without_the_trailer(
+    pushing_repo: Path, git: Git
+) -> None:
+    git(pushing_repo, "update-index", "--assume-unchanged", ".prepush-ci.toml")
+    commit(pushing_repo, git, "work")
+
+    result = push(pushing_repo, git, "main")
+
+    assert result.returncode == 0, result.stderr
+    assert ran(pushing_repo) == 0
+
+
+def test_a_dirty_worktree_does_not_matter_for_a_tip_without_the_trailer(
+    pushing_repo: Path, git: Git
+) -> None:
+    commit(pushing_repo, git, "work")
+    (pushing_repo / ".prepush-ci.toml").write_text('check = "true"\n# edited\n')
+
+    result = push(pushing_repo, git, "main")
+
+    assert result.returncode == 0, result.stderr
+
+
+# Off refuses a demanding tip
+
+
+def test_off_refuses_a_tip_with_the_trailer_without_a_check_and_names_the_variable(
+    pushing_repo: Path, git: Git
+) -> None:
+    commit(pushing_repo, git, "work" + TRAILER)
+
+    result = push(pushing_repo, git, "main", env={"PREPUSH_CI": "off"})
+
+    assert result.returncode != 0
+    assert "PREPUSH_CI=off" in result.stderr
+    assert ran(pushing_repo) == 0
+    assert not remote_has(pushing_repo, git, "refs/heads/main")
+
+
+def test_off_pushes_a_tip_without_the_trailer_without_a_hint(
+    pushing_repo: Path, git: Git
+) -> None:
+    commit(pushing_repo, git, "work")
+
+    result = push(pushing_repo, git, "main", env={"PREPUSH_CI": "off"})
+
+    assert result.returncode == 0, result.stderr
+    assert "git commit --amend --no-edit" not in result.stderr

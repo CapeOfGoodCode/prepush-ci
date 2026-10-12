@@ -9,8 +9,10 @@ from prepush_ci.core.pre_push import (
     demand_keys,
     demands_check,
     dirty_paths,
+    hidden_paths,
     is_branch_update,
     message_dirty,
+    message_hidden,
     message_not_head,
     message_off,
     parse_ref_lines,
@@ -212,3 +214,31 @@ def test_the_dirty_refusal_lists_every_path() -> None:
 
     assert "a.py" in message
     assert "b.py" in message
+
+
+def test_an_index_without_flagged_entries_hides_no_paths() -> None:
+    assert hidden_paths("H a.py\0H dir/b.py\0") == []
+    assert hidden_paths("") == []
+
+
+def test_an_assume_unchanged_entry_is_hidden() -> None:
+    assert hidden_paths("H a.py\0h check.sh\0") == ["check.sh"]
+
+
+def test_a_skip_worktree_entry_is_hidden() -> None:
+    assert hidden_paths("H a.py\0S sub/t.sh\0") == ["sub/t.sh"]
+
+
+def test_an_entry_with_both_flags_is_hidden_once_and_a_path_with_spaces_is_kept() -> (
+    None
+):
+    assert hidden_paths("s my file.txt\0H a.py\0") == ["my file.txt"]
+
+
+def test_the_hidden_refusal_lists_every_path_and_says_why() -> None:
+    message = message_hidden(["a.py", "sub/b.py"])
+
+    assert "a.py" in message
+    assert "sub/b.py" in message
+    assert "assume-unchanged" in message
+    assert "skip-worktree" in message

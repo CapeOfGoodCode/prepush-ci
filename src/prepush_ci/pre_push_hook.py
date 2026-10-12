@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TextIO
 
-from prepush_ci.core.commit_msg import InvalidMode, Mode, parse_mode
+from prepush_ci.core.commit_msg import InvalidMode, parse_mode
 from prepush_ci.core.config import Config, ConfigError
 from prepush_ci.core.config_source import (
     PREPUSH_CI_FILE,
@@ -20,6 +20,12 @@ from prepush_ci.core.pre_push import (
     branch_tips,
     demand_keys,
     demands_check,
+    dirty_paths,
+    hidden_paths,
+    message_dirty,
+    message_hidden,
+    message_not_head,
+    message_off,
     parse_ref_lines,
     pre_commit_push,
 )
@@ -35,8 +41,8 @@ class HookError(Exception):
 def run(stdin: TextIO, env: Mapping[str, str], cwd: Path) -> int:
     """Run the hook; return the exit code (non-zero makes git abort the push)."""
     try:
-        mode = parse_mode(env.get(ENV_VAR))
-        return _decide(stdin.read(), mode, env, cwd)
+        parse_mode(env.get(ENV_VAR))  # refuse unknown values before any ref is read
+        return _decide(stdin.read(), env, cwd)
     except ConfigError as error:
         for problem in error.problems:
             print(f"prepush-ci: {problem}", file=sys.stderr)
@@ -46,7 +52,7 @@ def run(stdin: TextIO, env: Mapping[str, str], cwd: Path) -> int:
         return 1
 
 
-def _decide(stdin_text: str, mode: Mode, env: Mapping[str, str], cwd: Path) -> int:
+def _decide(stdin_text: str, env: Mapping[str, str], cwd: Path) -> int:
     tips = branch_tips(_pushed_refs(stdin_text, env, cwd))
     if not tips:
         return 0
@@ -54,7 +60,50 @@ def _decide(stdin_text: str, mode: Mode, env: Mapping[str, str], cwd: Path) -> i
     demanding = [sha for sha in tips if _demands_check(sha, config, cwd)]
     if not demanding:
         return 0
+    return _enforce(demanding, env.get(ENV_VAR) == "off", config, cwd)
+
+
+def _enforce(demanding: list[str], off: bool, config: Config, cwd: Path) -> int:
+    """Refuse for the cheap, certain reasons first; run the check only on a state that is the commit."""
+    if off:  # unset, empty and `full` behave alike: the trailer demands the check, not the variable
+        raise HookError(message_off(demanding))
+    head = _head(cwd)
+    others = [sha for sha in demanding if sha != head]
+    if others:
+        raise HookError(message_not_head(others, head))
+    dirty = dirty_paths(_status(cwd))
+    if dirty:
+        raise HookError(message_dirty(dirty))
+    hidden = hidden_paths(_listing(cwd, "the index flags", "ls-files", "-v", "-z"))
+    if hidden:
+        raise HookError(message_hidden(hidden))
     return _run_check(config, cwd)
+
+
+def _head(cwd: Path) -> str:
+    result = _git(cwd, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+    if result.returncode != 0:
+        raise HookError("HEAD points to no commit, so there is nothing to check")
+    return result.stdout.strip()
+
+
+def _status(cwd: Path) -> str:
+    """`git status --porcelain -z`: staged, unstaged and untracked paths, not the ignored ones."""
+    return _listing(
+        cwd,
+        "the worktree status",
+        "status",
+        "--porcelain",
+        "-z",
+        "--untracked-files=all",
+    )
+
+
+def _listing(cwd: Path, what: str, *args: str) -> str:
+    result = _git(cwd, *args)
+    if result.returncode != 0:
+        raise HookError(f"{what} could not be read: {result.stderr.strip()}")
+    return result.stdout
 
 
 def _pushed_refs(stdin_text: str, env: Mapping[str, str], cwd: Path) -> list[PushedRef]:
