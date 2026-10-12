@@ -1,6 +1,6 @@
 # Agentic engineering in this repository
 
-This repository is built by four AI loops and one human. This page lists the practices from [loop-engineering](https://github.com/cobusgreyling/loop-engineering) it adopts, where each one lives, and where it deliberately does something else. The rules themselves are in [`AGENTS.md`](../AGENTS.md) and [`LOOP.md`](../LOOP.md); this page only maps them.
+This repository is built by five AI loops and one human. This page lists the practices from [loop-engineering](https://github.com/cobusgreyling/loop-engineering) it adopts, where each one lives, and where it deliberately does something else. The rules themselves are in [`AGENTS.md`](../AGENTS.md) and [`LOOP.md`](../LOOP.md); this page only maps them.
 
 ## Adopted
 
@@ -25,6 +25,7 @@ This repository is built by four AI loops and one human. This page lists the pra
 | One owner per branch; no collisions (`multi-loop.md`) | One pull request per issue; the turn label is the single carrier of whose move it is, moved in one call |
 | Skills (primitive 3) | OpenSpec skills in `.claude/`; the skill the tool ships in [`skills/`](../skills/) |
 | Durable external memory (primitive "+ memory") | GitHub (issues, labels, comments) and the OpenSpec specs, not a chat history |
+| Retrospectives and post-mortems; avoid cognitive surrender (`operating-loops.md`, `concepts.md`) | A coach loop, mr-miyagi, reads a daily digest of escalations, review rounds, cost outliers and the human's corrections, and proposes rule changes as pull requests; only the human's approval lands them, and it never widens its own reach |
 | Avoid intent and comprehension debt (`concepts.md`) | Issue #1 is the intent; specs before code; test names read as specs; a proof a reviewer can read without running anything |
 
 ## Done differently
@@ -39,4 +40,3 @@ This repository is built by four AI loops and one human. This page lists the pra
 
 - Cost estimates and the metrics table of `operating-loops.md` (runs, escalations, false positives).
 - Slower cadence off-hours.
-- Post-mortems after an incident.
