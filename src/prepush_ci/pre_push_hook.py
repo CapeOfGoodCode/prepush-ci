@@ -8,12 +8,6 @@ from typing import TextIO
 
 from prepush_ci.core.commit_msg import InvalidMode, parse_mode
 from prepush_ci.core.config import Config, ConfigError
-from prepush_ci.core.config_source import (
-    PREPUSH_CI_FILE,
-    PYPROJECT_FILE,
-    ConfigMissing,
-    load_config,
-)
 from prepush_ci.core.pre_push import (
     MalformedRefLine,
     PushedRef,
@@ -29,6 +23,7 @@ from prepush_ci.core.pre_push import (
     parse_ref_lines,
     pre_commit_push,
 )
+from prepush_ci.git import GitError, committed_config, git, trailers
 from prepush_ci.repo_config import load_repository_config
 
 ENV_VAR = "PREPUSH_CI"
@@ -52,7 +47,7 @@ def run(stdin: TextIO, env: Mapping[str, str], cwd: Path) -> int:
         for problem in error.problems:
             print(f"prepush-ci: {problem}", file=sys.stderr)
         return 1
-    except (InvalidMode, MalformedRefLine, HookError) as error:
+    except (InvalidMode, MalformedRefLine, HookError, GitError) as error:
         print(f"prepush-ci: {error}", file=sys.stderr)
         return 1
 
@@ -89,7 +84,7 @@ def _enforce(demanding: list[str], off: bool, config: Config, root: Path) -> int
 
 
 def _head(cwd: Path) -> str:
-    result = _git(cwd, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+    result = git(cwd, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
     if result.returncode != 0:
         raise HookError("HEAD points to no commit, so there is nothing to check")
     return result.stdout.strip()
@@ -108,7 +103,7 @@ def _status(cwd: Path) -> str:
 
 
 def _listing(cwd: Path, what: str, *args: str) -> str:
-    result = _git(cwd, *args)
+    result = git(cwd, *args)
     if result.returncode != 0:
         raise HookError(f"{what} could not be read: {result.stderr.strip()}")
     return result.stdout
@@ -129,53 +124,20 @@ def _pushed_refs(stdin_text: str, env: Mapping[str, str], cwd: Path) -> list[Pus
 
 
 def _resolve(ref: str, cwd: Path) -> str:
-    result = _git(cwd, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+    result = git(cwd, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
     if result.returncode != 0:
         raise HookError(f"{ref} (PRE_COMMIT_LOCAL_BRANCH) does not name a commit")
     return result.stdout.strip()
 
 
 def _demands_check(sha: str, config: Config, cwd: Path) -> bool:
-    tip_config = _tip_config(sha, cwd)
+    tip_config = committed_config(sha, cwd)
     configs = [config] if tip_config is None else [config, tip_config]
-    return demands_check(_trailers(sha, cwd), demand_keys(*configs))
-
-
-def _trailers(sha: str, cwd: Path) -> str:
-    result = _git(cwd, "log", "-1", "--format=%(trailers:only,unfold)", sha, "--")
-    if result.returncode != 0:
-        raise HookError(f"cannot read the message of {sha}: {result.stderr.strip()}")
-    return result.stdout
-
-
-def _tip_config(sha: str, cwd: Path) -> Config | None:
-    """The config committed in `sha`; None when the commit has none."""
-    try:
-        return load_config(
-            _tip_file(sha, PREPUSH_CI_FILE, cwd), _tip_file(sha, PYPROJECT_FILE, cwd)
-        )
-    except ConfigMissing:
-        return None
-    except ConfigError as error:
-        raise ConfigError(
-            [f"config of {sha[:12]}: {problem}" for problem in error.problems]
-        ) from error
-
-
-def _tip_file(sha: str, name: str, cwd: Path) -> str | None:
-    listing = _git(cwd, "ls-tree", "--name-only", sha, "--", name)
-    if listing.returncode != 0:
-        raise HookError(f"cannot read {name} of {sha}: {listing.stderr.strip()}")
-    if not listing.stdout.strip():
-        return None
-    blob = _git(cwd, "cat-file", "blob", f"{sha}:{name}")
-    if blob.returncode != 0:
-        raise HookError(f"cannot read {name} of {sha}: {blob.stderr.strip()}")
-    return blob.stdout
+    return demands_check(trailers(sha, cwd), demand_keys(*configs))
 
 
 def _worktree_root(cwd: Path) -> Path:
-    result = _git(cwd, "rev-parse", "--show-toplevel")
+    result = git(cwd, "rev-parse", "--show-toplevel")
     if result.returncode != 0:
         raise HookError(
             "the repository has no worktree, so the hook cannot check a commit here"
@@ -194,14 +156,3 @@ def _run_check(config: Config, root: Path) -> int:
         )
         return 1
     return 0
-
-
-def _git(cwd: Path, *args: str) -> "subprocess.CompletedProcess[str]":
-    return subprocess.run(
-        ["git", *args],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        errors="replace",
-        check=False,
-    )

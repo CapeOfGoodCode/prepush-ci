@@ -18,3 +18,24 @@ def test_running_without_a_command_prints_usage_and_succeeds(
 ) -> None:
     assert main([]) == 0
     assert "usage: prepush-ci" in capsys.readouterr().out
+
+
+def test_the_usage_lists_the_verify_command(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main([]) == 0
+    assert "verify" in capsys.readouterr().out
+
+
+def test_verify_without_a_sha_exits_1_instead_of_argparses_usage_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["verify"]) == 1
+    assert capsys.readouterr().out.startswith("not verified: the sha is missing")
+
+
+def test_verify_after_a_double_dash_without_a_sha_exits_1(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["--", "verify"]) == 1
+    assert capsys.readouterr().out.startswith("not verified: the sha is missing")

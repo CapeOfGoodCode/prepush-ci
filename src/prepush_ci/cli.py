@@ -6,11 +6,24 @@ import sys
 from importlib.metadata import version
 from pathlib import Path
 
-from prepush_ci import commit_msg_hook, pre_push_hook
+from prepush_ci import commit_msg_hook, pre_push_hook, verify_command
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="prepush-ci")
+    args_in = sys.argv[1:] if argv is None else argv
+    if args_in[:1] == ["--"]:
+        args_in = args_in[
+            1:
+        ]  # `prepush-ci -- verify "$SHA"` must reach the route below
+    if args_in[:1] == ["verify"]:
+        # Before argparse: its usage errors exit 2 and `--help` exits 0, but a CI gate must only
+        # ever see 0 (verified) or 1.
+        return verify_command.run(args_in[1:], Path.cwd())
+    parser = argparse.ArgumentParser(
+        prog="prepush-ci",
+        epilog="also: verify <sha>  exit 0 when a commit carries the trailer and was not "
+        "made by a server",  # not a subparser: argparse could never be allowed to answer for it
+    )
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {version('prepush-ci')}"
     )
@@ -30,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
     pre_push.add_argument(
         "git_args", nargs="*", help="the remote name and url git passes (unused)"
     )
-    args = parser.parse_args(argv)
+    args = parser.parse_args(args_in)
     if args.command == "hook" and args.hook == "pre-push":
         return pre_push_hook.run(sys.stdin, os.environ, Path.cwd())
     if args.command == "hook":
