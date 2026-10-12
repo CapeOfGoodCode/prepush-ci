@@ -32,6 +32,11 @@ from prepush_ci.core.pre_push import (
 from prepush_ci.repo_config import load_repository_config
 
 ENV_VAR = "PREPUSH_CI"
+HINT = (
+    "prepush-ci: this commit has no trailer, so CI will run the full check for this push; "
+    "run `git commit --amend --no-edit` with PREPUSH_CI=full to add the trailer "
+    "and check it here first"
+)
 
 
 class HookError(Exception):
@@ -60,6 +65,8 @@ def _decide(stdin_text: str, env: Mapping[str, str], cwd: Path) -> int:
     config = load_repository_config(root)
     demanding = [sha for sha in tips if _demands_check(sha, config, root)]
     if not demanding:
+        if env.get(ENV_VAR) == "full":  # a user who did not opt in is not nagged
+            print(HINT, file=sys.stderr)
         return 0
     return _enforce(demanding, env.get(ENV_VAR) == "off", config, root)
 

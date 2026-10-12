@@ -745,3 +745,62 @@ def test_a_status_git_cannot_report_aborts_the_push_without_a_check(
     assert result.returncode != 0
     assert "status could not be read" in result.stderr
     assert ran(pushing_repo) == 0
+
+
+# Hint for a tip without the trailer
+
+
+def test_full_mode_and_a_tip_without_the_trailer_push_with_a_hint_naming_the_amend(
+    pushing_repo: Path, git: Git
+) -> None:
+    commit(pushing_repo, git, "work")
+
+    result = push(pushing_repo, git, "main", env={"PREPUSH_CI": "full"})
+
+    assert result.returncode == 0, result.stderr
+    assert ran(pushing_repo) == 0
+    assert "git commit --amend --no-edit" in result.stderr
+
+
+def test_the_hint_is_printed_once_for_several_refs(
+    pushing_repo: Path, git: Git
+) -> None:
+    commit(pushing_repo, git, "work")
+
+    result = push(pushing_repo, git, "main:a", "main:b", env={"PREPUSH_CI": "full"})
+
+    assert result.stderr.count("git commit --amend --no-edit") == 1
+
+
+def test_without_the_opt_in_a_tip_without_the_trailer_is_pushed_without_a_hint(
+    pushing_repo: Path, git: Git
+) -> None:
+    commit(pushing_repo, git, "work")
+
+    result = push(pushing_repo, git, "main")
+
+    assert result.returncode == 0, result.stderr
+    assert "git commit --amend --no-edit" not in result.stderr
+
+
+def test_full_mode_and_a_tag_push_succeed_without_a_hint(
+    pushing_repo: Path, git: Git
+) -> None:
+    git(pushing_repo, "tag", "v1")
+
+    result = push(pushing_repo, git, "v1", env={"PREPUSH_CI": "full"})
+
+    assert result.returncode == 0, result.stderr
+    assert "git commit --amend --no-edit" not in result.stderr
+
+
+def test_full_mode_and_a_tip_with_the_trailer_run_the_check_without_a_hint(
+    pushing_repo: Path, git: Git
+) -> None:
+    commit(pushing_repo, git, "work" + TRAILER)
+
+    result = push(pushing_repo, git, "main", env={"PREPUSH_CI": "full"})
+
+    assert result.returncode == 0, result.stderr
+    assert ran(pushing_repo) == 1
+    assert "git commit --amend --no-edit" not in result.stderr
