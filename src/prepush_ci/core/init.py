@@ -2,16 +2,28 @@
 the closing words. Everything here is text in, text out; the command does the I/O."""
 
 import json
+import re
 import tomllib
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import TypeVar
 
-from prepush_ci.core.config import REMOTE, Config, ConfigError, parse_config
+from prepush_ci.core.config import (
+    DEFAULT_BRANCH,
+    REMOTE,
+    Config,
+    ConfigError,
+    parse_config,
+)
+from prepush_ci.core.hook_managers import CHOICES, Refusal, choose
 
 NO_REPOSITORY = "prepush-ci init: there is no git repository with a working tree here"
 NEED_CHECK = (
     "prepush-ci init: --check is required while there is no config: "
     "the command that runs your full CI check"
 )
+
+T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -220,3 +232,142 @@ def detect_ci(*, workflows: bool, gitlab: bool) -> str:
     if workflows:
         return "github"
     return "gitlab" if gitlab else "generic"
+
+
+QUESTIONS = (
+    ("check", "check: the command that runs your full CI check"),
+    ("preflight", "preflight: a command to run before the check (optional)"),
+    (
+        "require_env",
+        "require_env: variables the check needs, comma-separated (optional)",
+    ),
+    ("default_branch", "default_branch: the branch your pull requests target"),
+    ("require_up_to_date", "require_up_to_date: the ref a push must contain, or false"),
+)
+HOOK_CHOICES = (*CHOICES, "none")
+NO_INPUT = (
+    "prepush-ci init: the input ended before the last question; "
+    "answer all of them, or pass --non-interactive with the flags"
+)
+
+
+def pending(flags: ConfigFlags) -> list[str]:
+    """The keys of the config questions to ask: the ones no flag answers, in asking order."""
+    return [key for key, _ in QUESTIONS if getattr(flags, key) is None]
+
+
+def default_check(*, scripts_ci: bool, bin_ci: bool, makefile: str | None) -> str:
+    """The check to suggest: `scripts/ci`, `bin/ci` or `make ci` (a Makefile with a `ci:`
+    target), the first that exists; empty when there is none."""
+    if scripts_ci:
+        return "scripts/ci"
+    if bin_ci:
+        return "bin/ci"
+    if makefile is not None and re.search(r"^ci\s*:", makefile, re.MULTILINE):
+        return "make ci"
+    return ""
+
+
+def default_branch_of(origin_head: str | None) -> str:
+    """The branch `origin/HEAD` names (`origin/trunk` is `trunk`), else `main`."""
+    prefix = f"{REMOTE}/"
+    if origin_head is not None and origin_head.startswith(prefix):
+        return origin_head[len(prefix) :] or DEFAULT_BRANCH
+    return DEFAULT_BRANCH
+
+
+def default_for(
+    key: str,
+    given: ConfigFlags,
+    answers: Mapping[str, str],
+    check: str,
+    branch: str,
+) -> str:
+    """The default shown with the question for `key`, given what was answered before."""
+    if key == "check":
+        return check
+    if key == "default_branch":
+        return branch
+    if key == "require_up_to_date":
+        return f"{REMOTE}/{_branch(given, answers, branch)}"
+    return ""
+
+
+def _branch(given: ConfigFlags, answers: Mapping[str, str], branch: str) -> str:
+    if given.default_branch is not None:
+        return given.default_branch
+    return answers.get("default_branch") or branch
+
+
+def flags_from_answers(
+    given: ConfigFlags, answers: Mapping[str, str], check: str, branch: str
+) -> ConfigFlags:
+    """The flags the answers amount to: `check` always, any other key only when the answer
+    differs from what the config takes without the key; a key given by a flag stays as given."""
+    chosen = _branch(given, answers, branch)
+    asked_up_to_date = answers.get("require_up_to_date") or f"{REMOTE}/{chosen}"
+    up_to_date: str | None = asked_up_to_date
+    if resolved_up_to_date(asked_up_to_date, chosen) == f"{REMOTE}/{chosen}":
+        up_to_date = None
+    names = tuple(
+        name.strip()
+        for name in answers.get("require_env", "").split(",")
+        if name.strip()
+    )
+    return ConfigFlags(
+        check=_given(given.check, answers.get("check") or check),
+        preflight=_given(given.preflight, answers.get("preflight") or None),
+        require_env=_given(given.require_env, names or None),
+        require_up_to_date=_given(given.require_up_to_date, up_to_date),
+        default_branch=_given(
+            given.default_branch, None if chosen == DEFAULT_BRANCH else chosen
+        ),
+    )
+
+
+def _given(flag: T | None, answered: T | None) -> T | None:
+    """The flag when one was given, else what the answer amounts to."""
+    return answered if flag is None else flag
+
+
+def hooks_prompt(files: Sequence[str], previous: str | None, default: str) -> str:
+    """The hooks question: what was found, the five choices and the default."""
+    found = [*files, *([] if previous is None else [f"the pre-push hook {previous}"])]
+    seen = (
+        f"found: {', '.join(found)}"
+        if found
+        else "found: no hook manager, no pre-push hook"
+    )
+    kept = " (an existing pre-push hook is kept and runs first)" if previous else ""
+    choices = ", ".join(HOOK_CHOICES)
+    shown = f" [{default}]" if default else ""
+    return f"hooks: which hooks should prepush-ci install? {seen}{kept}\n  {choices}{shown}"
+
+
+def hooks_default(found: Sequence[str]) -> str:
+    """The hooks `install` would use; empty when it would refuse (several managers)."""
+    try:
+        return choose(None, found)
+    except Refusal:
+        return ""
+
+
+def parse_hooks(answer: str, default: str) -> str:
+    """The hooks answered, the default for an empty answer."""
+    chosen = answer or default
+    if chosen not in HOOK_CHOICES:
+        raise Refusal(f"hooks must be one of {', '.join(HOOK_CHOICES)}, not {chosen!r}")
+    return chosen
+
+
+SESSION_QUESTION = "Write the Claude Code SessionStart hook? y or n [y]"
+
+
+def parse_yes_no(answer: str) -> bool:
+    """`y`, `yes` or an empty answer is yes, `n` or `no` is no."""
+    lowered = answer.lower()
+    if lowered in ("", "y", "yes"):
+        return True
+    if lowered in ("n", "no"):
+        return False
+    raise Refusal(f"answer y or n, not {answer!r}")

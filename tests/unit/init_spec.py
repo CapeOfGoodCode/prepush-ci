@@ -6,6 +6,7 @@ import pytest
 
 import prepush_ci
 from prepush_ci.core.config import Config, ConfigError, parse_config
+from prepush_ci.core.hook_managers import Refusal
 from prepush_ci.core.init import (
     CI_FILES,
     SESSION_COMMAND,
@@ -13,9 +14,18 @@ from prepush_ci.core.init import (
     SettingsError,
     closing,
     config_text,
+    default_branch_of,
+    default_check,
+    default_for,
     detect_ci,
     disagreement_message,
     disagreements,
+    flags_from_answers,
+    hooks_default,
+    hooks_prompt,
+    parse_hooks,
+    parse_yes_no,
+    pending,
     problems_message,
     register_session_hook,
     resolved_up_to_date,
@@ -274,3 +284,157 @@ def test_github_actions_wins_over_gitlab() -> None:
 def test_gitlab_is_next_and_the_generic_gate_is_the_rest() -> None:
     assert detect_ci(workflows=False, gitlab=True) == "gitlab"
     assert detect_ci(workflows=False, gitlab=False) == "generic"
+
+
+def test_only_the_keys_no_flag_answers_are_asked_in_order() -> None:
+    assert pending(ConfigFlags()) == [
+        "check",
+        "preflight",
+        "require_env",
+        "default_branch",
+        "require_up_to_date",
+    ]
+    assert pending(ConfigFlags(check="x", require_env=("A",))) == [
+        "preflight",
+        "default_branch",
+        "require_up_to_date",
+    ]
+
+
+def test_the_check_default_is_the_first_script_that_exists() -> None:
+    assert default_check(scripts_ci=True, bin_ci=True, makefile="ci:\n") == "scripts/ci"
+    assert default_check(scripts_ci=False, bin_ci=True, makefile="ci:\n") == "bin/ci"
+    assert (
+        default_check(scripts_ci=False, bin_ci=False, makefile="a:\nci : a\n")
+        == "make ci"
+    )
+
+
+def test_there_is_no_check_default_without_a_script_or_a_ci_target() -> None:
+    assert default_check(scripts_ci=False, bin_ci=False, makefile="all:\n\tci:\n") == ""
+    assert default_check(scripts_ci=False, bin_ci=False, makefile=None) == ""
+
+
+def test_the_branch_default_is_the_branch_origin_head_names_else_main() -> None:
+    assert default_branch_of("origin/trunk") == "trunk"
+    assert default_branch_of("origin/") == "main"
+    assert default_branch_of("upstream/x") == "main"
+    assert default_branch_of(None) == "main"
+
+
+def test_the_defaults_shown_follow_the_earlier_answers() -> None:
+    given = ConfigFlags()
+
+    assert default_for("check", given, {}, "scripts/ci", "main") == "scripts/ci"
+    assert default_for("preflight", given, {}, "", "main") == ""
+    assert default_for("default_branch", given, {}, "", "trunk") == "trunk"
+    assert default_for("require_up_to_date", given, {}, "", "trunk") == "origin/trunk"
+    answered = {"default_branch": "dev"}
+    assert (
+        default_for("require_up_to_date", given, answered, "", "trunk") == "origin/dev"
+    )
+    flagged = ConfigFlags(default_branch="rel")
+    assert (
+        default_for("require_up_to_date", flagged, answered, "", "trunk")
+        == "origin/rel"
+    )
+
+
+def test_empty_answers_take_the_defaults_and_write_only_the_check() -> None:
+    flags = flags_from_answers(ConfigFlags(), {}, "scripts/ci", "main")
+
+    assert flags == ConfigFlags(check="scripts/ci")
+
+
+def test_a_detected_branch_other_than_main_is_written() -> None:
+    flags = flags_from_answers(ConfigFlags(), {}, "x", "trunk")
+
+    assert flags == ConfigFlags(check="x", default_branch="trunk")
+
+
+def test_answers_that_differ_are_written() -> None:
+    answers = {
+        "check": "make ci",
+        "preflight": "make up",
+        "require_env": " A, ,B ",
+        "default_branch": "dev",
+        "require_up_to_date": "upstream/dev",
+    }
+
+    assert flags_from_answers(ConfigFlags(), answers, "x", "main") == ConfigFlags(
+        check="make ci",
+        preflight="make up",
+        require_env=("A", "B"),
+        require_up_to_date="upstream/dev",
+        default_branch="dev",
+    )
+
+
+def test_the_answer_false_and_true_for_up_to_date() -> None:
+    off = flags_from_answers(
+        ConfigFlags(), {"require_up_to_date": "false"}, "x", "main"
+    )
+    same = flags_from_answers(
+        ConfigFlags(), {"require_up_to_date": "true"}, "x", "main"
+    )
+
+    assert off.require_up_to_date == "false"
+    assert same.require_up_to_date is None
+
+
+def test_a_flag_stays_as_given_whatever_the_answers_say() -> None:
+    given = ConfigFlags(
+        check="c",
+        preflight="p",
+        require_env=("E",),
+        require_up_to_date="origin/main",
+        default_branch="main",
+    )
+
+    assert flags_from_answers(given, {"check": "z"}, "x", "trunk") == given
+
+
+def test_the_hooks_question_names_what_was_found_and_the_default() -> None:
+    prompt = hooks_prompt(["lefthook.yml"], ".git/hooks/pre-push", "lefthook")
+
+    assert "lefthook.yml" in prompt
+    assert ".git/hooks/pre-push" in prompt
+    assert "native, pre-commit, husky, lefthook, none" in prompt
+    assert "[lefthook]" in prompt
+
+
+def test_the_hooks_question_says_when_nothing_was_found() -> None:
+    prompt = hooks_prompt([], None, "native")
+
+    assert "no hook manager" in prompt
+    assert "[native]" in prompt
+
+
+def test_the_hooks_question_has_no_default_when_install_would_refuse() -> None:
+    assert hooks_default(["pre-commit", "lefthook"]) == ""
+    assert "[" not in hooks_prompt(["a", "b"], None, "")
+    assert hooks_default(["husky"]) == "husky"
+    assert hooks_default([]) == "native"
+
+
+def test_an_empty_hooks_answer_is_the_default_and_a_valid_one_is_taken() -> None:
+    assert parse_hooks("", "husky") == "husky"
+    assert parse_hooks("none", "husky") == "none"
+
+
+def test_an_unknown_or_missing_hooks_answer_names_the_valid_ones() -> None:
+    for answer, default in (("jenkins", "native"), ("", "")):
+        with pytest.raises(Refusal, match="native, pre-commit, husky, lefthook, none"):
+            parse_hooks(answer, default)
+
+
+def test_yes_and_no_answers() -> None:
+    assert [parse_yes_no(a) for a in ("", "y", "YES", "n", "No")] == [
+        True,
+        True,
+        True,
+        False,
+        False,
+    ]
+    with pytest.raises(Refusal, match="y or n"):
+        parse_yes_no("maybe")
