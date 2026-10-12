@@ -57,7 +57,7 @@ When the chosen hooks are those of a manager, `install` SHALL NOT change any git
 - **THEN** `core.hooksPath` has the value it had before (unset), and `.git/hooks` and `.git/prepush-ci` hold no new file
 
 ### Requirement: One block, nothing else
-Every change `install` makes to a file of a manager SHALL be one block per file that starts with the line `# prepush-ci: begin` and ends with the line `# prepush-ci: end`, except the keys `default_install_hook_types` and `default_stages` of pre-commit. Every line of the file outside the block SHALL stay as it was. When the file already holds the block, `install` SHALL replace its lines and no other.
+Every change `install` makes to a file of a manager SHALL be one block per file, and for lefthook one per hook section, each starting with the line `# prepush-ci: begin` and ending with the line `# prepush-ci: end`, except the keys `default_install_hook_types` and `default_stages` of pre-commit. Every line of the file outside the block SHALL stay as it was. When the file already holds the block, `install` SHALL replace its lines and no other.
 
 #### Scenario: Existing content is kept
 - **WHEN** `.husky/pre-push` holds the lines `npm test` and `# keep me`, and `install --hooks husky` runs
