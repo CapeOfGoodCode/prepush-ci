@@ -8,6 +8,7 @@ from prepush_ci.core.hook_managers import (
     choose,
     edit_file,
     edit_husky,
+    edit_lefthook,
     edit_pre_commit,
     find_block,
     holds_block,
@@ -382,3 +383,138 @@ def test_husky_edits_the_commit_msg_and_pre_push_files_of_its_directory() -> Non
 
 def test_a_missing_husky_directory_is_named() -> None:
     assert ".husky" in missing_message("husky")
+
+
+LEFTHOOK = (
+    "pre-push:\n"
+    "  commands:\n"
+    "    test:\n"
+    "      run: make test\n"
+    "pre-commit:\n"
+    "  commands:\n"
+    "    lint:\n"
+    "      run: make lint\n"
+)
+
+
+def test_a_lefthook_file_without_the_hooks_gets_both_sections_at_its_end() -> None:
+    text = edit_lefthook("pre-commit:\n  commands:\n    lint:\n      run: make lint\n")
+
+    assert text.startswith(
+        "pre-commit:\n  commands:\n    lint:\n      run: make lint\n"
+    )
+    assert text.endswith(
+        f"commit-msg:\n  commands:\n    {BEGIN}\n    prepush-ci:\n"
+        f"      run: prepush-ci hook commit-msg {{1}}\n    {END}\n"
+        f"pre-push:\n  commands:\n    {BEGIN}\n    prepush-ci:\n"
+        f"      run: prepush-ci hook pre-push\n      use_stdin: true\n    {END}\n"
+    )
+
+
+def test_an_empty_lefthook_file_gets_both_sections() -> None:
+    text = edit_lefthook("")
+
+    assert text.startswith("commit-msg:\n  commands:\n")
+    assert "pre-push:\n" in text
+
+
+def test_the_lefthook_command_is_the_first_entry_with_the_indentation_of_the_others() -> (
+    None
+):
+    text = edit_lefthook(LEFTHOOK)
+
+    assert (
+        "pre-push:\n  commands:\n"
+        f"    {BEGIN}\n    prepush-ci:\n      run: prepush-ci hook pre-push\n"
+        f"      use_stdin: true\n    {END}\n    test:\n      run: make test\npre-commit:"
+    ) in text
+
+
+def test_lefthook_entries_with_another_indentation_are_followed() -> None:
+    text = edit_lefthook(
+        "pre-push:\n    commands:\n        test:\n            run: x\n"
+    )
+
+    assert f"    commands:\n        {BEGIN}\n        prepush-ci:\n" in text
+
+
+def test_a_lefthook_commands_key_without_entries_gets_the_default_indentation() -> None:
+    text = edit_lefthook("pre-push:\n  commands:\nother: 1\n")
+
+    assert f"  commands:\n    {BEGIN}\n" in text
+    assert f"{END}\nother: 1\ncommit-msg:\n" in text  # `other` stays below the block
+
+
+def test_a_sibling_key_after_commands_is_not_taken_for_an_entry() -> None:
+    text = edit_lefthook("pre-push:\n  commands:\n  parallel: true\n")
+
+    assert f"  commands:\n    {BEGIN}\n" in text
+
+
+def test_a_comment_before_the_first_lefthook_entry_does_not_set_the_indentation() -> (
+    None
+):
+    text = edit_lefthook("pre-push:\n  commands:\n# note\n    test:\n      run: x\n")
+
+    assert f"  commands:\n    {BEGIN}\n" in text
+
+
+def test_a_lefthook_section_ends_at_the_next_top_level_key() -> None:
+    config = (
+        "pre-push:\n  parallel: true\ncommit-msg:\n  commands:\n    x:\n      run: y\n"
+    )
+
+    with pytest.raises(Refusal, match="pre-push"):
+        edit_lefthook(config)
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        "pre-push:\n  jobs:\n    - run: make\n",
+        "pre-push: {commands: {}}\n",
+        "pre-push:\n  commands: {}\n",
+    ],
+)
+def test_a_lefthook_hook_without_block_style_commands_is_refused(config: str) -> None:
+    with pytest.raises(Refusal, match="pre-push.*commands"):
+        edit_lefthook(config)
+
+
+def test_a_comment_after_a_lefthook_hook_key_is_fine() -> None:
+    text = edit_lefthook("pre-push:  # checks\n  commands:\n    t:\n      run: x\n")
+
+    assert BEGIN in text
+
+
+def test_a_second_lefthook_edit_changes_nothing_and_a_hand_edit_is_undone() -> None:
+    once = edit_lefthook(LEFTHOOK)
+
+    assert edit_lefthook(once) == once
+    assert edit_lefthook(once.replace("use_stdin: true", "use_stdin: false")) == once
+
+
+def test_a_lefthook_block_is_found_by_its_hook_not_by_its_position() -> None:
+    once = edit_lefthook(LEFTHOOK)
+
+    assert edit_lefthook(once.replace("{1}", "{2}")) == once
+
+
+def test_lefthook_edits_the_first_of_its_file_names_that_exists() -> None:
+    present = [".lefthook.yml", ".lefthook.yaml"]
+
+    assert manager_files("lefthook", present) == [".lefthook.yml"]
+    assert edit_file("lefthook", ".lefthook.yml", "") == edit_lefthook("")
+
+
+def test_a_missing_lefthook_file_names_the_four_it_looks_for() -> None:
+    message = missing_message("lefthook")
+
+    for name in ("lefthook.yml", "lefthook.yaml", ".lefthook.yml", ".lefthook.yaml"):
+        assert name in message
+
+
+def test_the_lefthook_report_names_its_activation_step() -> None:
+    assert "`lefthook install`" in manager_report(
+        "installed", "lefthook", ["lefthook.yml"]
+    )

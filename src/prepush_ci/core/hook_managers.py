@@ -184,7 +184,7 @@ def _block_items(lines: Sequence[str], key: int) -> tuple[int, list[str]]:
 
 
 HUSKY_DIRECTORY = ".husky"
-_HUSKY_HOOKS = ("commit-msg", "pre-push")
+_HOOKS = ("commit-msg", "pre-push")
 _HUSKY_SHEBANG = "#!/usr/bin/env sh"
 # The pre-push block reads git's standard input once, hands it to the tool, ends the hook with
 # its status when it fails, and gives the same input to the lines after it.
@@ -201,13 +201,23 @@ _HUSKY_BLOCKS = {
     ],
 }
 
-MANAGERS = ("pre-commit", "husky")
+LEFTHOOK_FILES = ("lefthook.yml", "lefthook.yaml", ".lefthook.yml", ".lefthook.yaml")
+_LEFTHOOK_RUN = {
+    "commit-msg": ["run: prepush-ci hook commit-msg {1}"],
+    "pre-push": ["run: prepush-ci hook pre-push", "use_stdin: true"],
+}
+_COMMANDS = re.compile(r"(\s*)commands:\s*(#.*)?")
+
+MANAGERS = ("pre-commit", "husky", "lefthook")
 CHOICES = ("native", *MANAGERS)
 # What the worktree root holds for each manager.
-MARKERS = {"pre-commit": (PRE_COMMIT_FILE,), "husky": (HUSKY_DIRECTORY,)}
-_ACTIVATION = {
-    "pre-commit": "pre-commit install"
-}  # the team's own step, never run from here
+MARKERS = {
+    "pre-commit": (PRE_COMMIT_FILE,),
+    "husky": (HUSKY_DIRECTORY,),
+    "lefthook": LEFTHOOK_FILES,
+}
+# The team's own step, never run from here.
+_ACTIVATION = {"pre-commit": "pre-commit install", "lefthook": "lefthook install"}
 
 
 def choose(hooks: str | None, found: Sequence[str]) -> str:
@@ -231,7 +241,9 @@ def manager_files(manager: str, present: Sequence[str]) -> list[str]:
     """The files `install` edits for `manager`, relative to the worktree root; `present` are the
     names from `MARKERS` that exist."""
     if manager == "husky":
-        return [f"{HUSKY_DIRECTORY}/{hook}" for hook in _HUSKY_HOOKS]
+        return [f"{HUSKY_DIRECTORY}/{hook}" for hook in _HOOKS]
+    if manager == "lefthook":
+        return [present[0]]  # the first name wins, as it does for lefthook
     return [PRE_COMMIT_FILE]
 
 
@@ -239,7 +251,60 @@ def edit_file(manager: str, name: str, text: str | None) -> str:
     """The new contents of file `name` of `manager`, `text` being its contents or None."""
     if manager == "husky":
         return edit_husky(name.rsplit("/", 1)[-1], text)
+    if manager == "lefthook":
+        return edit_lefthook(text or "")
     return edit_pre_commit(text or "")
+
+
+def lefthook_block(hook: str, indent: str) -> list[str]:
+    """The command that runs the tool for `hook`, its key at `indent`."""
+    body = [BEGIN, "prepush-ci:", *(f"  {line}" for line in _LEFTHOOK_RUN[hook]), END]
+    return [f"{indent}{line}" for line in body]
+
+
+def edit_lefthook(text: str) -> str:
+    """The lefthook config with the command in `commit-msg` and `pre-push`, each added to the
+    `commands:` it has or to a hook section added at the end."""
+    lines, eol = split_lines(text)
+    for hook in _HOOKS:
+        lines = _lefthook_hook(lines, hook)
+    return join_lines(lines, eol)
+
+
+def _lefthook_hook(lines: list[str], hook: str) -> list[str]:
+    key = _find(lines, hook)
+    if key is None:
+        return [*lines, f"{hook}:", "  commands:", *lefthook_block(hook, "    ")]
+    where = f"`{hook}` must be a mapping with a block-style `commands:`"
+    if not _blank_or_comment(lines[key][len(hook) + 1 :]):
+        raise Refusal(where)
+    end = next(
+        (
+            i
+            for i in range(key + 1, len(lines))
+            if not _blank_or_comment(lines[i]) and _indent(lines[i]) == 0
+        ),
+        len(lines),
+    )
+    commands = next(
+        (i for i in range(key + 1, end) if _COMMANDS.fullmatch(lines[i])), None
+    )
+    if commands is None:
+        raise Refusal(where)
+    entries = next(
+        (
+            _indent(lines[i])
+            for i in range(commands + 1, end)
+            if not _blank_or_comment(lines[i])
+        ),
+        0,
+    )
+    inner = (
+        entries if entries > _indent(lines[commands]) else _indent(lines[commands]) + 2
+    )
+    return place_block(
+        lines, lefthook_block(hook, " " * inner), commands + 1, f"hook {hook}"
+    )
 
 
 def edit_husky(hook: str, text: str | None) -> str:
