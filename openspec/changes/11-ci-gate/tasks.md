@@ -2,7 +2,7 @@
 
 ## 1. The shell gate
 
-- [ ] 1.1 Add `docs/ci/gate.sh` with the interface of the design: decide from the environment, call `$PREPUSH_CI_CMD verify` only when the request is eligible, print one `verified=` line, explain on standard error, exit 0; verify with integration specs that run it with `sh` against real temporary repositories, one per scenario
+- [x] 1.1 Add `docs/ci/gate.sh` with the interface of the design: decide from the environment, call `$PREPUSH_CI_CMD verify` only when the request is eligible, print one `verified=` line, explain on standard error, exit 0; verify with integration specs that run it with `sh` against real temporary repositories, one per scenario
 
 ## 2. The action
 
