@@ -10,6 +10,7 @@ from prepush_ci.core.config_source import (
     ConfigMissing,
     load_config,
 )
+from prepush_ci.core.pre_push import dirty_paths, hidden_paths
 
 
 class GitError(Exception):
@@ -25,6 +26,43 @@ def git(cwd: Path, *args: str) -> "subprocess.CompletedProcess[str]":
         errors="replace",
         check=False,
     )
+
+
+def git_bytes(cwd: Path, *args: str, stdin: bytes | None = None) -> bytes:
+    """Run git and return its standard output as bytes; a failure raises `GitError`."""
+    result = subprocess.run(
+        ["git", *args], cwd=cwd, input=stdin, capture_output=True, check=False
+    )
+    if result.returncode != 0:
+        detail = result.stderr.decode(errors="replace").strip()
+        raise GitError(f"`git {args[0]}` failed: {detail}")
+    return result.stdout
+
+
+def dirty(cwd: Path) -> list[str]:
+    """Staged, unstaged and untracked paths (not the ignored ones) of the worktree."""
+    return dirty_paths(
+        _listing(
+            cwd,
+            "the worktree status",
+            "status",
+            "--porcelain",
+            "-z",
+            "--untracked-files=all",
+        )
+    )
+
+
+def hidden(cwd: Path) -> list[str]:
+    """Paths whose changes `git status` cannot see (assume-unchanged, skip-worktree)."""
+    return hidden_paths(_listing(cwd, "the index flags", "ls-files", "-v", "-z"))
+
+
+def _listing(cwd: Path, what: str, *args: str) -> str:
+    result = git(cwd, *args)
+    if result.returncode != 0:
+        raise GitError(f"{what} could not be read: {result.stderr.strip()}")
+    return result.stdout
 
 
 def trailers(sha: str, cwd: Path) -> str:
