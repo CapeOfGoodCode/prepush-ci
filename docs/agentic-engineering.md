@@ -12,7 +12,7 @@ This repository is built by four AI loops and one human. This page lists the pra
 | An attempt cap that escalates (anti-pattern 2) | Three strikes: the third REJECT becomes an ESCALATE with `needs-human` |
 | Structured triage output (anti-pattern 3) | Triage sets an issue type and exactly one label, nothing else |
 | Least-privilege connectors (anti-pattern 6, `safety.md`) | The loops act as a GitHub App with contents, issues and pull requests only: no workflows, no administration, one repository, tokens that expire after an hour |
-| No auto-merge; human gates (anti-pattern 9, `safety.md`) | Only a human merges, on the proof. Enforced on the server: a ruleset requires code owner review and the `check` and `proof` checks |
+| No auto-merge; human gates (anti-pattern 9, `safety.md`) | Only a human approves, on the proof; the approval merges through auto-merge. Enforced on the server: a ruleset requires code owner review and the `check` and `proof` checks, and a later push dismisses the approval |
 | A path denylist shared by all loops (`safety.md`, `multi-loop.md`) | "Stay in your lane": `.github/`, `LOOP.md`, `AGENTS.md`, `.claude/` and the version are reserved for humans |
 | A kill switch (anti-pattern 7) | An open issue labelled `loop-pause-all`, plus the runtime's pause as the hard stop |
 | A budget with caps (`loop-budget.md`, checklist §8) | Plan caps for the whole fleet, early exit on idle wakes, one item per wake |

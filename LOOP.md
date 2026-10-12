@@ -13,7 +13,7 @@ GitHub is the only shared state: issues, pull requests and their labels. A loop 
 | **robocop** | Verify. Reviews specs against the intent and code against the specs. Default verdict: reject. Runs everything itself; trusts no claim. | review comments, labels | any commit, any push |
 | **terminator** | Break it. Once the CLI runs, uses it the way users will, in throwaway repositories, and reports what fails. | issues | any commit, any push |
 
-The **human** merges, decides `proposal` and `needs-human` issues, and can stop everything (see Kill switch).
+The **human** approves, and the approval merges (below); the human also decides `proposal` and `needs-human` issues, and can stop everything (see Kill switch).
 
 Maker and checker are always different loops: the loop that wrote a change never approves it.
 
@@ -26,7 +26,7 @@ The `turn:*` label says whose move it is; only that loop touches the item.
 - **Off the track.** `needs-human` replaces the turn label; the human puts one back when answering. A `turn:human` pull request the human wants changed goes back to `turn:build` with a comment.
 
 ```
-issue ──bruce-lee──▶ PR [turn:spec-review] ──robocop──▶ [turn:build] ──chuck-norris──▶ [turn:review] ──robocop──▶ [turn:human] ──human──▶ merged
+issue ──bruce-lee──▶ PR [turn:spec-review] ──robocop──▶ [turn:build] ──chuck-norris──▶ [turn:review] ──robocop──▶ [turn:human] ──human approves──▶ merged
                           ▲        │ reject                                   ▲               │ reject
                           └────────┘ [turn:spec]                              └───────────────┘ [turn:build]
 ```
@@ -34,8 +34,8 @@ issue ──bruce-lee──▶ PR [turn:spec-review] ──robocop──▶ [tur
 1. **Spec** (bruce-lee): picks the oldest `turn:spec` issue nothing blocks, creates branch `feat/<issue>-<name>`, commits the OpenSpec change (`docs(<change>): add proposal …`), opens a **draft** PR with `Closes #<issue>`, moves the label: issue loses `turn:spec`, PR gets `turn:spec-review`.
 2. **Spec review** (robocop): checks the change against issue #1 and the existing specs: in scope, testable scenarios, nothing contradicts. Approve → `turn:build`; reject → `turn:spec` with the reasons.
 3. **Build** (chuck-norris): takes the oldest `turn:build` PR whose issue nothing blocks. Writes failing tests named after the scenarios, makes them pass, runs `scripts/ci`, archives the change, folds fixup commits, fills in the **Proof** section, marks the PR ready (`gh pr ready`), labels it `turn:review`.
-4. **Review** (robocop): checks out the head commit (on later rounds, `git range-diff` against the last reviewed head), runs `scripts/ci` itself, reproduces the proof, checks every scenario has a test, scope is limited to the change, and no test was weakened. Approve → `turn:human` and notify the human; reject → `turn:build` with the reasons.
-5. **Merge** (human): reads the proof, merges (rebase). The issue closes.
+4. **Review** (robocop): checks out the head commit (on later rounds, `git range-diff` against the last reviewed head), runs `scripts/ci` itself, reproduces the proof, checks every scenario has a test, scope is limited to the change, and no test was weakened. Approve → auto-merge on (rebase), `turn:human`, notify the human; reject → `turn:build` with the reasons.
+5. **Merge** (human): reads the proof and approves. Robocop turned on auto-merge (rebase) when it approved, so GitHub merges as soon as the human's approval and the required checks are in. The issue closes. A push after the approval dismisses it, so nothing unapproved lands.
 
 Bugs found by terminator, and follow-ups found by anyone, enter as issues of the type `AGENTS.md` names for them (a `Bug` with the headings of `.github/ISSUE_TEMPLATE/bug.yml`). Bruce-lee triages them: a bug that changes no spec'd behavior goes straight to `turn:build` as an issue and chuck-norris opens the PR (`fix/<issue>-<name>`), moving the label to it; anything else gets a change as above.
 
@@ -49,14 +49,14 @@ Issue types (see `AGENTS.md`) say what an issue is; slices of the intent are sub
 | `turn:spec-review` | PR | robocop's move: review the spec |
 | `turn:build` | issue, PR | chuck-norris's move: implement or fix |
 | `turn:review` | PR | robocop's move: review the implementation |
-| `turn:human` | PR | ready to merge; the human's move |
+| `turn:human` | PR | ready to merge, auto-merge on; the human's move: approve |
 | `needs-human` | issue, PR | blocked on a decision only the human can make; the question is the last comment |
 | `proposal` | issue | outside the intent; waits for the human to accept (→ `turn:spec`) or close |
 | `loop-pause-all` | issue | kill switch (below) |
 
 ## Proof
 
-The human merges on the proof, so it must stand on its own **and be read in two minutes**. The **Proof** section of a pull request has three short parts, in this order:
+The human approves on the proof, so it must stand on its own **and be read in two minutes**. The **Proof** section of a pull request has three short parts, in this order:
 
 1. **Acceptance**: one line per acceptance criterion of the issue: `- [x] <criterion, in a few words>: <one test name>`. Pick the test that shows the criterion best; robocop checks that the others exist.
 2. **Demo**: one terminal transcript of the tool doing the new thing in a scratch repository, at most 15 lines: the main path and the most important refusal.
