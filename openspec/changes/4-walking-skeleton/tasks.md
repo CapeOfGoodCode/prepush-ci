@@ -3,7 +3,7 @@
 ## 1. Config
 
 - [x] 1.1 Parse config TOML into a typed config or a list of errors in `src/prepush_ci/core/`, with defaults (per `trailer` sub-key), unknown keys by full path, wrong types, trailer-token and trailer-value checks; verify with unit specs named after every `config` scenario at 100% branch coverage
-- [ ] 1.2 Locate the config at the repository root (`.prepush-ci.toml`, else `[tool.prepush-ci]` in `pyproject.toml`) and report missing or malformed files (only the source in use is parsed); verify with integration specs in temporary git repositories, including a run from a subdirectory
+- [x] 1.2 Locate the config at the repository root (`.prepush-ci.toml`, else `[tool.prepush-ci]` in `pyproject.toml`) and report missing or malformed files (only the source in use is parsed); verify with integration specs in temporary git repositories, including a run from a subdirectory
 
 ## 2. commit-msg hook
 
