@@ -8,7 +8,7 @@
 
 ## 2. Claude Code
 
-- [ ] 2.1 Write `.claude/hooks/session-start.sh` (executable, never overwritten, `uv tool install` and the tool's directory on `PATH`, no manager activation, `--hooks <name>` when one was given or chosen, `--no-session-hook`); verify with specs that run the script with a stub `uv` on `PATH` and a hook manager's file sourced from `CLAUDE_ENV_FILE`, and with `CLAUDE_CODE_REMOTE` set, unset, and `CLAUDE_ENV_FILE` set, unset and already holding the export
+- [x] 2.1 Write `.claude/hooks/session-start.sh` (executable, never overwritten, `uv tool install` and the tool's directory on `PATH`, no manager activation, `--hooks <name>` when one was given or chosen, `--no-session-hook`); verify with specs that run the script with a stub `uv` on `PATH` and a hook manager's file sourced from `CLAUDE_ENV_FILE`, and with `CLAUDE_CODE_REMOTE` set, unset, and `CLAUDE_ENV_FILE` set, unset and already holding the export
 - [ ] 2.2 Register the script in `.claude/settings.json` by merging JSON, once, refusing malformed JSON or an unexpected shape before any file is written; verify with specs for a new file, existing settings, a second run and malformed JSON
 
 ## 3. The CI gate

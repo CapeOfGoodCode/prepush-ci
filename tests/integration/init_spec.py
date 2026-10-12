@@ -1,10 +1,13 @@
 """`prepush-ci init`: one command sets a repository up, run as users run it."""
 
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
+
+import pytest
 
 from prepush_ci.core.config import Config
 from prepush_ci.core.config_source import load_config
@@ -279,7 +282,7 @@ def push_after_init(
     )
     assert result.returncode == 0, result.stderr
     assert hooks_path(repo, git).endswith(".git/prepush-ci/hooks")
-    git(repo, "add", ".prepush-ci.toml")
+    git(repo, "add", ".prepush-ci.toml", ".claude")
     git(repo, "commit", "-q", "-m", "add init files", env={"PREPUSH_CI": "full"})
     return git(repo, "push", "-q", "origin", "main", check=False)
 
@@ -341,6 +344,7 @@ def test_one_command_sets_a_repository_up(repo: Path, git: Git) -> None:
     assert result.returncode == 0, result.stderr
     assert (repo / ".prepush-ci.toml").is_file()
     assert hooks_path(repo, git).endswith(".git/prepush-ci/hooks")
+    assert (repo / ".claude" / "hooks" / "session-start.sh").is_file()
 
 
 def test_two_managers_end_init_with_the_refusal_before_the_session_hook(
@@ -379,7 +383,7 @@ def test_the_config_goes_to_the_root_of_the_worktree_from_a_subdirectory(
     result = init(sub, "--non-interactive", "--check", "scripts/ci", "--hooks", "none")
 
     assert result.returncode == 0, result.stderr
-    assert files(repo) == {".prepush-ci.toml"}
+    assert files(repo) == {".prepush-ci.toml", SESSION_HOOK}
 
 
 def test_a_first_run_ends_with_set_up_and_reports_each_step(repo: Path) -> None:
@@ -416,3 +420,239 @@ def test_a_second_run_with_a_manager_file_leaves_it_alone(repo: Path) -> None:
 
     assert "already set up" in last_line(second)
     assert snapshot(repo) == before
+
+
+POSIX_ONLY = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the SessionStart script is a sh script for the Linux container of Claude Code on "
+    "the web, and its stubs are sh scripts",
+)
+SESSION_HOOK = ".claude/hooks/session-start.sh"
+
+
+@pytest.fixture
+def tool_dir(tmp_path: Path) -> Path:
+    """The directory the stub `uv` names as the tool bin directory: its `prepush-ci` records
+    its arguments in `calls.log` next to it and starts this checkout's tool."""
+    directory = tmp_path / "tool-bin"
+    directory.mkdir()
+    shim = directory / "prepush-ci"
+    shim.write_text(
+        "#!/bin/sh\n"
+        f'echo "$@" >> "{(directory / "calls.log").as_posix()}"\n'
+        f'exec "{Path(sys.executable).as_posix()}" -m prepush_ci "$@"\n'
+    )
+    shim.chmod(0o755)
+    return directory
+
+
+@pytest.fixture
+def stub_uv(tmp_path: Path, tool_dir: Path) -> Path:
+    """A directory with a `uv` that records its calls in `uv.log` and prints `tool_dir` for
+    `tool dir --bin`; it installs nothing."""
+    directory = tmp_path / "stub-uv"
+    directory.mkdir()
+    uv = directory / "uv"
+    uv.write_text(
+        "#!/bin/sh\n"
+        f'echo "$@" >> "{(tmp_path / "uv.log").as_posix()}"\n'
+        f'if [ "$1 $2 $3" = "tool dir --bin" ]; then echo "{tool_dir.as_posix()}"; fi\n'
+    )
+    uv.chmod(0o755)
+    return directory
+
+
+def path_without_the_tool() -> str:
+    """`PATH` as it is, minus every directory that holds a `prepush-ci`."""
+    return os.pathsep.join(
+        entry
+        for entry in os.environ["PATH"].split(os.pathsep)
+        if shutil.which("prepush-ci", path=entry) is None
+    )
+
+
+def run_session_hook(
+    repo: Path,
+    stub: Path,
+    env_file: Path | None,
+    *,
+    remote: bool = True,
+) -> "subprocess.CompletedProcess[str]":
+    """Run the written script as Claude Code would, with the stub `uv` first on `PATH`."""
+    env = {
+        **os.environ,
+        "PATH": os.pathsep.join([str(stub), path_without_the_tool()]),
+    }
+    env.pop("CLAUDE_CODE_REMOTE", None)
+    env.pop("CLAUDE_ENV_FILE", None)
+    if remote:
+        env["CLAUDE_CODE_REMOTE"] = "true"
+    if env_file is not None:
+        env["CLAUDE_ENV_FILE"] = str(env_file)
+    return subprocess.run(
+        ["sh", SESSION_HOOK],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+
+@POSIX_ONLY
+def test_the_session_hook_is_written_executable_and_a_laptop_session_is_left_alone(
+    repo: Path, stub_uv: Path, tmp_path: Path
+) -> None:
+    init(repo, "--non-interactive", "--check", "scripts/ci", "--hooks", "none")
+    env_file = tmp_path / "env"
+    env_file.write_text("export A=1\n")
+
+    result = run_session_hook(repo, stub_uv, env_file, remote=False)
+
+    assert (repo / SESSION_HOOK).stat().st_mode & 0o111
+    assert result.returncode == 0, result.stderr
+    assert not (tmp_path / "uv.log").exists()
+    assert env_file.read_text() == "export A=1\n"
+
+
+@POSIX_ONLY
+def test_the_session_hook_installs_the_hooks_that_were_chosen(
+    repo: Path, stub_uv: Path, tool_dir: Path, tmp_path: Path
+) -> None:
+    (repo / ".husky").mkdir()
+    init(repo, "--non-interactive", "--check", "true", "--hooks", "husky")
+
+    result = run_session_hook(repo, stub_uv, tmp_path / "env")
+
+    assert result.returncode == 0, result.stderr
+    assert (tool_dir / "calls.log").read_text().splitlines() == [
+        "install --hooks husky"
+    ]
+
+
+@POSIX_ONLY
+def test_the_session_hook_installs_the_tool_for_good_and_never_through_uvx(
+    repo: Path, stub_uv: Path, tmp_path: Path
+) -> None:
+    init(repo, "--non-interactive", "--check", "scripts/ci", "--hooks", "none")
+
+    run_session_hook(repo, stub_uv, tmp_path / "env")
+
+    calls = (tmp_path / "uv.log").read_text().splitlines()
+    assert "tool install prepush-ci" in calls
+    assert not [call for call in calls if call.startswith("tool run")]
+
+
+@POSIX_ONLY
+def test_running_the_session_hook_twice_exports_each_variable_once(
+    repo: Path, stub_uv: Path, tool_dir: Path, tmp_path: Path
+) -> None:
+    init(repo, "--non-interactive", "--check", "scripts/ci", "--hooks", "none")
+    env_file = tmp_path / "env"
+
+    run_session_hook(repo, stub_uv, env_file)
+    run_session_hook(repo, stub_uv, env_file)
+
+    lines = env_file.read_text().splitlines()
+    assert lines.count("export PREPUSH_CI=full") == 1
+    assert len([line for line in lines if line.startswith("export PATH=")]) == 1
+    assert tool_dir.as_posix() in env_file.read_text()
+
+
+@POSIX_ONLY
+def test_the_session_hook_starts_its_line_on_a_new_line_after_an_env_file_without_one(
+    repo: Path, stub_uv: Path, tmp_path: Path
+) -> None:
+    init(repo, "--non-interactive", "--check", "scripts/ci", "--hooks", "none")
+    env_file = tmp_path / "env"
+    env_file.write_text("export FOO=1")
+
+    run_session_hook(repo, stub_uv, env_file)
+
+    lines = env_file.read_text().splitlines()
+    assert lines[0] == "export FOO=1"
+    assert "export PREPUSH_CI=full" in lines
+
+
+@POSIX_ONLY
+def test_a_commit_in_the_session_gets_the_trailer_without_the_tool_on_path(
+    repo: Path, stub_uv: Path, tmp_path: Path, git: Git
+) -> None:
+    init(repo, "--non-interactive", "--check", "true", "--hooks", "native")
+    env_file = tmp_path / "env"
+    run_session_hook(repo, stub_uv, env_file)
+    (repo / "x.txt").write_text("x")
+    git(repo, "add", "x.txt")
+
+    subprocess.run(
+        ["sh", "-c", f'. "{env_file}" && git commit -q -m "add x"'],
+        cwd=repo,
+        check=True,
+        env={**os.environ, "PATH": path_without_the_tool(), "GIT_AUTHOR_NAME": "T"},
+    )
+
+    assert (
+        git(repo, "log", "-1", "--format=%B")
+        .stdout.strip()
+        .endswith("Prepush-CI: full")
+    )
+
+
+@POSIX_ONLY
+def test_a_hook_manager_finds_the_tool_in_the_session(
+    repo: Path, stub_uv: Path, tmp_path: Path
+) -> None:
+    (repo / ".husky").mkdir()
+    init(repo, "--non-interactive", "--check", "true", "--hooks", "husky")
+    env_file = tmp_path / "env"
+    run_session_hook(repo, stub_uv, env_file)
+    message = tmp_path / "message"
+    message.write_text("add x\n")
+
+    subprocess.run(
+        ["sh", "-c", f'. "{env_file}" && sh .husky/commit-msg "{message}"'],
+        cwd=repo,
+        check=True,
+        env={**os.environ, "PATH": path_without_the_tool()},
+    )
+
+    assert message.read_text().strip().endswith("Prepush-CI: full")
+
+
+@POSIX_ONLY
+def test_the_session_hook_warns_and_succeeds_when_there_is_no_env_file(
+    repo: Path, stub_uv: Path
+) -> None:
+    init(repo, "--non-interactive", "--check", "scripts/ci", "--hooks", "none")
+
+    result = run_session_hook(repo, stub_uv, None)
+
+    assert result.returncode == 0
+    assert "CLAUDE_ENV_FILE" in result.stderr
+
+
+def test_an_existing_session_hook_is_kept_and_reported_so(repo: Path) -> None:
+    hook = repo / SESSION_HOOK
+    hook.parent.mkdir(parents=True)
+    hook.write_text("#!/bin/sh\necho mine\n")
+    before = hook.read_bytes()
+
+    result = init(repo, "--non-interactive", "--check", "scripts/ci", "--hooks", "none")
+
+    assert hook.read_bytes() == before
+    assert f"kept: {SESSION_HOOK}" in result.stdout
+
+
+def test_opting_out_writes_no_session_hook(repo: Path) -> None:
+    result = init(
+        repo,
+        "--non-interactive",
+        "--check",
+        "scripts/ci",
+        "--hooks",
+        "none",
+        "--no-session-hook",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not (repo / ".claude").exists()

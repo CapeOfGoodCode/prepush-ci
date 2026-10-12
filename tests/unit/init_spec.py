@@ -11,6 +11,7 @@ from prepush_ci.core.init import (
     disagreements,
     problems_message,
     resolved_up_to_date,
+    session_start_script,
     toml_string,
     validate,
 )
@@ -156,3 +157,21 @@ def test_the_message_names_each_key_and_the_source() -> None:
 def test_the_closing_line_says_already_set_up_only_when_nothing_changed() -> None:
     assert closing(False) == "already set up"
     assert closing(True) == "set up"
+
+
+def test_the_session_script_installs_the_chosen_hooks() -> None:
+    assert "prepush-ci install --hooks husky\n" in session_start_script("husky")
+
+
+def test_the_session_script_lets_install_detect_when_no_hooks_were_chosen() -> None:
+    assert "prepush-ci install\n" in session_start_script(None)
+    assert "prepush-ci install\n" in session_start_script("none")
+
+
+def test_the_session_script_never_runs_uvx_or_a_manager_activation() -> None:
+    script = session_start_script("pre-commit")
+    commands = [line for line in script.splitlines() if not line.startswith("#")]
+
+    assert not [
+        line for line in commands if "uvx" in line or "pre-commit install" in line
+    ]

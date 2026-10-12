@@ -125,3 +125,40 @@ ALREADY_INSTALLED = "already installed"
 def closing(changed: bool) -> str:
     """The last line of the output: `already set up` exactly when no file changed."""
     return "set up" if changed else "already set up"
+
+
+SESSION_HOOK_FILE = ".claude/hooks/session-start.sh"
+_SESSION_HOOK = r"""#!/bin/sh
+# Written by `prepush-ci init`; yours to edit, `init` never overwrites it.
+# Claude Code runs it when a session starts. It works only in Claude Code on the web
+# (CLAUDE_CODE_REMOTE=true): it installs prepush-ci for good, installs the hooks and turns the
+# trailer on for the whole session. Add what the repository needs to run its check (services,
+# dependencies) at the end; activating a hook manager (pre-commit install, lefthook install,
+# husky's prepare) belongs there too.
+[ "${CLAUDE_CODE_REMOTE:-}" = "true" ] || exit 0
+if [ -z "${CLAUDE_ENV_FILE:-}" ]; then
+  echo "prepush-ci: CLAUDE_ENV_FILE is not set, so the session would not see prepush-ci;" \
+    "nothing done" >&2
+  exit 0
+fi
+set -eu
+uv tool install prepush-ci
+bin=$(uv tool dir --bin)
+PATH="$bin:$PATH"
+export PATH
+prepush-ci install@HOOKS@
+add_once() {
+  grep -qxF -- "$1" "$CLAUDE_ENV_FILE" 2>/dev/null && return 0
+  # another hook may have left the file without a final newline
+  [ -z "$(tail -c 1 "$CLAUDE_ENV_FILE" 2>/dev/null)" ] || echo >> "$CLAUDE_ENV_FILE"
+  printf '%s\n' "$1" >> "$CLAUDE_ENV_FILE"
+}
+add_once "export PATH=\"$bin:\$PATH\""
+add_once 'export PREPUSH_CI=full'
+"""
+
+
+def session_start_script(hooks: str | None) -> str:
+    """The SessionStart hook skeleton; `install` gets `--hooks <hooks>` unless there is none."""
+    flag = "" if hooks in (None, "none") else f" --hooks {hooks}"
+    return _SESSION_HOOK.replace("@HOOKS@", flag)

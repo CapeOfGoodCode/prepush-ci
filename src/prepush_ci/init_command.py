@@ -19,12 +19,14 @@ from prepush_ci.core.init import (
     ALREADY_INSTALLED,
     NEED_CHECK,
     NO_REPOSITORY,
+    SESSION_HOOK_FILE,
     ConfigFlags,
     closing,
     config_text,
     disagreement_message,
     disagreements,
     problems_message,
+    session_start_script,
     validate,
 )
 from prepush_ci.git import git
@@ -35,6 +37,7 @@ class Options:
     flags: ConfigFlags
     non_interactive: bool = False
     hooks: str | None = None
+    session_hook: bool = True
 
 
 def run(options: Options, cwd: Path) -> int:
@@ -81,8 +84,23 @@ def run(options: Options, cwd: Path) -> int:
     code, installed = _install(options.hooks, cwd)
     if code != 0:
         return code
+    if options.session_hook:
+        changed = _session_hook(root, options.hooks) or changed
     print(closing(changed or installed))
     return 0
+
+
+def _session_hook(root: Path, hooks: str | None) -> bool:
+    """Write the SessionStart script unless there is one; whether it was written."""
+    path = root / SESSION_HOOK_FILE
+    if path.exists():
+        print(f"kept: {SESSION_HOOK_FILE}")
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(session_start_script(hooks), encoding="utf-8", newline="\n")
+    path.chmod(0o755)
+    print(f"written: {SESSION_HOOK_FILE}")
+    return True
 
 
 def _install(hooks: str | None, cwd: Path) -> tuple[int, bool]:
