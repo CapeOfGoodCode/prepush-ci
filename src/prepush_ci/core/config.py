@@ -29,6 +29,9 @@ class Trailer:
     key: str
     value: str
 
+    def line(self) -> str:
+        return f"{self.key}: {self.value}"
+
 
 @dataclass(frozen=True)
 class Config:

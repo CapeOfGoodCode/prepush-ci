@@ -1,27 +1,38 @@
 import os
+import stat
 import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
-Git = Callable[..., str]
+Git = Callable[..., "subprocess.CompletedProcess[str]"]
 
 
 @pytest.fixture
 def git() -> Git:
-    """Run real git in a directory and return its stdout; a failing command fails the test."""
+    """Run real git in a directory; a failing command fails the test unless `check=False`.
 
-    def run(repo: Path, *args: str, env: dict[str, str] | None = None) -> str:
-        result = subprocess.run(
+    `PREPUSH_CI` is dropped from the inherited environment so a developer's own opt-in
+    never leaks into a spec; pass it through `env` when a spec needs it.
+    """
+
+    def run(
+        repo: Path,
+        *args: str,
+        env: dict[str, str] | None = None,
+        check: bool = True,
+    ) -> "subprocess.CompletedProcess[str]":
+        inherited = {k: v for k, v in os.environ.items() if k != "PREPUSH_CI"}
+        return subprocess.run(
             ["git", *args],
             cwd=repo,
             capture_output=True,
             text=True,
-            check=True,
-            env={**os.environ, **(env or {})},
+            check=check,
+            env={**inherited, **(env or {})},
         )
-        return result.stdout
 
     return run
 
@@ -36,3 +47,15 @@ def repo(tmp_path: Path, git: Git) -> Path:
     git(path, "config", "user.email", "test@example.com")
     git(path, "config", "commit.gpgsign", "false")
     return path
+
+
+@pytest.fixture
+def hooked_repo(repo: Path) -> Path:
+    """`repo` with a valid config and the commit-msg hook installed the way git runs it."""
+    (repo / ".prepush-ci.toml").write_text('check = "true"\n')
+    hook = repo / ".git" / "hooks" / "commit-msg"
+    hook.write_text(
+        f'#!/bin/sh\nexec "{sys.executable}" -m prepush_ci hook commit-msg "$1"\n'
+    )
+    hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
+    return repo
