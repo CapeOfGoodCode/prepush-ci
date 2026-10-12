@@ -13,7 +13,7 @@
 
 ## 3. The CI gate
 
-- [ ] 3.1 Carry the three files of `docs/ci/` inside the package, pick the snippet by detection or `--ci`, print it; verify with specs for each system, `--ci` and `none`, and a unit spec that the packaged copies equal `docs/ci/`
+- [x] 3.1 Carry the three files of `docs/ci/` inside the package, pick the snippet by detection or `--ci`, print it; verify with specs for each system, `--ci` and `none`, and a unit spec that the packaged copies equal `docs/ci/`
 - [ ] 3.2 Add `--ci-gate-file`: write the snippet, keep an identical file, refuse another one before any write; verify with specs
 
 ## 4. Interactive

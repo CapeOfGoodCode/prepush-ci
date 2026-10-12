@@ -1,15 +1,19 @@
 import json
 import tomllib
+from pathlib import Path
 
 import pytest
 
+import prepush_ci
 from prepush_ci.core.config import Config, ConfigError, parse_config
 from prepush_ci.core.init import (
+    CI_FILES,
     SESSION_COMMAND,
     ConfigFlags,
     SettingsError,
     closing,
     config_text,
+    detect_ci,
     disagreement_message,
     disagreements,
     problems_message,
@@ -246,3 +250,27 @@ def test_settings_that_are_not_json_are_refused_naming_the_file() -> None:
 def test_settings_of_an_unexpected_shape_are_refused_naming_the_file(text: str) -> None:
     with pytest.raises(SettingsError, match=r"\.claude/settings\.json"):
         register_session_hook(text)
+
+
+PACKAGED = Path(prepush_ci.__file__).parent / "ci_gates"
+DOCS_CI = Path(__file__).parents[2] / "docs" / "ci"
+
+
+def test_the_packaged_gates_equal_the_examples_in_docs() -> None:
+    for name in CI_FILES.values():
+        assert (PACKAGED / name).read_bytes() == (DOCS_CI / name).read_bytes()
+
+
+def test_the_packaged_gates_are_the_three_files_of_docs() -> None:
+    assert sorted(p.name for p in PACKAGED.iterdir()) == sorted(
+        p.name for p in DOCS_CI.iterdir()
+    )
+
+
+def test_github_actions_wins_over_gitlab() -> None:
+    assert detect_ci(workflows=True, gitlab=True) == "github"
+
+
+def test_gitlab_is_next_and_the_generic_gate_is_the_rest() -> None:
+    assert detect_ci(workflows=False, gitlab=True) == "gitlab"
+    assert detect_ci(workflows=False, gitlab=False) == "generic"

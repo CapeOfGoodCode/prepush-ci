@@ -739,3 +739,70 @@ def test_settings_of_an_unexpected_shape_are_refused_and_left_as_they_are(
     assert result.returncode == 1
     assert SETTINGS in result.stderr
     assert snapshot(repo) == before
+
+
+DOCS_CI = Path(__file__).parents[2] / "docs" / "ci"
+
+
+def gate_text(name: str) -> str:
+    return (DOCS_CI / name).read_text(encoding="utf-8")
+
+
+def ci_init(repo: Path, *extra: str) -> "subprocess.CompletedProcess[str]":
+    return quick_init(repo, "--no-session-hook", *extra)
+
+
+def test_github_actions_is_detected_and_its_gate_printed_whole(repo: Path) -> None:
+    workflow = repo / ".github" / "workflows" / "ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("name: ci\n")
+
+    result = ci_init(repo)
+
+    assert gate_text("github-actions.yml") in result.stdout
+    assert workflow.read_text() == "name: ci\n"
+
+
+def test_gitlab_ci_is_detected_when_there_is_no_workflow(repo: Path) -> None:
+    (repo / ".gitlab-ci.yml").write_text("stages: []\n")
+
+    result = ci_init(repo)
+
+    assert gate_text("gitlab-ci.yml") in result.stdout
+    assert gate_text("github-actions.yml") not in result.stdout
+
+
+def test_the_generic_gate_is_printed_when_nothing_is_detected(repo: Path) -> None:
+    result = ci_init(repo)
+
+    assert gate_text("gate.sh") in result.stdout
+
+
+def test_a_directory_of_workflows_without_a_workflow_file_detects_nothing(
+    repo: Path,
+) -> None:
+    (repo / ".github" / "workflows").mkdir(parents=True)
+    (repo / ".github" / "workflows" / "notes.txt").write_text("x")
+
+    result = ci_init(repo)
+
+    assert gate_text("gate.sh") in result.stdout
+
+
+def test_ci_chooses_the_system_by_hand(repo: Path) -> None:
+    workflow = repo / ".github" / "workflows" / "ci.yaml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("name: ci\n")
+
+    result = ci_init(repo, "--ci", "gitlab")
+
+    assert gate_text("gitlab-ci.yml") in result.stdout
+    assert gate_text("github-actions.yml") not in result.stdout
+
+
+def test_ci_none_prints_no_snippet(repo: Path) -> None:
+    result = ci_init(repo, "--ci", "none")
+
+    assert result.returncode == 0, result.stderr
+    for name in ("github-actions.yml", "gitlab-ci.yml", "gate.sh"):
+        assert gate_text(name) not in result.stdout

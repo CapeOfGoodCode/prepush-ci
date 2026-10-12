@@ -4,6 +4,7 @@ import contextlib
 import io
 import sys
 from dataclasses import dataclass
+from importlib import resources
 from pathlib import Path
 
 from prepush_ci import install_command
@@ -17,6 +18,7 @@ from prepush_ci.core.config_source import (
 )
 from prepush_ci.core.init import (
     ALREADY_INSTALLED,
+    CI_FILES,
     NEED_CHECK,
     NO_REPOSITORY,
     SESSION_HOOK_FILE,
@@ -25,6 +27,7 @@ from prepush_ci.core.init import (
     SettingsError,
     closing,
     config_text,
+    detect_ci,
     disagreement_message,
     disagreements,
     problems_message,
@@ -41,6 +44,7 @@ class Options:
     non_interactive: bool = False
     hooks: str | None = None
     session_hook: bool = True
+    ci: str | None = None
 
 
 def run(options: Options, cwd: Path) -> int:
@@ -99,8 +103,33 @@ def run(options: Options, cwd: Path) -> int:
     if options.session_hook:
         changed = _session_hook(root, options.hooks) or changed
         changed = _settings(root, settings_old, settings_new) or changed
+    _ci_gate(options.ci, root)
     print(closing(changed or installed))
     return 0
+
+
+def _ci_gate(ci: str | None, root: Path) -> None:
+    """Print the CI gate snippet of the system in use, or of the one asked for."""
+    system = ci or detect_ci(
+        workflows=_has_workflows(root), gitlab=(root / ".gitlab-ci.yml").is_file()
+    )
+    if system == "none":
+        return
+    text = (
+        resources.files("prepush_ci")
+        .joinpath("ci_gates", CI_FILES[system])
+        .read_text(encoding="utf-8")
+    )
+    print(f"CI gate ({system}): add this to your CI")
+    print(text if text.endswith("\n") else text + "\n", end="")
+
+
+def _has_workflows(root: Path) -> bool:
+    directory = root / ".github" / "workflows"
+    return directory.is_dir() and any(
+        entry.is_file() and entry.suffix in (".yml", ".yaml")
+        for entry in directory.iterdir()
+    )
 
 
 def _settings(root: Path, old: str | None, new: str | None) -> bool:

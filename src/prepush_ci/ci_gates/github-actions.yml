@@ -1,0 +1,37 @@
+# A pull request workflow that skips the real checks when the head commit already went through
+# them in the pre-push hook (`prepush-ci verify`). Copy it and replace the `check` job.
+#
+# The gate job checks out the pull request's head commit, not GitHub's merge commit: the merge
+# commit is made by the server and never verifies. Every other job needs `gate` and runs unless
+# it says `true`; `!cancelled()` makes them run also when the gate job itself failed, because
+# GitHub skips a job whose `needs` job failed and reports a skipped job as a success.
+#
+# Optional, off by default: one full run per pull request anyway, as a mitigation for developers
+# whose local hooks are missing. Turn it on by adding `ready_for_review` to the pull_request
+# types and making the jobs below also run on that event whatever the gate says.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]   # your default branch: its pushes always run in full
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      verified: ${{ steps.gate.outputs.verified }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - id: gate
+        uses: CapeOfGoodCode/prepush-ci@main   # pin a release tag or a commit sha
+
+  check:
+    needs: gate
+    if: ${{ !cancelled() && needs.gate.outputs.verified != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/ci   # your full check
