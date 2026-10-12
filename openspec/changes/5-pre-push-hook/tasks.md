@@ -2,7 +2,7 @@
 
 ## 1. Pure logic
 
-- [ ] 1.1 In `src/prepush_ci/core/`, parse git's pre-push ref lines and pre-commit's variables into pushed refs, drop deletions and refs that are not branches, and decide from parsed trailer keys (read with `git log` from the tip and the configs of tip and worktree) whether a tip demands the check; verify with unit specs named after the scenarios at 100% branch coverage
+- [x] 1.1 In `src/prepush_ci/core/`, parse git's pre-push ref lines and pre-commit's variables into pushed refs, drop deletions and refs that are not branches, and decide from parsed trailer keys (read with `git log` from the tip and the configs of tip and worktree) whether a tip demands the check; verify with unit specs named after the scenarios at 100% branch coverage
 
 ## 2. The hook
 

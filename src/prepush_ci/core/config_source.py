@@ -15,6 +15,10 @@ _MISSING = (
 )
 
 
+class ConfigMissing(ConfigError):
+    """There is no config at all (as opposed to an invalid one)."""
+
+
 def load_config(prepush_ci_toml: str | None, pyproject_toml: str | None) -> Config:
     """Parse the config from the text of `.prepush-ci.toml`, else of `pyproject.toml`.
 
@@ -24,12 +28,12 @@ def load_config(prepush_ci_toml: str | None, pyproject_toml: str | None) -> Conf
     if prepush_ci_toml is not None:
         return _parse(_parse_toml(prepush_ci_toml, PREPUSH_CI_FILE), PREPUSH_CI_FILE)
     if pyproject_toml is None:
-        raise ConfigError([_MISSING])
+        raise ConfigMissing([_MISSING])
     data = _parse_toml(pyproject_toml, PYPROJECT_FILE)
     tool = data.get("tool")
     ours = tool.get("prepush-ci") if isinstance(tool, dict) else None
     if ours is None:
-        raise ConfigError([_MISSING])
+        raise ConfigMissing([_MISSING])
     if not isinstance(ours, dict):
         raise ConfigError(
             [
