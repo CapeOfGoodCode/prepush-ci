@@ -2,18 +2,20 @@
 
 [Full report](https://htmlpreview.github.io/?https://github.com/CapeOfGoodCode/prepush-ci/blob/python-coverage-comment-action-data/htmlcov/index.html)
 
-| Name                                   |    Stmts |     Miss |   Branch |   BrPart |    Cover |   Missing |
-|--------------------------------------- | -------: | -------: | -------: | -------: | -------: | --------: |
-| src/prepush\_ci/\_\_init\_\_.py        |        0 |        0 |        0 |        0 |     100% |           |
-| src/prepush\_ci/\_\_main\_\_.py        |        2 |        0 |        0 |        0 |     100% |           |
-| src/prepush\_ci/cli.py                 |       18 |        0 |        2 |        0 |     100% |           |
-| src/prepush\_ci/commit\_msg\_hook.py   |       58 |        0 |       14 |        0 |     100% |           |
-| src/prepush\_ci/core/\_\_init\_\_.py   |        0 |        0 |        0 |        0 |     100% |           |
-| src/prepush\_ci/core/commit\_msg.py    |       65 |        0 |       26 |        0 |     100% |           |
-| src/prepush\_ci/core/config.py         |       88 |        0 |       34 |        0 |     100% |           |
-| src/prepush\_ci/core/config\_source.py |       30 |        0 |        8 |        0 |     100% |           |
-| src/prepush\_ci/repo\_config.py        |       17 |        0 |        2 |        0 |     100% |           |
-| **TOTAL**                              |  **278** |    **0** |   **86** |    **0** | **100%** |           |
+| Name                                   |    Stmts |     Miss |   Branch |   BrPart |   Cover |   Missing |
+|--------------------------------------- | -------: | -------: | -------: | -------: | ------: | --------: |
+| src/prepush\_ci/\_\_init\_\_.py        |        0 |        0 |        0 |        0 |    100% |           |
+| src/prepush\_ci/\_\_main\_\_.py        |        2 |        0 |        0 |        0 |    100% |           |
+| src/prepush\_ci/cli.py                 |       23 |        0 |        4 |        0 |    100% |           |
+| src/prepush\_ci/commit\_msg\_hook.py   |       58 |        0 |       14 |        0 |    100% |           |
+| src/prepush\_ci/core/\_\_init\_\_.py   |        0 |        0 |        0 |        0 |    100% |           |
+| src/prepush\_ci/core/commit\_msg.py    |       65 |        0 |       26 |        0 |    100% |           |
+| src/prepush\_ci/core/config.py         |       88 |        0 |       34 |        0 |    100% |           |
+| src/prepush\_ci/core/config\_source.py |       31 |        0 |        8 |        0 |    100% |           |
+| src/prepush\_ci/core/pre\_push.py      |       83 |        0 |       30 |        0 |    100% |           |
+| src/prepush\_ci/pre\_push\_hook.py     |      118 |        2 |       40 |        2 |     97% |  147, 173 |
+| src/prepush\_ci/repo\_config.py        |       17 |        0 |        2 |        0 |    100% |           |
+| **TOTAL**                              |  **485** |    **2** |  **158** |    **2** | **99%** |           |
 
 
 ## Setup coverage badge
