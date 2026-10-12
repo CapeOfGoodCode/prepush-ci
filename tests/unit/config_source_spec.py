@@ -1,7 +1,7 @@
 import pytest
 
 from prepush_ci.core.config import ConfigError
-from prepush_ci.core.config_source import load_config
+from prepush_ci.core.config_source import ConfigMissing, load_config
 
 
 def problems_of(prepush_ci_toml: str | None, pyproject_toml: str | None) -> list[str]:
@@ -97,3 +97,11 @@ def test_problems_of_the_pyproject_table_are_prefixed_with_the_table_name() -> N
     assert len(problems) == 1
     assert problems[0].startswith("pyproject.toml [tool.prepush-ci]: ")
     assert "`check` is required" in problems[0]
+
+
+def test_a_missing_config_is_told_apart_from_an_invalid_one() -> None:
+    with pytest.raises(ConfigMissing):
+        load_config(None, '[project]\nname = "x"\n')
+    with pytest.raises(ConfigError) as error_info:
+        load_config("nonsense = 1", None)
+    assert not isinstance(error_info.value, ConfigMissing)
