@@ -707,3 +707,218 @@ def test_the_lefthook_block_holds_no_local_path_and_no_check_command(
     assert str(pushing) not in text
     assert Path(sys.executable).as_posix() not in text
     assert "scripts/ci" not in text
+
+
+# the choice of hooks
+
+
+def hooks_path(repo: Path, git: Git) -> str:
+    return git(repo, "config", "--local", "core.hooksPath", check=False).stdout.strip()
+
+
+def test_pre_commit_is_detected_and_core_hooks_path_stays_unset(
+    pushing: Path, git: Git, env: dict[str, str]
+) -> None:
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+
+    install(pushing, env)
+
+    assert "prepush-ci hook" in (pushing / PRE_COMMIT_CONFIG).read_text()
+    assert hooks_path(pushing, git) == ""
+
+
+def test_husky_is_detected_and_core_hooks_path_stays_unset(
+    husky_repo: Path, git: Git, env: dict[str, str]
+) -> None:
+    install(husky_repo, env)
+
+    for name in ("commit-msg", "pre-push"):
+        assert "prepush-ci hook" in (husky_repo / ".husky" / name).read_text()
+    assert hooks_path(husky_repo, git) == ""
+
+
+def test_without_a_manager_the_hooks_are_native(
+    pushing: Path, git: Git, env: dict[str, str]
+) -> None:
+    result = install(pushing, env)
+
+    assert result.returncode == 0, result.stderr
+    configured = Path(hooks_path(pushing, git))
+    assert configured == (pushing / ".git" / "prepush-ci" / "hooks").resolve()
+
+
+def test_native_can_be_forced_in_a_repository_with_a_manager(
+    pushing: Path, git: Git, env: dict[str, str]
+) -> None:
+    config = "repos:\n  - repo: local\n    hooks: []\n"
+    (pushing / PRE_COMMIT_CONFIG).write_text(config)
+
+    install(pushing, env, "--hooks", "native")
+
+    assert hooks_path(pushing, git) != ""
+    assert (pushing / PRE_COMMIT_CONFIG).read_text() == config
+
+
+def test_an_unknown_choice_of_hooks_exits_2_and_lists_the_four(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    result = install(pushing, env, "--hooks", "jenkins")
+
+    assert result.returncode == 2
+    for name in ("native", "pre-commit", "husky", "lefthook"):
+        assert name in result.stderr
+
+
+def test_two_managers_are_refused_by_name_and_neither_file_changes(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+    (pushing / "lefthook.yml").write_text(LEFTHOOK_CONFIG)
+
+    result = install(pushing, env)
+
+    assert result.returncode == 1
+    for word in ("pre-commit", "lefthook", "--hooks"):
+        assert word in result.stderr
+    assert (pushing / PRE_COMMIT_CONFIG).read_text().count("prepush-ci") == 0
+    assert (pushing / "lefthook.yml").read_text() == LEFTHOOK_CONFIG
+
+
+def test_the_option_settles_two_managers(pushing: Path, env: dict[str, str]) -> None:
+    config = "repos:\n  - repo: local\n    hooks: []\n"
+    (pushing / PRE_COMMIT_CONFIG).write_text(config)
+    (pushing / "lefthook.yml").write_text(LEFTHOOK_CONFIG)
+
+    result = install(pushing, env, "--hooks", "lefthook")
+
+    assert result.returncode == 0, result.stderr
+    assert "prepush-ci hook" in (pushing / "lefthook.yml").read_text()
+    assert (pushing / PRE_COMMIT_CONFIG).read_text() == config
+
+
+@pytest.mark.parametrize(
+    ("manager", "missing"),
+    [
+        ("pre-commit", PRE_COMMIT_CONFIG),
+        ("husky", ".husky"),
+        ("lefthook", "lefthook.yml"),
+    ],
+)
+def test_a_named_manager_without_its_files_is_refused_and_creates_nothing(
+    pushing: Path, git: Git, env: dict[str, str], manager: str, missing: str
+) -> None:
+    before = git(pushing, "status", "--porcelain", "--ignored").stdout
+
+    result = install(pushing, env, "--hooks", manager)
+
+    assert result.returncode == 1
+    assert missing in result.stderr
+    assert git(pushing, "status", "--porcelain", "--ignored").stdout == before
+    assert not (pushing / missing).exists()
+
+
+def test_a_manager_is_installed_from_a_subdirectory_of_the_worktree(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    (husky_repo / "src").mkdir()
+
+    result = install(husky_repo / "src", env)
+
+    assert result.returncode == 0, result.stderr
+    assert (husky_repo / ".husky" / "pre-push").exists()
+    assert not (husky_repo / "src" / ".husky").exists()
+
+
+def test_a_manager_named_outside_a_git_repository_says_there_is_none(
+    tmp_path: Path, env: dict[str, str]
+) -> None:
+    nowhere = tmp_path / "nowhere"
+    nowhere.mkdir()
+
+    result = install(
+        nowhere,
+        {**env, "GIT_CEILING_DIRECTORIES": str(tmp_path)},
+        "--hooks",
+        "lefthook",
+    )
+
+    assert result.returncode == 1
+    assert "no git repository" in result.stderr
+
+
+def test_a_manager_named_in_a_bare_repository_is_refused(
+    tmp_path: Path, git: Git, env: dict[str, str]
+) -> None:
+    git(tmp_path, "init", "-q", "--bare", str(tmp_path / "bare.git"))
+
+    result = install(tmp_path / "bare.git", env, "--hooks", "husky")
+
+    assert result.returncode == 1
+    assert "worktree" in result.stderr
+
+
+def test_a_second_husky_install_writes_nothing_and_says_so(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    first = install(husky_repo, env)
+    files = [husky_repo / ".husky" / name for name in ("commit-msg", "pre-push")]
+    before = [(f.read_text(), f.stat().st_mtime_ns) for f in files]
+
+    second = install(husky_repo, env)
+
+    assert "installed" in first.stdout and "already installed" not in first.stdout
+    assert second.returncode == 0
+    assert "already installed" in second.stdout
+    assert [(f.read_text(), f.stat().st_mtime_ns) for f in files] == before
+
+
+def test_a_hand_edited_husky_block_is_restored_and_reported_updated(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    path = husky_hook(husky_repo, "pre-push", "npm test\n")
+    install(husky_repo, env)
+    installed = path.read_text()
+    path.write_text(installed.replace("refs=$(cat)", "refs="))
+
+    result = install(husky_repo, env)
+
+    assert "updated" in result.stdout
+    assert path.read_text() == installed
+
+
+def test_a_file_with_a_begin_marker_but_no_end_marker_is_refused_and_unchanged(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    path = husky_hook(husky_repo, "pre-push", "# prepush-ci: begin\nnpm test\n")
+
+    result = install(husky_repo, env)
+
+    assert result.returncode == 1
+    assert ".husky/pre-push" in result.stderr
+    assert path.read_text() == "# prepush-ci: begin\nnpm test\n"
+    assert not (husky_repo / ".husky" / "commit-msg").exists()
+
+
+def test_a_file_named_husky_is_not_a_husky_directory_and_the_hooks_are_native(
+    pushing: Path, git: Git, env: dict[str, str]
+) -> None:
+    (pushing / ".husky").write_text("not a directory\n")
+
+    result = install(pushing, env)
+
+    assert result.returncode == 0, result.stderr
+    assert hooks_path(pushing, git) != ""
+    assert (pushing / ".husky").read_text() == "not a directory\n"
+
+
+def test_husky_named_where_a_file_is_called_husky_is_refused_naming_it(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    (pushing / ".husky").write_text("not a directory\n")
+
+    result = install(pushing, env, "--hooks", "husky")
+
+    assert result.returncode == 1
+    assert ".husky" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert (pushing / ".husky").read_text() == "not a directory\n"

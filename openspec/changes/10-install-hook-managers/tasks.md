@@ -2,7 +2,7 @@
 
 ## 1. Choosing the hooks
 
-- [ ] 1.1 Add `--hooks` and manager detection at the worktree root; native stays the default, several managers and a named manager without files are refused, git config and the git directory stay untouched for a manager; verify with unit specs for the decision and integration specs for each scenario of "The choice of hooks", "Several managers are refused", "A named manager must be set up" and "A manager leaves git alone"
+- [x] 1.1 Add `--hooks` and manager detection at the worktree root; native stays the default, several managers and a named manager without files are refused, git config and the git directory stay untouched for a manager; verify with unit specs for the decision and integration specs for each scenario of "The choice of hooks", "Several managers are refused", "A named manager must be set up" and "A manager leaves git alone"
 
 ## 2. The managed block
 
@@ -13,7 +13,7 @@
 
 ## 3. Idempotence and the report
 
-- [ ] 3.1 Report `installed`, `updated` or `already installed` per manager, print the files and the activation command, refuse before writing anything; verify with specs that run `install` twice for each manager, restore a hand-edited block and refuse after a part would have been done
+- [x] 3.1 Report `installed`, `updated` or `already installed` per manager, print the files and the activation command, refuse before writing anything; verify with specs that run `install` twice for each manager, restore a hand-edited block and refuse after a part would have been done
 - [ ] 3.2 Run `sh scripts/ci` and verify it passes
 
 ## Workflow follow-up
