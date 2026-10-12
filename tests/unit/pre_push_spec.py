@@ -11,6 +11,7 @@ from prepush_ci.core.pre_push import (
     dirty_paths,
     hidden_paths,
     is_branch_update,
+    matching_trailer,
     message_dirty,
     message_hidden,
     message_not_head,
@@ -242,3 +243,13 @@ def test_the_hidden_refusal_lists_every_path_and_says_why() -> None:
     assert "sub/b.py" in message
     assert "assume-unchanged" in message
     assert "skip-worktree" in message
+
+
+def test_the_matching_trailer_is_the_line_as_git_shows_it() -> None:
+    trailers = "Signed-off-by: A <a@example.com>\nprepush-ci: full\n"
+
+    assert matching_trailer(trailers, {"prepush-ci"}) == "prepush-ci: full"
+
+
+def test_no_matching_trailer_is_none() -> None:
+    assert matching_trailer("Signed-off-by: A\n", {"prepush-ci"}) is None
