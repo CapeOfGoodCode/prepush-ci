@@ -1,0 +1,28 @@
+name: prepush-ci gate
+description: >-
+  Says whether this pull request may skip its checks: `verified` is `true` only for a pull request
+  from the same repository whose head commit went through the full check in the pre-push hook.
+  Check out the pull request's head commit first. A failing step is a broken gate, never a skip.
+inputs:
+  command:
+    description: How to start prepush-ci, split into words (pipx is on GitHub-hosted runners).
+    default: pipx run prepush-ci
+outputs:
+  verified:
+    description: "`true` when the pull request may skip its checks, `false` otherwise."
+    value: ${{ steps.gate.outputs.verified }}
+runs:
+  using: composite
+  steps:
+    - id: gate
+      shell: bash
+      # Event values reach the script through env, never as an expression inside run.
+      env:
+        PREPUSH_CI_CMD: ${{ inputs.command }}
+        GATE_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
+        GATE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        GATE_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        GATE_BASE_REPO: ${{ github.repository }}
+        GATE_HEAD_BRANCH: ${{ github.head_ref }}
+        GATE_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      run: sh "$GITHUB_ACTION_PATH/docs/ci/gate.sh" >> "$GITHUB_OUTPUT"
