@@ -322,3 +322,244 @@ def test_the_pre_commit_report_names_the_file_and_the_activation_step(
 
     assert PRE_COMMIT_CONFIG in result.stdout
     assert "pre-commit install" in result.stdout
+
+
+# husky
+
+
+ZEROS = "0" * 40
+
+
+def husky_hook(repo: Path, name: str, text: str) -> Path:
+    path = repo / ".husky" / name
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(text, newline="\n")
+    return path
+
+
+def commit_trailer(repo: Path, git: Git, *paths: str) -> str:
+    """Commit `paths` with the trailer in its message; no hook is installed yet."""
+    git(repo, "add", *paths)
+    git(repo, "commit", "-q", "-m", f"work\n\n{TRAILER}")
+    return git(repo, "rev-parse", "HEAD").stdout.strip()
+
+
+def run_hook(
+    repo: Path, env: dict[str, str], name: str, *args: str, stdin: str = ""
+) -> "subprocess.CompletedProcess[str]":
+    """Run a husky hook file with `sh`, as git does."""
+    return subprocess.run(
+        ["sh", f".husky/{name}", *args],
+        cwd=repo,
+        input=stdin,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+
+def ref_line(sha: str) -> str:
+    return f"refs/heads/main {sha} refs/heads/main {ZEROS}\n"
+
+
+@pytest.fixture
+def husky_repo(pushing: Path) -> Path:
+    """`pushing` with an empty `.husky` directory."""
+    (pushing / ".husky").mkdir()
+    return pushing
+
+
+def test_husky_hook_files_are_created_executable_with_the_block(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    result = install(husky_repo, env)
+
+    assert result.returncode == 0, result.stderr
+    for name in ("commit-msg", "pre-push"):
+        path = husky_repo / ".husky" / name
+        text = path.read_text()
+        assert text.startswith("#!/usr/bin/env sh\n# prepush-ci: begin\n")
+        assert f"prepush-ci hook {name}" in text
+        assert text.endswith("# prepush-ci: end\n")
+    if sys.platform != "win32":  # Windows has no executable bit
+        assert os.access(husky_repo / ".husky" / "commit-msg", os.X_OK)
+        assert os.access(husky_repo / ".husky" / "pre-push", os.X_OK)
+
+
+def test_a_husky_shebang_stays_first_and_the_old_lines_follow_the_block(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    path = husky_hook(husky_repo, "pre-push", "#!/bin/sh\nnpm test\n# keep me\n")
+
+    install(husky_repo, env, "--hooks", "husky")
+
+    text = path.read_text()
+    assert text.startswith("#!/bin/sh\n# prepush-ci: begin\n")
+    assert text.endswith("# prepush-ci: end\nnpm test\n# keep me\n")
+
+
+def test_a_husky_file_without_a_shebang_gets_the_block_first(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    path = husky_hook(husky_repo, "commit-msg", "npm test\n")
+
+    install(husky_repo, env, "--hooks", "husky")
+
+    assert path.read_text().startswith("# prepush-ci: begin\n")
+    assert path.read_text().endswith("# prepush-ci: end\nnpm test\n")
+
+
+def test_the_husky_commit_msg_file_writes_the_trailer(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    install(husky_repo, env)
+    message = husky_repo / "message.txt"
+    message.write_text("add x\n")
+
+    result = run_hook(
+        husky_repo, {**env, "PREPUSH_CI": "full"}, "commit-msg", str(message)
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert message.read_text().strip().endswith(TRAILER)
+
+
+def test_the_husky_pre_push_file_runs_the_check(
+    husky_repo: Path, git: Git, env: dict[str, str], ran: Path
+) -> None:
+    install(husky_repo, env)
+    sha = commit_trailer(husky_repo, git, ".husky")
+
+    result = run_hook(husky_repo, env, "pre-push", "origin", "url", stdin=ref_line(sha))
+
+    assert result.returncode == 0, result.stderr
+    assert lines(ran) == ["ran"]
+
+
+def test_a_failing_check_stops_the_husky_hook_before_the_later_lines(
+    husky_repo: Path, git: Git, env: dict[str, str], tmp_path: Path
+) -> None:
+    (husky_repo / ".prepush-ci.toml").write_text(
+        'check = "exit 1"\nrequire_up_to_date = false\n'
+    )
+    later = tmp_path / "later.log"
+    husky_hook(husky_repo, "pre-push", f"echo later >> {later.as_posix()}\n")
+    install(husky_repo, env)
+    sha = commit_trailer(husky_repo, git, ".husky", ".prepush-ci.toml")
+
+    result = run_hook(husky_repo, env, "pre-push", "origin", "url", stdin=ref_line(sha))
+
+    assert result.returncode != 0
+    assert not later.exists()
+
+
+def test_a_later_husky_line_that_reads_standard_input_does_not_hide_the_refs(
+    husky_repo: Path, git: Git, env: dict[str, str], ran: Path, tmp_path: Path
+) -> None:
+    (husky_repo / ".prepush-ci.toml").write_text(
+        f'check = "echo ran >> {ran.as_posix()} && exit 1"\nrequire_up_to_date = false\n'
+    )
+    copy = tmp_path / "stdin.copy"
+    husky_hook(husky_repo, "pre-push", f"cat > {copy.as_posix()}\n")
+    install(husky_repo, env)
+    sha = commit_trailer(husky_repo, git, ".husky", ".prepush-ci.toml")
+
+    failing = run_hook(
+        husky_repo, env, "pre-push", "origin", "url", stdin=ref_line(sha)
+    )
+
+    assert lines(ran) == ["ran"]
+    assert failing.returncode != 0
+
+
+def test_later_husky_lines_still_get_the_ref_lines(
+    husky_repo: Path, git: Git, env: dict[str, str], tmp_path: Path
+) -> None:
+    copy = tmp_path / "stdin.copy"
+    husky_hook(husky_repo, "pre-push", f"cat > {copy.as_posix()}\n")
+    install(husky_repo, env)
+    sha = commit_trailer(husky_repo, git, ".husky")
+
+    run_hook(husky_repo, env, "pre-push", "origin", "url", stdin=ref_line(sha))
+
+    assert copy.read_text().strip() == ref_line(sha).strip()
+
+
+def test_a_later_exit_zero_in_a_husky_hook_does_not_skip_the_check(
+    husky_repo: Path, git: Git, env: dict[str, str], ran: Path
+) -> None:
+    (husky_repo / ".prepush-ci.toml").write_text(
+        f'check = "echo ran >> {ran.as_posix()} && exit 1"\nrequire_up_to_date = false\n'
+    )
+    husky_hook(husky_repo, "pre-push", "exit 0\n")
+    install(husky_repo, env)
+    sha = commit_trailer(husky_repo, git, ".husky", ".prepush-ci.toml")
+
+    result = run_hook(husky_repo, env, "pre-push", "origin", "url", stdin=ref_line(sha))
+
+    assert lines(ran) == ["ran"]
+    assert result.returncode != 0
+
+
+def test_real_git_runs_the_husky_files_for_a_commit_and_a_push(
+    husky_repo: Path, git: Git, env: dict[str, str], ran: Path
+) -> None:
+    install(husky_repo, env)
+    git(husky_repo, "config", "core.hooksPath", ".husky")  # what husky's prepare does
+    git(husky_repo, "add", ".husky")
+    git(husky_repo, "commit", "-q", "-m", "add husky", env={**env})
+    commit(husky_repo, git, env)
+    sha = git(husky_repo, "rev-parse", "HEAD").stdout.strip()
+
+    pushed = git(husky_repo, "push", "origin", "main", env=env, check=False)
+
+    assert body(husky_repo, git).endswith(TRAILER)
+    assert pushed.returncode == 0, pushed.stderr
+    assert lines(ran) == ["ran"]
+    assert remote_has(husky_repo, git, sha)
+
+
+def test_a_husky_install_refuses_before_writing_when_a_hook_path_is_a_directory(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    (husky_repo / ".husky" / "pre-push").mkdir()
+
+    result = install(husky_repo, env, "--hooks", "husky")
+
+    assert result.returncode == 1
+    assert ".husky/pre-push" in result.stderr
+    assert not (husky_repo / ".husky" / "commit-msg").exists()
+
+
+def test_a_husky_install_creates_no_native_files(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    native = husky_repo / ".git" / "hooks" / "pre-push"
+    native.write_text("#!/bin/sh\necho mine\n")
+
+    install(husky_repo, env, "--hooks", "husky")
+
+    assert not (husky_repo / ".git" / "prepush-ci" / "hooks").exists()
+    assert native.read_text() == "#!/bin/sh\necho mine\n"
+
+
+def test_the_husky_report_names_both_files_and_no_activation_step(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    result = install(husky_repo, env, "--hooks", "husky")
+
+    assert ".husky/commit-msg" in result.stdout
+    assert ".husky/pre-push" in result.stdout
+    assert "next:" not in result.stdout
+
+
+def test_the_husky_block_holds_no_local_path(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    install(husky_repo, env, "--hooks", "husky")
+
+    for name in ("commit-msg", "pre-push"):
+        text = (husky_repo / ".husky" / name).read_text()
+        assert str(husky_repo) not in text
+        assert Path(sys.executable).as_posix() not in text

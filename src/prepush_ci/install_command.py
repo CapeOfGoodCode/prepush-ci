@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from prepush_ci.core.hook_managers import (
+    HUSKY_DIRECTORY,
     MANAGERS,
     MARKERS,
     Refusal,
@@ -91,7 +92,13 @@ def _found(root: Path | None) -> list[str]:
     """The managers whose files the worktree root holds."""
     if root is None:
         return []
-    return [m for m in MANAGERS if any((root / name).exists() for name in MARKERS[m])]
+    return [m for m in MANAGERS if any(_marker(root, name) for name in MARKERS[m])]
+
+
+def _marker(root: Path, name: str) -> bool:
+    """Whether the worktree root holds `name`: a directory for husky, a file for the others."""
+    path = root / name
+    return path.is_dir() if name == HUSKY_DIRECTORY else path.is_file()
 
 
 def _install_manager(root: Path | None, manager: str) -> int:
@@ -100,7 +107,7 @@ def _install_manager(root: Path | None, manager: str) -> int:
     if root is None:
         print("prepush-ci install: there is no worktree here", file=sys.stderr)
         return 1
-    present = [name for name in MARKERS[manager] if (root / name).exists()]
+    present = [name for name in MARKERS[manager] if _marker(root, name)]
     if not present:
         print(f"prepush-ci install: {missing_message(manager)}", file=sys.stderr)
         return 1
@@ -116,7 +123,10 @@ def _install_manager(root: Path | None, manager: str) -> int:
             return 1
     for name, (old, new) in plan.items():
         if old != new:
-            (root / name).write_text(new, encoding="utf-8", newline="")
+            path = root / name
+            path.write_text(new, encoding="utf-8", newline="")
+            if old is None:
+                path.chmod(0o755)  # a hook file git runs
     was_installed = any(
         old is not None and holds_block(old) for old, _ in plan.values()
     )
