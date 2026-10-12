@@ -2,7 +2,7 @@
 
 ## 1. Pure logic
 
-- [ ] 1.1 In `src/prepush_ci/core/`, list the `require_env` names that are unset or empty in an environment, split an up-to-date ref into remote and branch, and word the refusals; verify with unit specs named after the scenarios at 100% branch coverage
+- [x] 1.1 In `src/prepush_ci/core/`, list the `require_env` names that are unset or empty in an environment, split an up-to-date ref into remote and branch, and word the refusals; verify with unit specs named after the scenarios at 100% branch coverage
 
 ## 2. The hook
 
