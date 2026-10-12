@@ -28,8 +28,8 @@ def pre_commit_repo(
     (pushing_repo / ".git" / "hooks" / "pre-push").unlink()
     wrapper = tmp_path / "hook.sh"
     wrapper.write_text(
-        f'#!/bin/sh\necho started >> "{tmp_path}/started.log"\n'
-        f'exec "{sys.executable}" -m prepush_ci hook pre-push "$@"\n'
+        f'#!/bin/sh\necho started >> "{tmp_path.as_posix()}/started.log"\n'
+        f'exec "{Path(sys.executable).as_posix()}" -m prepush_ci hook pre-push "$@"\n'
     )
     wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR)
     (pushing_repo / ".pre-commit-config.yaml").write_text(
@@ -38,7 +38,7 @@ def pre_commit_repo(
         "    hooks:\n"
         "      - id: prepush-ci\n"
         "        name: prepush-ci\n"
-        f"        entry: {wrapper}\n"
+        f"        entry: {wrapper.as_posix()}\n"
         "        language: system\n"
         "        always_run: true\n"
         "        pass_filenames: false\n"

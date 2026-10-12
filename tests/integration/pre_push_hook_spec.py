@@ -267,7 +267,7 @@ def test_any_value_of_the_trailer_runs_the_check(pushing_repo: Path, git: Git) -
 def test_a_legacy_key_runs_the_check(pushing_repo: Path, git: Git) -> None:
     ran_log = pushing_repo.parent / "ran.log"
     (pushing_repo / ".prepush-ci.toml").write_text(
-        f'check = "echo ran >> {ran_log}"\nlegacy_keys = ["Full-Pre-Push"]\n'
+        f'check = "echo ran >> {ran_log.as_posix()}"\nlegacy_keys = ["Full-Pre-Push"]\n'
     )
     git(pushing_repo, "commit", "-q", "-a", "-m", "legacy key")
     commit(pushing_repo, git, "work\n\nFull-Pre-Push: required")
@@ -280,7 +280,7 @@ def test_a_legacy_key_runs_the_check(pushing_repo: Path, git: Git) -> None:
 def test_a_configured_key_runs_the_check(pushing_repo: Path, git: Git) -> None:
     ran_log = pushing_repo.parent / "ran.log"
     (pushing_repo / ".prepush-ci.toml").write_text(
-        f'check = "echo ran >> {ran_log}"\n'
+        f'check = "echo ran >> {ran_log.as_posix()}"\n'
         'trailer = { key = "Full-Check", value = "yes" }\n'
     )
     git(pushing_repo, "commit", "-q", "-a", "-m", "configured key")
@@ -324,7 +324,7 @@ def test_a_key_set_only_by_the_worktree_config_demands_the_check(
     (pushing_repo / ".gitignore").write_text(".prepush-ci.toml\n")
     git(pushing_repo, "rm", "-q", "--cached", ".prepush-ci.toml")
     (pushing_repo / ".prepush-ci.toml").write_text(
-        f'check = "echo ran >> {ran_log}"\nlegacy_keys = ["Full-Pre-Push"]\n'
+        f'check = "echo ran >> {ran_log.as_posix()}"\nlegacy_keys = ["Full-Pre-Push"]\n'
     )
     git(pushing_repo, "add", "pyproject.toml", ".gitignore")
     git(pushing_repo, "commit", "-q", "-m", "work\n\nFull-Pre-Push: required")
@@ -453,8 +453,7 @@ def test_the_check_runs_with_the_variable_unset(pushing_repo: Path, git: Git) ->
 def test_the_check_runs_from_the_repository_root_when_pushing_from_a_subdirectory(
     pushing_repo: Path, git: Git
 ) -> None:
-    marker = pushing_repo.parent / "cwd.txt"
-    (pushing_repo / ".prepush-ci.toml").write_text(f'check = "pwd > {marker}"\n')
+    (pushing_repo / ".prepush-ci.toml").write_text('check = "echo here > cwd-marker"\n')
     (pushing_repo / "sub").mkdir()
     git(pushing_repo, "add", "-A")
     git(pushing_repo, "commit", "-q", "-a", "-m", "work" + TRAILER)
@@ -462,7 +461,8 @@ def test_the_check_runs_from_the_repository_root_when_pushing_from_a_subdirector
     result = push(pushing_repo / "sub", git, "main")
 
     assert result.returncode == 0, result.stderr
-    assert marker.read_text().strip() == str(pushing_repo.resolve())
+    assert (pushing_repo / "cwd-marker").exists()
+    assert not (pushing_repo / "sub" / "cwd-marker").exists()
 
 
 def test_two_refs_with_the_same_tip_run_the_check_once(

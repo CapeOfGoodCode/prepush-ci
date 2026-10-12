@@ -60,7 +60,7 @@ def hooked_repo(repo: Path) -> Path:
     (repo / ".prepush-ci.toml").write_text('check = "true"\n')
     hook = repo / ".git" / "hooks" / "commit-msg"
     hook.write_text(
-        f'#!/bin/sh\nexec "{sys.executable}" -m prepush_ci hook commit-msg "$1"\n'
+        f'#!/bin/sh\nexec "{Path(sys.executable).as_posix()}" -m prepush_ci hook commit-msg "$1"\n'
     )
     hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
     return repo
@@ -73,10 +73,10 @@ def pushing_repo(repo: Path, tmp_path: Path, git: Git) -> Path:
     git(tmp_path, "init", "-q", "--bare", str(tmp_path / "remote.git"))
     git(repo, "symbolic-ref", "HEAD", "refs/heads/main")
     ran = tmp_path / "ran.log"
-    (repo / ".prepush-ci.toml").write_text(f'check = "echo ran >> {ran}"\n')
+    (repo / ".prepush-ci.toml").write_text(f'check = "echo ran >> {ran.as_posix()}"\n')
     hook = repo / ".git" / "hooks" / "pre-push"
     hook.write_text(
-        f'#!/bin/sh\nexec "{sys.executable}" -m prepush_ci hook pre-push "$@"\n'
+        f'#!/bin/sh\nexec "{Path(sys.executable).as_posix()}" -m prepush_ci hook pre-push "$@"\n'
     )
     hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
     git(repo, "add", ".prepush-ci.toml")
