@@ -20,6 +20,7 @@ The rulebook for everyone who changes this repository, human or agent. `README.m
   | `Task` | everything without product behavior: docs, tooling, this harness, releases | `chore`, `docs`, `test` |
 
   The organization also offers `Improvement` and `Sub-task`; this repository does not use them.
+- **Every issue says why.** Its body opens with `## Why`: one to three sentences on whose problem it solves and what goes wrong without it. A pointer is not a reason: a slice says the reason in its own words, then cites its section of #1; "the owner asked" is not a reason, the owner's reason is. For a bug, the why is what it costs the user. An open issue without one gets it from bruce-lee before its spec starts.
 - **Structure is native, not prose**: slices of the intent are sub-issues of #1 (`--parent 1`); dependencies are "blocked by" relations (`--blocked-by <n>`). Pick up an issue only when nothing blocks it.
 - **Types say what an issue is; labels say whose move it is** (`LOOP.md`).
 
