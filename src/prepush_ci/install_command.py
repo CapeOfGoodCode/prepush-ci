@@ -79,7 +79,8 @@ def run(cwd: Path, hooks: str | None = None) -> int:
     )
     chained = forwarded or [hook for hook in HOOKS if hook in entries]
     print(report(word, directory.as_posix(), previous.as_posix() if chained else None))
-    if is_temporary(interpreter, os.environ, os.getcwd(), sys.platform == "win32"):
+    windows = sys.platform == "win32"
+    if is_temporary(interpreter, os.environ, os.getcwd(), windows, os.path.realpath):
         print(TEMPORARY_WARNING, file=sys.stderr)
     return 0
 

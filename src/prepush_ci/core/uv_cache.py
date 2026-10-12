@@ -2,7 +2,7 @@
 
 import ntpath
 import posixpath
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from types import ModuleType
 
 TEMPORARY_WARNING = (
@@ -52,8 +52,18 @@ def cache_directory(
 
 
 def is_temporary(
-    interpreter: str, environ: Mapping[str, str], cwd: str, windows: bool = False
+    interpreter: str,
+    environ: Mapping[str, str],
+    cwd: str,
+    windows: bool = False,
+    resolve: Callable[[str], str] = lambda directory: directory,
 ) -> bool:
-    """Whether `interpreter` lies inside uv's cache directory."""
+    """Whether `interpreter` lies inside uv's cache directory, as found or as `resolve` (which
+    follows its symbolic links; core does no I/O, so the caller brings it) returns it. The
+    interpreter's own path is never resolved."""
     directory = cache_directory(environ, cwd, windows)
-    return directory is not None and inside(interpreter, directory, windows)
+    if directory is None:
+        return False
+    return inside(interpreter, directory, windows) or inside(
+        interpreter, resolve(directory), windows
+    )
