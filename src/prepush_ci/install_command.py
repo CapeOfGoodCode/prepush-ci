@@ -28,6 +28,7 @@ from prepush_ci.core.install import (
     outcome,
     report,
 )
+from prepush_ci.core.uv_cache import TEMPORARY_WARNING, is_temporary
 from prepush_ci.git import git
 
 
@@ -54,9 +55,8 @@ def run(cwd: Path, hooks: str | None = None) -> int:
     previous = _previous(cwd, common, directory)
     entries = sorted(e for e in _files(previous))
     forwarded = [name for name in entries if forwardable(name)]
-    desired = desired_files(
-        Path(sys.executable).as_posix(), previous.as_posix(), forwarded
-    )
+    interpreter = Path(sys.executable).as_posix()
+    desired = desired_files(interpreter, previous.as_posix(), forwarded)
     existing = {
         name: Existing(
             (directory / name).read_text(encoding="utf-8"),
@@ -79,6 +79,8 @@ def run(cwd: Path, hooks: str | None = None) -> int:
     )
     chained = forwarded or [hook for hook in HOOKS if hook in entries]
     print(report(word, directory.as_posix(), previous.as_posix() if chained else None))
+    if is_temporary(interpreter, os.environ, os.getcwd(), sys.platform == "win32"):
+        print(TEMPORARY_WARNING, file=sys.stderr)
     return 0
 
 

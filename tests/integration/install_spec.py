@@ -17,16 +17,18 @@ TRAILER = "Prepush-CI: full"
 
 
 def install(
-    repo: Path, *, python: str | None = None, env: dict[str, str] | None = None
+    repo: Path, *, python: str | None = None, env: dict[str, str | None] | None = None
 ) -> "subprocess.CompletedProcess[str]":
-    """Run `prepush-ci install` in `repo` with `python` (default: this interpreter)."""
+    """Run `prepush-ci install` in `repo` with `python` (default: this interpreter); a variable
+    in `env` set to None is removed from the environment."""
+    merged: dict[str, str | None] = {**os.environ, **(env or {})}
     return subprocess.run(
         [python or sys.executable, "-m", "prepush_ci", "install"],
         cwd=repo,
         capture_output=True,
         text=True,
         check=False,
-        env={**os.environ, **(env or {})},
+        env={k: v for k, v in merged.items() if v is not None},
     )
 
 
@@ -563,3 +565,169 @@ def test_a_commit_goes_through_without_the_trailer_when_the_interpreter_has_vani
     assert result.returncode == 0
     assert "prepush-ci install" in result.stderr
     assert TRAILER not in git(pushing, "log", "-1", "--format=%B").stdout
+
+
+SYMLINKS = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="creating a symbolic link needs a privilege on Windows, and uv's default cache "
+    "directory there is not under HOME",
+)
+NOT_CACHED = {"UV_CACHE_DIR": None, "XDG_CACHE_HOME": None}
+IMPORT_PATH = os.pathsep.join(entry for entry in sys.path if entry)
+
+
+def python_at(path: Path) -> str:
+    """A symbolic link at `path` to this interpreter: it runs from anywhere, `install` records the
+    link as written, and the package, with its metadata, is found through PYTHONPATH."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.symlink_to(sys.executable)
+    return str(path)
+
+
+def in_package_path(**env: str | None) -> dict[str, str | None]:
+    return {"PYTHONPATH": IMPORT_PATH, **env}
+
+
+def own_cache() -> str:
+    """The directory this interpreter lives in, as written: a stand-in for uv's cache."""
+    return str(Path(sys.executable).parent)
+
+
+def test_install_warns_when_the_interpreter_is_in_the_uv_cache(
+    repo: Path, tmp_path: Path, git: Git
+) -> None:
+    other = tmp_path / "other"
+    other.mkdir()
+    git(other, "init", "-q")
+    warned = install(repo, env={"UV_CACHE_DIR": own_cache()})
+    plain = install(other, env={"UV_CACHE_DIR": str(tmp_path / "nowhere")})
+
+    assert warned.returncode == 0
+    assert "temporary" in warned.stderr
+    assert "uv tool install prepush-ci" in warned.stderr
+    assert warned.stdout.split()[0] == plain.stdout.split()[0] == "installed:"
+    names = {p.name for p in hooks_dir(repo).iterdir()}
+    assert names == {p.name for p in hooks_dir(other).iterdir()}
+    for name in names - {"previous"}:
+        assert (hooks_dir(repo) / name).read_bytes() == (
+            hooks_dir(other) / name
+        ).read_bytes()
+
+
+def test_install_does_not_warn_when_the_interpreter_is_outside_the_uv_cache(
+    repo: Path, tmp_path: Path
+) -> None:
+    result = install(repo, env={"UV_CACHE_DIR": str(tmp_path / "nowhere")})
+
+    assert result.returncode == 0
+    assert "temporary" not in result.stderr
+
+
+def test_the_warning_comes_back_when_install_runs_again(repo: Path) -> None:
+    env = {"UV_CACHE_DIR": own_cache()}
+    install(repo, env=env)
+
+    second = install(repo, env=env)
+
+    assert second.stdout.startswith("already installed")
+    assert "temporary" in second.stderr
+
+
+def test_a_relative_uv_cache_dir_is_relative_to_the_working_directory(
+    repo: Path,
+) -> None:
+    relative = os.path.relpath(own_cache(), repo)
+
+    result = install(repo, env={"UV_CACHE_DIR": relative})
+
+    assert "temporary" in result.stderr
+
+
+@SYMLINKS
+def test_install_warns_for_an_interpreter_under_xdg_cache_home(
+    repo: Path, tmp_path: Path
+) -> None:
+    xdg = tmp_path / "xdg"
+    python = python_at(xdg / "uv" / "venv" / "bin" / "python")
+
+    result = install(
+        repo,
+        python=python,
+        env=in_package_path(UV_CACHE_DIR=None, XDG_CACHE_HOME=str(xdg)),
+    )
+
+    assert "temporary" in result.stderr
+
+
+@SYMLINKS
+def test_install_warns_for_an_interpreter_under_the_home_cache(
+    repo: Path, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    python = python_at(home / ".cache" / "uv" / "venv" / "bin" / "python")
+
+    result = install(
+        repo,
+        python=python,
+        env=in_package_path(**NOT_CACHED, HOME=str(home)),
+    )
+
+    assert "temporary" in result.stderr
+
+
+@SYMLINKS
+def test_an_empty_uv_cache_dir_falls_back_to_the_default_cache(
+    repo: Path, tmp_path: Path
+) -> None:
+    xdg = tmp_path / "xdg"
+    python = python_at(xdg / "uv" / "venv" / "bin" / "python")
+
+    result = install(
+        repo,
+        python=python,
+        env=in_package_path(UV_CACHE_DIR="", XDG_CACHE_HOME=str(xdg)),
+    )
+
+    assert "temporary" in result.stderr
+
+
+@SYMLINKS
+def test_a_sibling_of_the_cache_with_the_same_name_prefix_is_not_temporary(
+    repo: Path, tmp_path: Path
+) -> None:
+    python = python_at(tmp_path / "uv2" / "bin" / "python")
+
+    result = install(
+        repo,
+        python=python,
+        env=in_package_path(UV_CACHE_DIR=str(tmp_path / "uv")),
+    )
+
+    assert result.returncode == 0
+    assert "temporary" not in result.stderr
+
+
+@SYMLINKS
+def test_an_interpreter_that_links_out_of_the_cache_is_still_temporary(
+    repo: Path, tmp_path: Path
+) -> None:
+    python = python_at(tmp_path / "uv" / "venv" / "bin" / "python")
+
+    result = install(
+        repo, python=python, env=in_package_path(UV_CACHE_DIR=str(tmp_path / "uv"))
+    )
+
+    assert "temporary" in result.stderr
+
+
+def test_a_hook_manager_install_never_warns_about_the_interpreter(
+    repo: Path,
+) -> None:
+    (repo / ".pre-commit-config.yaml").write_text(
+        "repos:\n  - repo: local\n    hooks: []\n"
+    )
+
+    result = install(repo, env={"UV_CACHE_DIR": own_cache()})
+
+    assert result.returncode == 0
+    assert "temporary" not in result.stderr
