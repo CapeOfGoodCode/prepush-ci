@@ -44,6 +44,31 @@ jobs:
           path: .coverage
           include-hidden-files: true
 
+  # The loops and CI run Linux, contributors also Windows: specs that hand paths to git or a shell
+  # broke there twice (#26, #36) and only the human's pre-push hook noticed.
+  check-windows:
+    if: github.event_name == 'push' || !github.event.pull_request.draft
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: uv sync --frozen
+      - run: npm ci
+      - run: sh scripts/ci
+
   # Write permissions live here, away from the job that runs the tests.
   coverage:
     needs: check
