@@ -7,7 +7,7 @@
 ## 2. The cache and `run`
 
 - [x] 2.1 Read and write records under the repository's git directory, a damaged or unwritable cache falling back to running the check; verify with integration specs against real repositories
-- [ ] 2.2 Add `prepush-ci run`: the hook's refusals, the preflight, the check, the exit code, and the record of a pass unless `cache = false`; verify with the matching integration specs
+- [x] 2.2 Add `prepush-ci run`: the hook's refusals, the preflight, the check, the exit code, and the record of a pass unless `cache = false`; verify with the matching integration specs
 - [ ] 2.3 Let the pre-push hook skip the check on a cached pass of the pushed tip, saying so, and record its own passes; verify with integration specs that push to a bare repository with real `git push`, including a push the remote rejects and a retry
 - [ ] 2.4 Run `sh scripts/ci` and verify it passes
 

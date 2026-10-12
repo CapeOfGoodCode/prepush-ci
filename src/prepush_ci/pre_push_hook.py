@@ -1,11 +1,11 @@
 """`prepush-ci hook pre-push`: a pushed commit that carries the trailer was checked before it goes."""
 
-import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TextIO
 
+from prepush_ci.checking import Refused, head, require_clean, run_check, worktree_root
 from prepush_ci.core.commit_msg import InvalidMode, parse_mode
 from prepush_ci.core.config import Config, ConfigError
 from prepush_ci.core.pre_push import (
@@ -14,14 +14,12 @@ from prepush_ci.core.pre_push import (
     branch_tips,
     demand_keys,
     demands_check,
-    message_dirty,
-    message_hidden,
     message_not_head,
     message_off,
     parse_ref_lines,
     pre_commit_push,
 )
-from prepush_ci.git import GitError, committed_config, dirty, git, hidden, trailers
+from prepush_ci.git import GitError, committed_config, git, trailers
 from prepush_ci.preflight import PreflightRefused
 from prepush_ci.preflight import run as run_preflight
 from prepush_ci.repo_config import load_repository_config
@@ -32,10 +30,6 @@ HINT = (
     "run `git commit --amend --no-edit` with PREPUSH_CI=full to add the trailer "
     "and check it here first"
 )
-
-
-class HookError(Exception):
-    """The hook cannot let the push go; the message says why."""
 
 
 def run(stdin: TextIO, env: Mapping[str, str], cwd: Path) -> int:
@@ -50,7 +44,7 @@ def run(stdin: TextIO, env: Mapping[str, str], cwd: Path) -> int:
     except (
         InvalidMode,
         MalformedRefLine,
-        HookError,
+        Refused,
         GitError,
         PreflightRefused,
     ) as error:
@@ -62,7 +56,7 @@ def _decide(stdin_text: str, env: Mapping[str, str], cwd: Path) -> int:
     tips = branch_tips(_pushed_refs(stdin_text, env, cwd))
     if not tips:
         return 0
-    root = _worktree_root(cwd)
+    root = worktree_root(cwd)
     config = load_repository_config(root)
     demanding = [sha for sha in tips if _demands_check(sha, config, root)]
     if not demanding:
@@ -79,26 +73,14 @@ def _enforce(
     if (
         env.get(ENV_VAR) == "off"
     ):  # unset, empty and `full` behave alike: the trailer demands the check, not the variable
-        raise HookError(message_off(demanding))
-    head = _head(root)
-    others = [sha for sha in demanding if sha != head]
+        raise Refused(message_off(demanding))
+    tip = head(root)
+    others = [sha for sha in demanding if sha != tip]
     if others:
-        raise HookError(message_not_head(others, head))
-    dirty_files = dirty(root)
-    if dirty_files:
-        raise HookError(message_dirty(dirty_files))
-    hidden_files = hidden(root)
-    if hidden_files:
-        raise HookError(message_hidden(hidden_files))
+        raise Refused(message_not_head(others, tip))
+    require_clean(root)
     run_preflight(config, env, root)
-    return _run_check(config, root)
-
-
-def _head(cwd: Path) -> str:
-    result = git(cwd, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
-    if result.returncode != 0:
-        raise HookError("HEAD points to no commit, so there is nothing to check")
-    return result.stdout.strip()
+    return run_check(config, root)
 
 
 def _pushed_refs(stdin_text: str, env: Mapping[str, str], cwd: Path) -> list[PushedRef]:
@@ -118,7 +100,7 @@ def _pushed_refs(stdin_text: str, env: Mapping[str, str], cwd: Path) -> list[Pus
 def _resolve(ref: str, cwd: Path) -> str:
     result = git(cwd, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
     if result.returncode != 0:
-        raise HookError(f"{ref} (PRE_COMMIT_LOCAL_BRANCH) does not name a commit")
+        raise Refused(f"{ref} (PRE_COMMIT_LOCAL_BRANCH) does not name a commit")
     return result.stdout.strip()
 
 
@@ -126,25 +108,3 @@ def _demands_check(sha: str, config: Config, cwd: Path) -> bool:
     tip_config = committed_config(sha, cwd)
     configs = [config] if tip_config is None else [config, tip_config]
     return demands_check(trailers(sha, cwd), demand_keys(*configs))
-
-
-def _worktree_root(cwd: Path) -> Path:
-    result = git(cwd, "rev-parse", "--show-toplevel")
-    if result.returncode != 0:
-        raise HookError(
-            "the repository has no worktree, so the hook cannot check a commit here"
-        )
-    return Path(result.stdout.strip())
-
-
-def _run_check(config: Config, root: Path) -> int:
-    outcome = subprocess.run(
-        config.check, shell=True, cwd=root, stdin=subprocess.DEVNULL, check=False
-    )
-    if outcome.returncode != 0:
-        print(
-            f"prepush-ci: the check failed (exit {outcome.returncode}): {config.check}",
-            file=sys.stderr,
-        )
-        return 1
-    return 0

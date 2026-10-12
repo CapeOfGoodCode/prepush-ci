@@ -6,7 +6,13 @@ import sys
 from importlib.metadata import version
 from pathlib import Path
 
-from prepush_ci import commit_msg_hook, pre_push_hook, strip_command, verify_command
+from prepush_ci import (
+    commit_msg_hook,
+    pre_push_hook,
+    run_command,
+    strip_command,
+    verify_command,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -30,6 +36,10 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command")
     hook = commands.add_parser("hook", help="entry points that git hooks call")
     hooks = hook.add_subparsers(dest="hook", required=True)
+    commands.add_parser(
+        "run",
+        help="run the preflight and the check on HEAD, as the pre-push hook would",
+    )
     commit_msg = hooks.add_parser(
         "commit-msg", help="write the trailer when PREPUSH_CI=full"
     )
@@ -55,6 +65,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(args_in)
     if args.command == "strip":
         return strip_command.run(args.base, Path.cwd())
+    if args.command == "run":
+        return run_command.run(os.environ, Path.cwd())
     if args.command == "hook" and args.hook == "pre-push":
         return pre_push_hook.run(sys.stdin, os.environ, Path.cwd())
     if args.command == "hook":

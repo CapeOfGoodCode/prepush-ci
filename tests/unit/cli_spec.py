@@ -39,3 +39,10 @@ def test_verify_after_a_double_dash_without_a_sha_exits_1(
 ) -> None:
     assert main(["--", "verify"]) == 1
     assert capsys.readouterr().out.startswith("not verified: the sha is missing")
+
+
+def test_the_usage_lists_the_run_command(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main([]) == 0
+    assert "run " in capsys.readouterr().out
