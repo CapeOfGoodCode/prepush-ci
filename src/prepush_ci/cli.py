@@ -8,6 +8,7 @@ from pathlib import Path
 
 from prepush_ci import (
     commit_msg_hook,
+    init_command,
     install_command,
     pre_push_hook,
     run_command,
@@ -15,6 +16,7 @@ from prepush_ci import (
     verify_command,
 )
 from prepush_ci.core.hook_managers import CHOICES
+from prepush_ci.core.init import ConfigFlags
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -50,6 +52,29 @@ def main(argv: list[str] | None = None) -> int:
         choices=CHOICES,
         help="whose hooks to install (default: the hook manager found, else native)",
     )
+    init = commands.add_parser(
+        "init", help="set a repository up: config, hooks, SessionStart hook, CI gate"
+    )
+    init.add_argument(
+        "--non-interactive", action="store_true", help="ask nothing; take the flags"
+    )
+    init.add_argument("--check", help="the command that runs your full CI check")
+    init.add_argument("--preflight", help="a command to run before the check")
+    init.add_argument(
+        "--require-env",
+        action="append",
+        help="an environment variable the check needs (repeatable)",
+    )
+    init.add_argument(
+        "--require-up-to-date",
+        help="a ref the branch must contain, or true or false",
+    )
+    init.add_argument("--default-branch", help="the repository's default branch")
+    init.add_argument(
+        "--hooks",
+        choices=(*CHOICES, "none"),
+        help="whose hooks to install, or none (default: the hook manager found, else native)",
+    )
     commit_msg = hooks.add_parser(
         "commit-msg", help="write the trailer when PREPUSH_CI=full"
     )
@@ -77,6 +102,17 @@ def main(argv: list[str] | None = None) -> int:
         return strip_command.run(args.base, Path.cwd())
     if args.command == "run":
         return run_command.run(os.environ, Path.cwd())
+    if args.command == "init":
+        flags = ConfigFlags(
+            check=args.check,
+            preflight=args.preflight,
+            require_env=None if args.require_env is None else tuple(args.require_env),
+            require_up_to_date=args.require_up_to_date,
+            default_branch=args.default_branch,
+        )
+        return init_command.run(
+            init_command.Options(flags, args.non_interactive, args.hooks), Path.cwd()
+        )
     if args.command == "install":
         return install_command.run(Path.cwd(), args.hooks)
     if args.command == "hook" and args.hook == "pre-push":
