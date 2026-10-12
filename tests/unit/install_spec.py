@@ -148,3 +148,25 @@ def test_the_report_names_the_directory_and_the_previous_one_when_there_is_one()
 
 def test_the_report_has_one_line_when_nothing_is_kept() -> None:
     assert report("installed", "/g/hooks", None) == "installed: /g/hooks"
+
+
+def test_the_pre_push_script_fails_closed_when_the_interpreter_is_gone() -> None:
+    script = hook_script("pre-push")
+
+    assert 'if [ ! -x "$py" ]' in script
+    assert "prepush-ci install" in script
+    assert script.index("exit 1", script.index('[ ! -x "$py" ]')) < script.index(
+        "-m prepush_ci"
+    )
+
+
+def test_the_commit_msg_script_warns_and_lets_the_commit_go_when_the_interpreter_is_gone() -> (
+    None
+):
+    script = hook_script("commit-msg")
+
+    assert 'if [ ! -x "$py" ]' in script
+    assert "prepush-ci install" in script
+    assert script.index("exit 0", script.index('[ ! -x "$py" ]')) < script.index(
+        "-m prepush_ci"
+    )

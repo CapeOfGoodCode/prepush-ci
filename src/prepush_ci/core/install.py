@@ -22,13 +22,30 @@ _RUN_PREVIOUS = (
     # Git runs a hook only if it exists and is executable, and so do we, each time.
     'if [ -x "$prev/{hook}" ]; then\n  "$prev/{hook}" "$@"{stdin} || exit $?\nfi\n'
 )
+_REINSTALL = "run prepush-ci install again"  # no backticks: the shell would run them
+_MISSING_INTERPRETER = {
+    # A push could carry a trailer commit nobody checked, so it fails closed; a commit without
+    # the tool only lacks the trailer, so it warns and goes on.
+    "pre-push": (
+        'if [ ! -x "$py" ]; then\n'
+        f'  echo "prepush-ci: the interpreter $py is gone; {_REINSTALL}" >&2\n'
+        "  exit 1\n"
+        "fi\n"
+    ),
+    "commit-msg": (
+        'if [ ! -x "$py" ]; then\n'
+        f'  echo "prepush-ci: the interpreter $py is gone, no trailer written; {_REINSTALL}" >&2\n'
+        "  exit 0\n"
+        "fi\n"
+    ),
+}
 
 
 def hook_script(hook: str) -> str:
     """The script git runs for `hook`: the hook of the same name in the previous directory first,
     then this tool, started with the interpreter in the file `python` beside the script so that
     `PATH` plays no part. `pre-push` reads its standard input once and feeds it to both."""
-    interpreter = f'py=$(cat "$dir/{PYTHON_FILE}")\n'
+    interpreter = f'py=$(cat "$dir/{PYTHON_FILE}")\n' + _MISSING_INTERPRETER[hook]
     if hook == "pre-push":
         return (
             _PRELUDE

@@ -527,3 +527,39 @@ def test_install_outside_a_git_repository_fails_and_says_so(tmp_path: Path) -> N
 
     assert result.returncode == 1
     assert "no git repository" in result.stderr
+
+
+def vanish_interpreter(repo: Path) -> None:
+    (hooks_dir(repo) / "python").write_text("/nonexistent/venv/bin/python\n")
+
+
+def test_a_push_is_refused_naming_install_when_the_interpreter_has_vanished(
+    pushing: Path, git: Git, ran: Path
+) -> None:
+    install(pushing)
+    sha = commit_with_trailer(pushing, git)
+    vanish_interpreter(pushing)
+
+    result = push_main(pushing, git)
+
+    assert result.returncode != 0
+    assert "prepush-ci install" in result.stderr
+    assert not ran.exists()
+    assert not remote_has(pushing, git, sha)
+
+
+def test_a_commit_goes_through_without_the_trailer_when_the_interpreter_has_vanished(
+    pushing: Path, git: Git
+) -> None:
+    install(pushing)
+    vanish_interpreter(pushing)
+    (pushing / "x.txt").write_text("x")
+    git(pushing, "add", "x.txt")
+
+    result = git(
+        pushing, "commit", "-m", "add x", env={"PREPUSH_CI": "full"}, check=False
+    )
+
+    assert result.returncode == 0
+    assert "prepush-ci install" in result.stderr
+    assert TRAILER not in git(pushing, "log", "-1", "--format=%B").stdout
