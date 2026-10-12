@@ -1,6 +1,7 @@
 """Read a commit through git: the shared I/O of the commands that decide about a commit."""
 
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 
 from prepush_ci.core.config import Config, ConfigError
@@ -17,10 +18,14 @@ class GitError(Exception):
     """git cannot tell what a command needs to know; the message says what and why."""
 
 
-def git(cwd: Path, *args: str) -> "subprocess.CompletedProcess[str]":
+def git(
+    cwd: Path, *args: str, env: Mapping[str, str] | None = None
+) -> "subprocess.CompletedProcess[str]":
+    """Run git; `env` replaces the environment (None: inherit it)."""
     return subprocess.run(
         ["git", *args],
         cwd=cwd,
+        env=env,
         capture_output=True,
         text=True,
         errors="replace",

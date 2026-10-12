@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from prepush_ci.core.doctor import (
     NAMES,
     config_check,
@@ -5,9 +7,11 @@ from prepush_ci.core.doctor import (
     exit_status,
     fail,
     ok,
+    preflight_check,
     prepush_ci_check,
     render,
     skip,
+    up_to_date_check,
 )
 
 
@@ -155,3 +159,120 @@ def test_an_invalid_value_fails_even_when_a_mode_is_expected() -> None:
 
     assert check.status == "fail"
     assert "ful" in check.text
+
+
+def never() -> tuple[int, str]:
+    raise AssertionError("the preflight command must not run")
+
+
+def test_nothing_to_verify_passes_and_says_so() -> None:
+    check = preflight_check(None, (), (), never)
+
+    assert check.status == "ok"
+    assert "nothing to verify" in check.text
+
+
+def test_variables_that_are_set_pass_without_a_command() -> None:
+    check = preflight_check(None, ("A_URL",), (), never)
+
+    assert check.status == "ok"
+    assert "A_URL" in check.text
+
+
+def test_missing_variables_fail_naming_every_one_and_the_command_does_not_run() -> None:
+    check = preflight_check("make up", ("A_URL", "B_URL"), ("A_URL", "B_URL"), never)
+
+    assert check.status == "fail"
+    assert "A_URL" in check.text and "B_URL" in check.text
+
+
+def test_a_command_that_exits_zero_passes_and_its_output_is_not_shown() -> None:
+    check = preflight_check("make up", (), (), lambda: (0, "all good\n"))
+
+    assert check.status == "ok"
+    assert "all good" not in check.text
+    assert check.detail == ()
+
+
+def test_a_failing_command_names_itself_and_its_status_and_shows_its_output() -> None:
+    check = preflight_check("make up", (), (), lambda: (3, "db is down\nretry\n"))
+
+    assert check.status == "fail"
+    assert "make up" in check.text and "3" in check.text
+    assert check.detail == ("db is down", "retry")
+
+
+def reached(status: int, error: str = "") -> "Callable[[str, str], tuple[int, str]]":
+    def ls_remote(remote: str, branch: str) -> tuple[int, str]:
+        return status, error
+
+    return ls_remote
+
+
+def test_a_disabled_up_to_date_passes_without_asking_the_remote() -> None:
+    def refuse(remote: str, branch: str) -> tuple[int, str]:
+        raise AssertionError("no remote is contacted")
+
+    check = up_to_date_check(None, [], refuse)
+
+    assert check.status == "ok"
+    assert "disabled" in check.text
+
+
+def test_a_branch_the_remote_has_passes_and_the_ref_is_named() -> None:
+    check = up_to_date_check("origin/main", ["origin"], reached(0))
+
+    assert check.status == "ok"
+    assert "origin/main" in check.text
+
+
+def test_the_branch_is_everything_after_the_first_slash() -> None:
+    asked: list[tuple[str, str]] = []
+
+    def ls_remote(remote: str, branch: str) -> tuple[int, str]:
+        asked.append((remote, branch))
+        return 0, ""
+
+    up_to_date_check("origin/release/1", ["origin"], ls_remote)
+
+    assert asked == [("origin", "release/1")]
+
+
+def test_a_ref_that_is_not_remote_slash_branch_fails_and_offers_the_way_out() -> None:
+    for ref in ("main", "/main", "origin/"):
+        check = up_to_date_check(ref, ["origin"], reached(0))
+
+        assert check.status == "fail"
+        assert "<remote>/<branch>" in check.text
+        assert check.fix is not None and "require_up_to_date = false" in check.fix
+
+
+def test_a_remote_that_is_not_configured_fails_and_names_it() -> None:
+    check = up_to_date_check("upstream/develop", ["origin"], reached(0))
+
+    assert check.status == "fail"
+    assert "upstream" in check.text
+    assert check.fix is not None and "require_up_to_date = false" in check.fix
+
+
+def test_a_branch_the_remote_lacks_fails_and_names_the_ref() -> None:
+    check = up_to_date_check("origin/gone", ["origin"], reached(2))
+
+    assert check.status == "fail"
+    assert "origin/gone" in check.text
+    assert check.fix is not None and "require_up_to_date = false" in check.fix
+
+
+def test_a_remote_that_cannot_be_reached_fails_with_the_reason() -> None:
+    check = up_to_date_check("origin/main", ["origin"], reached(128, "fatal: nope"))
+
+    assert check.status == "fail"
+    assert "cannot be reached" in check.text and "fatal: nope" in check.text
+    assert check.fix is not None and "require_up_to_date = false" in check.fix
+
+
+def test_an_unreachable_remote_without_a_reason_still_says_so() -> None:
+    check = up_to_date_check("origin/main", ["origin"], reached(128))
+
+    assert check.status == "fail"
+    assert check.text.endswith("cannot be reached")
