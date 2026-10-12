@@ -6,9 +6,9 @@
 
 ## 2. The command
 
-- [ ] 2.1 Add `prepush-ci verify <sha>`: resolve the commit, read its trailers and the config committed in it, print the line with the full sha and exit 0 or 1, also for a missing, empty or extra argument; verify with integration specs against real temporary repositories
-- [ ] 2.2 Fail with the fetch hint for an unknown or shallow-missing sha; verify with an integration spec on a real shallow clone
-- [ ] 2.3 Run `sh scripts/ci` and verify it passes
+- [x] 2.1 Add `prepush-ci verify <sha>`: resolve the commit, read its trailers and the config committed in it, print the line with the full sha and exit 0 or 1, also for a missing, empty or extra argument; verify with integration specs against real temporary repositories
+- [x] 2.2 Fail with the fetch hint for an unknown or shallow-missing sha; verify with an integration spec on a real shallow clone
+- [x] 2.3 Run `sh scripts/ci` and verify it passes
 
 ## Workflow follow-up
 
