@@ -75,6 +75,11 @@ def main(argv: list[str] | None = None) -> int:
         choices=(*CHOICES, "none"),
         help="whose hooks to install, or none (default: the hook manager found, else native)",
     )
+    init.add_argument(
+        "--no-session-hook",
+        action="store_true",
+        help="do not write the Claude Code SessionStart hook",
+    )
     commit_msg = hooks.add_parser(
         "commit-msg", help="write the trailer when PREPUSH_CI=full"
     )
@@ -111,7 +116,10 @@ def main(argv: list[str] | None = None) -> int:
             default_branch=args.default_branch,
         )
         return init_command.run(
-            init_command.Options(flags, args.non_interactive, args.hooks), Path.cwd()
+            init_command.Options(
+                flags, args.non_interactive, args.hooks, not args.no_session_hook
+            ),
+            Path.cwd(),
         )
     if args.command == "install":
         return install_command.run(Path.cwd(), args.hooks)
