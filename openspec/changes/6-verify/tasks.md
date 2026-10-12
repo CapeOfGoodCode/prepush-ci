@@ -2,7 +2,7 @@
 
 ## 1. Pure logic
 
-- [ ] 1.1 In `src/prepush_ci/core/`, add the decision: parsed trailer keys, the demanded keys and the committer e-mail as recorded (`%ce`) in, verified or not plus a one-line reason out; reuse the key matcher that #5 adds to `src/prepush_ci/core/` (this task is blocked by #5; do not write a second one); verify with unit specs named after the scenarios at 100% branch coverage
+- [x] 1.1 In `src/prepush_ci/core/`, add the decision: parsed trailer keys, the demanded keys and the committer e-mail as recorded (`%ce`) in, verified or not plus a one-line reason out; reuse the key matcher that #5 adds to `src/prepush_ci/core/` (this task is blocked by #5; do not write a second one); verify with unit specs named after the scenarios at 100% branch coverage
 
 ## 2. The command
 
