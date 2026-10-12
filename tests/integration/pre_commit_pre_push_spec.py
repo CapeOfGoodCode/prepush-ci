@@ -38,7 +38,7 @@ def pre_commit_repo(
         "    hooks:\n"
         "      - id: prepush-ci\n"
         "        name: prepush-ci\n"
-        f"        entry: {wrapper.as_posix()}\n"
+        f"        entry: sh {wrapper.as_posix()}\n"
         "        language: system\n"
         "        always_run: true\n"
         "        pass_filenames: false\n"
