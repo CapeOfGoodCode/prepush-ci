@@ -123,6 +123,19 @@ def dirty_paths(porcelain_z: str) -> list[str]:
     return paths
 
 
+def hidden_paths(ls_files_v_z: str) -> list[str]:
+    """Paths `git status` cannot see changes to, from `git ls-files -v -z` output.
+
+    A lowercase tag marks an assume-unchanged entry and `S` a skip-worktree one
+    (sparse checkout sets it); git reports no change to either.
+    """
+    paths: list[str] = []
+    for entry in ls_files_v_z.split("\0"):
+        if entry and (entry[0].islower() or entry[0] == "S"):
+            paths.append(entry[2:])
+    return paths
+
+
 def _shorts(shas: Sequence[str]) -> str:
     return ", ".join(sha[:SHORT] for sha in shas)
 
@@ -148,4 +161,14 @@ def message_dirty(paths: Sequence[str]) -> str:
     return (
         "the worktree is not clean, so the check would not run on the commit you push; "
         f"commit, stash, or ignore these paths:\n{listed}"
+    )
+
+
+def message_hidden(paths: Sequence[str]) -> str:
+    listed = "\n".join(f"  {path}" for path in paths)
+    return (
+        "git does not report changes to these paths (assume-unchanged or skip-worktree, "
+        "which a sparse checkout sets), so the check would not run on the commit you push; "
+        "clear the flag with `git update-index --no-assume-unchanged` or "
+        f"`--no-skip-worktree`, or check out the whole tree:\n{listed}"
     )
