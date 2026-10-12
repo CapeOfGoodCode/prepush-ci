@@ -2,7 +2,7 @@
 
 ## 1. Pure logic
 
-- [ ] 1.1 In `src/prepush_ci/core/`, add the message rewrite: a commit message and the demanded keys in, the message without the matching trailer lines out (blank separator removed when the trailer block empties); reuse the key matcher that #5 adds (this task is blocked by #5); verify with unit specs named after the scenarios at 100% branch coverage
+- [x] 1.1 In `src/prepush_ci/core/`, add the message rewrite: a commit message and the demanded keys in, the message without the matching trailer lines out (blank separator removed when the trailer block empties); reuse the key matcher that #5 adds (this task is blocked by #5); verify with unit specs named after the scenarios at 100% branch coverage
 
 ## 2. The command
 
