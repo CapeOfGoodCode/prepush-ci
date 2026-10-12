@@ -3,8 +3,8 @@
 ## 1. The report and the cheap checks
 
 - [ ] 1.1 Add `prepush-ci doctor` with the six check lines in order, the `ok`/`fail`/`skip` verdicts, the closing count, the exit status, `fix:` lines, and the refusal outside a repository or in a bare one (verdicts and line text in `core/`); verify with specs for the order, the count, a failure that does not stop the later checks, and the two refusals
-- [ ] 1.2 Add the `config` check and the skip of `preflight` and `up-to-date` without it; verify with specs for each config place, a missing config, several problems and a malformed file
-- [ ] 1.3 Add the `PREPUSH_CI` check and `--mode`; verify with specs for each value, a misspelled one and every mode mismatch
+- [x] 1.2 Add the `config` check and the skip of `preflight` and `up-to-date` without it; verify with specs for each config place, a missing config, several problems and a malformed file
+- [x] 1.3 Add the `PREPUSH_CI` check and `--mode`; verify with specs for each value, a misspelled one and every mode mismatch
 
 ## 2. The hooks
 

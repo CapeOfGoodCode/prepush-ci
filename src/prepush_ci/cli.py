@@ -8,6 +8,7 @@ from pathlib import Path
 
 from prepush_ci import (
     commit_msg_hook,
+    doctor_command,
     init_command,
     install_command,
     pre_push_hook,
@@ -15,6 +16,7 @@ from prepush_ci import (
     strip_command,
     verify_command,
 )
+from prepush_ci.core.doctor import MODES
 from prepush_ci.core.hook_managers import CHOICES
 from prepush_ci.core.init import CI_CHOICES, ConfigFlags
 
@@ -89,6 +91,14 @@ def main(argv: list[str] | None = None) -> int:
         "--ci-gate-file",
         help="write the CI gate snippet to this file instead of printing it",
     )
+    diagnose = commands.add_parser(
+        "doctor", help="check that the hooks and the config will do their job"
+    )
+    diagnose.add_argument(
+        "--mode",
+        choices=MODES,
+        help="also require PREPUSH_CI to have this value (unset: not set or empty)",
+    )
     commit_msg = hooks.add_parser(
         "commit-msg", help="write the trailer when PREPUSH_CI=full"
     )
@@ -135,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
             ),
             Path.cwd(),
         )
+    if args.command == "doctor":
+        return doctor_command.run(Path.cwd(), os.environ, args.mode)
     if args.command == "install":
         return install_command.run(Path.cwd(), args.hooks)
     if args.command == "hook" and args.hook == "pre-push":
