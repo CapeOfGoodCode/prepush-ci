@@ -7,6 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+import yaml
 
 Git = Callable[..., "subprocess.CompletedProcess[str]"]
 
@@ -563,3 +564,146 @@ def test_the_husky_block_holds_no_local_path(
         text = (husky_repo / ".husky" / name).read_text()
         assert str(husky_repo) not in text
         assert Path(sys.executable).as_posix() not in text
+
+
+# lefthook
+
+
+LEFTHOOK_CONFIG = (
+    "pre-commit:\n  commands:\n    lint:\n      run: make lint\n"
+    "pre-push:\n  commands:\n    test:\n      run: make test\n"
+)
+
+
+def parsed(path: Path) -> dict[str, dict[str, dict[str, dict[str, object]]]]:
+    loaded = yaml.safe_load(path.read_text())
+    assert isinstance(loaded, dict)
+    return loaded
+
+
+def test_a_lefthook_config_under_a_dotted_name_is_detected_and_no_other_is_made(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    (pushing / ".lefthook.yaml").write_text(LEFTHOOK_CONFIG)
+
+    result = install(pushing, env)
+
+    assert result.returncode == 0, result.stderr
+    assert "prepush-ci hook" in (pushing / ".lefthook.yaml").read_text()
+    assert not (pushing / "lefthook.yml").exists()
+
+
+def test_the_lefthook_commands_pass_the_message_file_and_standard_input(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    path = pushing / "lefthook.yml"
+    path.write_text(LEFTHOOK_CONFIG)
+
+    install(pushing, env, "--hooks", "lefthook")
+
+    config = parsed(path)
+    assert (
+        config["commit-msg"]["commands"]["prepush-ci"]["run"]
+        == "prepush-ci hook commit-msg {1}"
+    )
+    assert config["pre-push"]["commands"]["prepush-ci"]["use_stdin"] is True
+    assert set(config["pre-push"]["commands"]) == {"prepush-ci", "test"}
+    assert config["pre-commit"] == parsed(path)["pre-commit"]
+
+
+def test_the_lefthook_hook_sections_are_added_at_the_end_and_the_rest_is_unchanged(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    path = pushing / "lefthook.yml"
+    original = "pre-commit:\n  commands:\n    lint:\n      run: make lint\n"
+    path.write_text(original)
+
+    install(pushing, env)
+
+    text = path.read_text()
+    assert text.startswith(original)
+    assert text[len(original) :].startswith("commit-msg:\n  commands:\n")
+    assert list(parsed(path)) == ["pre-commit", "commit-msg", "pre-push"]
+
+
+def test_existing_lefthook_commands_stay_next_to_ours_under_the_same_key(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    path = pushing / "lefthook.yml"
+    path.write_text(LEFTHOOK_CONFIG)
+
+    install(pushing, env)
+
+    text = path.read_text()
+    assert "pre-push:\n  commands:\n    # prepush-ci: begin\n" in text
+    assert "    test:\n      run: make test\n" in text
+    assert list(parsed(path)["pre-push"]["commands"]) == ["prepush-ci", "test"]
+
+
+def test_a_lefthook_hook_without_commands_is_refused_and_unchanged(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    path = pushing / "lefthook.yml"
+    path.write_text("pre-push:\n  jobs:\n    - run: make test\n")
+
+    result = install(pushing, env)
+
+    assert result.returncode == 1
+    assert "pre-push" in result.stderr and "commands" in result.stderr
+    assert path.read_text() == "pre-push:\n  jobs:\n    - run: make test\n"
+
+
+def test_a_second_lefthook_install_writes_nothing(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    path = pushing / "lefthook.yml"
+    path.write_text(LEFTHOOK_CONFIG)
+    first = install(pushing, env)
+    stamp, contents = path.stat().st_mtime_ns, path.read_text()
+
+    second = install(pushing, env)
+
+    assert "already installed" not in first.stdout and "installed" in first.stdout
+    assert second.returncode == 0
+    assert "already installed" in second.stdout
+    assert (path.stat().st_mtime_ns, path.read_text()) == (stamp, contents)
+
+
+def test_a_hand_edited_lefthook_block_is_restored_and_the_other_lines_stay(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    path = pushing / "lefthook.yml"
+    path.write_text(LEFTHOOK_CONFIG)
+    install(pushing, env)
+    installed = path.read_text()
+    path.write_text(installed.replace("use_stdin: true", "use_stdin: false"))
+
+    result = install(pushing, env)
+
+    assert "updated" in result.stdout
+    assert path.read_text() == installed
+
+
+def test_the_lefthook_report_names_the_file_and_the_activation_step(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    (pushing / "lefthook.yml").write_text(LEFTHOOK_CONFIG)
+
+    result = install(pushing, env)
+
+    assert "lefthook.yml" in result.stdout
+    assert "lefthook install" in result.stdout
+
+
+def test_the_lefthook_block_holds_no_local_path_and_no_check_command(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    (pushing / "lefthook.yml").write_text(LEFTHOOK_CONFIG)
+    (pushing / ".prepush-ci.toml").write_text('check = "scripts/ci"\n')
+
+    install(pushing, env)
+
+    text = (pushing / "lefthook.yml").read_text()
+    assert str(pushing) not in text
+    assert Path(sys.executable).as_posix() not in text
+    assert "scripts/ci" not in text
