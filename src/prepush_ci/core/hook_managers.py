@@ -183,11 +183,28 @@ def _block_items(lines: Sequence[str], key: int) -> tuple[int, list[str]]:
     return last, items
 
 
-MANAGERS = ("pre-commit",)
+HUSKY_DIRECTORY = ".husky"
+_HUSKY_HOOKS = ("commit-msg", "pre-push")
+_HUSKY_SHEBANG = "#!/usr/bin/env sh"
+# The pre-push block reads git's standard input once, hands it to the tool, ends the hook with
+# its status when it fails, and gives the same input to the lines after it.
+_HUSKY_BLOCKS = {
+    "commit-msg": [BEGIN, 'prepush-ci hook commit-msg "$1" || exit $?', END],
+    "pre-push": [
+        BEGIN,
+        "refs=$(cat)",
+        'printf \'%s\\n\' "$refs" | prepush-ci hook pre-push "$@" || exit $?',
+        "exec <<PREPUSH_CI_REFS",
+        "$refs",
+        "PREPUSH_CI_REFS",
+        END,
+    ],
+}
+
+MANAGERS = ("pre-commit", "husky")
 CHOICES = ("native", *MANAGERS)
-MARKERS = {
-    "pre-commit": (PRE_COMMIT_FILE,)
-}  # what the worktree root holds for each manager
+# What the worktree root holds for each manager.
+MARKERS = {"pre-commit": (PRE_COMMIT_FILE,), "husky": (HUSKY_DIRECTORY,)}
 _ACTIVATION = {
     "pre-commit": "pre-commit install"
 }  # the team's own step, never run from here
@@ -213,12 +230,26 @@ def missing_message(manager: str) -> str:
 def manager_files(manager: str, present: Sequence[str]) -> list[str]:
     """The files `install` edits for `manager`, relative to the worktree root; `present` are the
     names from `MARKERS` that exist."""
+    if manager == "husky":
+        return [f"{HUSKY_DIRECTORY}/{hook}" for hook in _HUSKY_HOOKS]
     return [PRE_COMMIT_FILE]
 
 
 def edit_file(manager: str, name: str, text: str | None) -> str:
     """The new contents of file `name` of `manager`, `text` being its contents or None."""
+    if manager == "husky":
+        return edit_husky(name.rsplit("/", 1)[-1], text)
     return edit_pre_commit(text or "")
+
+
+def edit_husky(hook: str, text: str | None) -> str:
+    """A husky hook file with the block before every other line (after a `#!` line): the whole
+    file when `text` is None."""
+    if text is None:
+        return join_lines([_HUSKY_SHEBANG, *_HUSKY_BLOCKS[hook]], "\n")
+    lines, eol = split_lines(text)
+    after_shebang = 1 if lines and lines[0].startswith("#!") else 0
+    return join_lines(place_block(lines, _HUSKY_BLOCKS[hook], after_shebang), eol)
 
 
 def holds_block(text: str) -> bool:

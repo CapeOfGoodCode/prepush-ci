@@ -7,6 +7,7 @@ from prepush_ci.core.hook_managers import (
     Refusal,
     choose,
     edit_file,
+    edit_husky,
     edit_pre_commit,
     find_block,
     holds_block,
@@ -325,3 +326,59 @@ def test_the_report_of_a_manager_without_an_activation_step_names_none() -> None
     report = manager_report("installed", "husky", [".husky/pre-push"])
 
     assert report == "installed: husky\n  .husky/pre-push"
+
+
+def test_a_new_husky_file_starts_with_a_shebang_and_holds_the_block() -> None:
+    text = edit_husky("commit-msg", None)
+
+    assert text == (
+        f'#!/usr/bin/env sh\n{BEGIN}\nprepush-ci hook commit-msg "$1" || exit $?\n{END}\n'
+    )
+
+
+def test_the_husky_block_goes_after_the_shebang_and_before_every_other_line() -> None:
+    text = edit_husky("pre-push", "#!/bin/sh\nnpm test\n")
+
+    assert text.splitlines()[0] == "#!/bin/sh"
+    assert text.splitlines()[1] == BEGIN
+    assert text.endswith(f"{END}\nnpm test\n")
+
+
+def test_a_husky_file_without_a_shebang_starts_with_the_block() -> None:
+    assert edit_husky("pre-push", "npm test\n").startswith(f"{BEGIN}\n")
+
+
+def test_an_empty_husky_file_gets_just_the_block() -> None:
+    text = edit_husky("commit-msg", "")
+
+    assert text.startswith(f"{BEGIN}\n")
+    assert text.endswith(f"{END}\n")
+
+
+def test_the_husky_pre_push_block_runs_the_tool_on_the_refs_and_hands_them_on() -> None:
+    text = edit_husky("pre-push", None)
+
+    assert "refs=$(cat)" in text
+    assert (
+        """printf '%s\\n' "$refs" | prepush-ci hook pre-push "$@" || exit $?""" in text
+    )
+    assert text.index("exit $?") < text.index("exec <<PREPUSH_CI_REFS")
+
+
+def test_a_second_husky_edit_changes_nothing_and_a_hand_edit_is_undone() -> None:
+    once = edit_husky("pre-push", "#!/bin/sh\nnpm test\n")
+
+    assert edit_husky("pre-push", once) == once
+    assert edit_husky("pre-push", once.replace("refs=$(cat)", "refs=")) == once
+
+
+def test_husky_edits_the_commit_msg_and_pre_push_files_of_its_directory() -> None:
+    assert manager_files("husky", [".husky"]) == [
+        ".husky/commit-msg",
+        ".husky/pre-push",
+    ]
+    assert edit_file("husky", ".husky/pre-push", None) == edit_husky("pre-push", None)
+
+
+def test_a_missing_husky_directory_is_named() -> None:
+    assert ".husky" in missing_message("husky")
