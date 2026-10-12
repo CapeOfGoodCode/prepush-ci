@@ -2,10 +2,11 @@
 
 import argparse
 import os
+import sys
 from importlib.metadata import version
 from pathlib import Path
 
-from prepush_ci import commit_msg_hook
+from prepush_ci import commit_msg_hook, pre_push_hook
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -22,7 +23,16 @@ def main(argv: list[str] | None = None) -> int:
     commit_msg.add_argument(
         "file", type=Path, help="the commit message file git passes"
     )
+    pre_push = hooks.add_parser(
+        "pre-push",
+        help="refuse to push a commit with the trailer unless the check passes",
+    )
+    pre_push.add_argument(
+        "git_args", nargs="*", help="the remote name and url git passes (unused)"
+    )
     args = parser.parse_args(argv)
+    if args.command == "hook" and args.hook == "pre-push":
+        return pre_push_hook.run(sys.stdin, os.environ, Path.cwd())
     if args.command == "hook":
         return commit_msg_hook.run(args.file, os.environ, Path.cwd())
     parser.print_help()
