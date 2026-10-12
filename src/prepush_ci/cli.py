@@ -95,6 +95,11 @@ def main(argv: list[str] | None = None) -> int:
         "doctor", help="check that the hooks and the config will do their job"
     )
     diagnose.add_argument(
+        "--hooks",
+        choices=(*CHOICES, "none"),
+        help="whose hooks to check, or none (default: the hook manager found, else native)",
+    )
+    diagnose.add_argument(
         "--mode",
         choices=MODES,
         help="also require PREPUSH_CI to have this value (unset: not set or empty)",
@@ -146,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
             Path.cwd(),
         )
     if args.command == "doctor":
-        return doctor_command.run(Path.cwd(), os.environ, args.mode)
+        return doctor_command.run(Path.cwd(), os.environ, args.hooks, args.mode)
     if args.command == "install":
         return install_command.run(Path.cwd(), args.hooks)
     if args.command == "hook" and args.hook == "pre-push":
