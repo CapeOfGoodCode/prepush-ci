@@ -8,6 +8,7 @@ from pathlib import Path
 
 from prepush_ci import (
     commit_msg_hook,
+    install_command,
     pre_push_hook,
     run_command,
     strip_command,
@@ -40,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
         "run",
         help="run the preflight and the check on HEAD, as the pre-push hook would",
     )
+    commands.add_parser("install", help="point git at hooks that run this tool")
     commit_msg = hooks.add_parser(
         "commit-msg", help="write the trailer when PREPUSH_CI=full"
     )
@@ -67,6 +69,8 @@ def main(argv: list[str] | None = None) -> int:
         return strip_command.run(args.base, Path.cwd())
     if args.command == "run":
         return run_command.run(os.environ, Path.cwd())
+    if args.command == "install":
+        return install_command.run(Path.cwd())
     if args.command == "hook" and args.hook == "pre-push":
         return pre_push_hook.run(sys.stdin, os.environ, Path.cwd())
     if args.command == "hook":
