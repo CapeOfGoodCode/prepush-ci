@@ -1,0 +1,213 @@
+from collections.abc import Mapping
+from typing import Any
+
+import pytest
+
+from prepush_ci.core.config import Config, ConfigError, Trailer, parse_config
+
+
+def problems_of(table: Mapping[str, Any]) -> list[str]:
+    with pytest.raises(ConfigError) as error_info:
+        parse_config(table)
+    return error_info.value.problems
+
+
+def test_only_the_check_is_given_and_every_other_key_takes_its_default() -> None:
+    assert parse_config({"check": "scripts/ci"}) == Config(
+        check="scripts/ci",
+        preflight=None,
+        require_env=(),
+        require_up_to_date="origin/main",
+        default_branch="main",
+        trailer=Trailer(key="Prepush-CI", value="full"),
+        legacy_keys=(),
+        cache=True,
+    )
+
+
+def test_every_key_is_given_and_the_parsed_config_holds_exactly_those_values() -> None:
+    table = {
+        "check": "make ci",
+        "preflight": "make lint",
+        "require_env": ["DATABASE_URL"],
+        "require_up_to_date": "upstream/develop",
+        "default_branch": "trunk",
+        "trailer": {"key": "Full-Check", "value": "yes"},
+        "legacy_keys": ["Full-Pre-Push"],
+        "cache": False,
+    }
+
+    assert parse_config(table) == Config(
+        check="make ci",
+        preflight="make lint",
+        require_env=("DATABASE_URL",),
+        require_up_to_date="upstream/develop",
+        default_branch="trunk",
+        trailer=Trailer(key="Full-Check", value="yes"),
+        legacy_keys=("Full-Pre-Push",),
+        cache=False,
+    )
+
+
+def test_up_to_date_ref_follows_the_default_branch() -> None:
+    config = parse_config({"check": "x", "default_branch": "trunk"})
+
+    assert config.require_up_to_date == "origin/trunk"
+
+
+def test_up_to_date_set_to_true_means_origin_and_the_default_branch() -> None:
+    config = parse_config(
+        {"check": "x", "default_branch": "trunk", "require_up_to_date": True}
+    )
+
+    assert config.require_up_to_date == "origin/trunk"
+
+
+def test_up_to_date_check_disabled_leaves_no_up_to_date_ref() -> None:
+    config = parse_config({"check": "x", "require_up_to_date": False})
+
+    assert config.require_up_to_date is None
+
+
+def test_trailer_table_with_only_a_key_takes_the_default_value() -> None:
+    config = parse_config({"check": "x", "trailer": {"key": "Full-Check"}})
+
+    assert config.trailer == Trailer(key="Full-Check", value="full")
+
+
+def test_trailer_table_with_only_a_value_takes_the_default_key() -> None:
+    config = parse_config({"check": "x", "trailer": {"value": "yes"}})
+
+    assert config.trailer == Trailer(key="Prepush-CI", value="yes")
+
+
+def test_missing_check_is_reported_as_required() -> None:
+    problems = problems_of({"cache": False})
+
+    assert len(problems) == 1
+    assert "`check` is required" in problems[0]
+
+
+def test_unknown_key_is_reported_by_name() -> None:
+    problems = problems_of({"check": "x", "chekc": "scripts/ci"})
+
+    assert len(problems) == 1
+    assert "unknown key `chekc`" in problems[0]
+
+
+def test_unknown_key_in_the_trailer_table_is_reported_by_its_full_path() -> None:
+    problems = problems_of({"check": "x", "trailer": {"key": "X", "valeu": "y"}})
+
+    assert len(problems) == 1
+    assert "unknown key `trailer.valeu`" in problems[0]
+
+
+def test_wrong_type_is_reported_with_the_key_and_the_expected_type() -> None:
+    problems = problems_of({"check": "x", "cache": "yes"})
+
+    assert len(problems) == 1
+    assert "`cache` must be a boolean" in problems[0]
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "expected"),
+    [
+        ("check", 3, "`check` must be a string"),
+        ("preflight", ["a"], "`preflight` must be a string"),
+        ("require_env", "HOME", "`require_env` must be a list of strings"),
+        ("require_env", ["HOME", 3], "`require_env` must be a list of strings"),
+        (
+            "require_up_to_date",
+            3,
+            "`require_up_to_date` must be a string or a boolean",
+        ),
+        ("default_branch", 3, "`default_branch` must be a string"),
+        ("trailer", "Prepush-CI: full", "`trailer` must be a table"),
+        ("trailer", {"key": 3}, "`trailer.key` must be a string"),
+        ("trailer", {"value": 3}, "`trailer.value` must be a string"),
+        ("legacy_keys", "Full", "`legacy_keys` must be a list of strings"),
+    ],
+)
+def test_every_key_with_a_value_of_the_wrong_type_is_reported(
+    key: str, value: Any, expected: str
+) -> None:
+    table = {"check": "x"}
+    table[key] = value
+
+    problems = problems_of(table)
+
+    assert len(problems) == 1
+    assert expected in problems[0]
+
+
+@pytest.mark.parametrize(
+    "key", ["check", "preflight", "default_branch", "require_up_to_date"]
+)
+def test_an_empty_string_where_a_command_branch_or_ref_is_expected_is_reported(
+    key: str,
+) -> None:
+    table = {"check": "x"}
+    table[key] = ""
+
+    problems = problems_of(table)
+
+    assert len(problems) == 1
+    assert f"`{key}` must not be empty" in problems[0]
+
+
+def test_several_problems_are_reported_at_once() -> None:
+    problems = problems_of({"check": "x", "foo": 1, "default_branch": 3})
+
+    assert len(problems) == 2
+    assert any("`foo`" in problem for problem in problems)
+    assert any("`default_branch`" in problem for problem in problems)
+
+
+def test_a_wrong_default_branch_does_not_hide_the_other_problems() -> None:
+    problems = problems_of({"default_branch": 3, "require_up_to_date": True})
+
+    assert any("`check` is required" in problem for problem in problems)
+    assert any("`default_branch` must be a string" in problem for problem in problems)
+
+
+def test_a_trailer_key_with_a_space_is_not_a_valid_trailer_key() -> None:
+    problems = problems_of(
+        {"check": "x", "trailer": {"key": "Prepush CI", "value": "full"}}
+    )
+
+    assert len(problems) == 1
+    assert "`trailer.key` is not a valid trailer key" in problems[0]
+
+
+def test_an_empty_trailer_key_is_not_a_valid_trailer_key() -> None:
+    problems = problems_of({"check": "x", "trailer": {"key": "", "value": "full"}})
+
+    assert len(problems) == 1
+    assert "`trailer.key` is not a valid trailer key" in problems[0]
+
+
+def test_a_legacy_key_with_a_space_is_not_a_valid_trailer_key() -> None:
+    problems = problems_of({"check": "x", "legacy_keys": ["Full Pre-Push"]})
+
+    assert len(problems) == 1
+    assert "`legacy_keys`" in problems[0]
+    assert "Full Pre-Push" in problems[0]
+
+
+def test_an_empty_legacy_key_is_not_a_valid_trailer_key() -> None:
+    problems = problems_of({"check": "x", "legacy_keys": ["Full-Pre-Push", ""]})
+
+    assert len(problems) == 1
+    assert "`legacy_keys`" in problems[0]
+
+
+@pytest.mark.parametrize(
+    "value", ["", "full\nSigned-off-by: x", "full\r", "  full  ", "full "]
+)
+def test_a_trailer_value_that_is_empty_multi_line_or_padded_is_reported(
+    value: str,
+) -> None:
+    problems = problems_of({"check": "x", "trailer": {"value": value}})
+
+    assert len(problems) == 1
+    assert "`trailer.value`" in problems[0]
