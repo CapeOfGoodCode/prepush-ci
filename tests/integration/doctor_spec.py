@@ -1,8 +1,11 @@
 """`prepush-ci doctor` in real temporary git repositories, started as the module."""
 
+import http.server
 import os
 import subprocess
 import sys
+import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -14,7 +17,10 @@ CONFIG = 'check = "true"\nrequire_up_to_date = false\n'
 
 
 def doctor(
-    repo: Path, *args: str, env: dict[str, str] | None = None
+    repo: Path,
+    *args: str,
+    env: dict[str, str] | None = None,
+    timeout: float | None = None,
 ) -> "subprocess.CompletedProcess[str]":
     """Run `prepush-ci doctor` in `repo`, without any `PREPUSH_CI` the developer has set."""
     inherited = {
@@ -29,6 +35,7 @@ def doctor(
         text=True,
         check=False,
         env={**inherited, **(env or {})},
+        timeout=timeout,
     )
 
 
@@ -811,3 +818,353 @@ def test_the_native_hint_is_only_given_for_a_detected_manager(repo: Path) -> Non
     assert "--hooks native" in fix_after(detected, "commit-msg")
     assert "--hooks native" not in fix_after(named, "commit-msg")
     assert "install --hooks pre-commit" in fix_after(named, "commit-msg")
+
+
+# A repository where everything passes
+
+
+@pytest.fixture
+def ready(repo: Path, tmp_path: Path, git: Git) -> Path:
+    """`repo` on `main` with a config, native hooks installed and a bare `origin` that has `main`."""
+    remote = tmp_path / "remote.git"
+    git(tmp_path, "init", "-q", "--bare", str(remote))
+    git(repo, "symbolic-ref", "HEAD", "refs/heads/main")
+    (repo / ".prepush-ci.toml").write_text('check = "true"\n')
+    git(repo, "add", ".prepush-ci.toml")
+    git(repo, "commit", "-q", "-m", "init")
+    git(repo, "remote", "add", "origin", str(remote))
+    git(repo, "push", "-q", "origin", "main")
+    install(repo)
+    return repo
+
+
+def configure(repo: Path, *lines: str) -> None:
+    """Replace the config with a passing check and `lines`."""
+    (repo / ".prepush-ci.toml").write_text("\n".join(['check = "true"', *lines, ""]))
+
+
+FULL = {"PREPUSH_CI": "full"}
+
+
+def test_everything_set_up_passes_all_six_checks_and_exits_0(ready: Path) -> None:
+    result = doctor(ready, env=FULL)
+
+    assert result.returncode == 0, result.stdout
+    assert [text.split()[0] for text in result.stdout.splitlines()[:-1]] == ["ok"] * 6
+    assert result.stdout.splitlines()[-1] == "all checks passed"
+
+
+def test_passing_checks_print_no_fix_line(ready: Path) -> None:
+    result = doctor(ready, env=FULL)
+
+    assert "fix:" not in result.stdout
+
+
+def test_a_subdirectory_of_the_worktree_is_checked_as_the_whole_worktree(
+    ready: Path,
+) -> None:
+    (ready / "src").mkdir()
+
+    result = doctor(ready / "src", env=FULL)
+
+    assert result.returncode == 0, result.stdout
+
+
+def test_the_last_line_counts_every_check_that_did_not_pass(ready: Path) -> None:
+    (ready / "gone").mkdir()
+    subprocess.run(
+        ["git", "remote", "set-url", "origin", str(ready / "gone" / "nowhere")],
+        cwd=ready,
+        check=True,
+    )
+
+    result = doctor(ready, env={"PREPUSH_CI": "foo"})
+
+    assert status(result, "PREPUSH_CI") == "fail"
+    assert status(result, "up-to-date") == "fail"
+    assert result.returncode == 1
+    assert result.stdout.splitlines()[-1] == "2 of 6 checks did not pass"
+
+
+# The preflight check
+
+
+def test_variables_that_are_set_and_a_passing_command_pass(ready: Path) -> None:
+    configure(ready, 'require_env = ["DATABASE_URL"]', 'preflight = "true"')
+
+    result = doctor(ready, env={"DATABASE_URL": "postgres://x"})
+
+    assert status(result, "preflight") == "ok"
+
+
+def test_missing_variables_fail_and_name_every_one(ready: Path) -> None:
+    configure(ready, 'require_env = ["A_URL", "B_URL"]')
+
+    result = doctor(ready)
+
+    assert status(result, "preflight") == "fail"
+    assert "A_URL" in line(result, "preflight")
+    assert "B_URL" in line(result, "preflight")
+
+
+def test_a_missing_variable_stops_the_preflight_command(
+    ready: Path, tmp_path: Path
+) -> None:
+    marker = tmp_path / "ran.marker"
+    configure(
+        ready, 'require_env = ["A_URL"]', f'preflight = "touch {marker.as_posix()}"'
+    )
+
+    doctor(ready)
+
+    assert not marker.exists()
+
+
+def test_a_failing_preflight_names_the_command_and_status_and_shows_its_output(
+    ready: Path,
+) -> None:
+    configure(ready, "preflight = 'echo db is down; exit 3'")
+
+    result = doctor(ready)
+
+    text = line(result, "preflight")
+    assert status(result, "preflight") == "fail"
+    assert "echo db is down; exit 3" in text and "3" in text
+    assert "    db is down" in result.stdout.splitlines()
+
+
+def test_a_passing_preflight_stays_quiet(ready: Path) -> None:
+    configure(ready, "preflight = 'echo all good'")
+
+    result = doctor(ready)
+
+    assert status(result, "preflight") == "ok"
+    assert "all good" not in result.stdout
+
+
+def test_the_preflight_runs_from_the_repository_root(
+    ready: Path, tmp_path: Path
+) -> None:
+    where = tmp_path / "cwd.txt"
+    configure(ready, f"preflight = 'pwd > {where.as_posix()}'")
+    (ready / "src").mkdir()
+
+    doctor(ready / "src")
+
+    assert Path(where.read_text().strip()).resolve() == ready.resolve()
+
+
+def test_a_preflight_that_reads_standard_input_does_not_wait_for_it(
+    ready: Path,
+) -> None:
+    configure(ready, "preflight = 'cat > /dev/null'")
+
+    result = doctor(ready)
+
+    assert status(result, "preflight") == "ok"
+
+
+def test_a_preflight_that_leaves_a_background_process_does_not_hold_doctor(
+    ready: Path,
+) -> None:
+    configure(ready, "preflight = 'sleep 30 & echo service started'")
+
+    started = time.monotonic()
+    result = doctor(ready, timeout=20)
+
+    assert time.monotonic() - started < 20
+    assert status(result, "preflight") == "ok"
+
+
+def test_no_preflight_and_no_variables_is_nothing_to_verify(ready: Path) -> None:
+    result = doctor(ready)
+
+    assert status(result, "preflight") == "ok"
+    assert "nothing to verify" in line(result, "preflight")
+
+
+# The up-to-date check
+
+
+def test_a_branch_the_remote_has_passes_and_the_ref_is_named(ready: Path) -> None:
+    result = doctor(ready)
+
+    assert status(result, "up-to-date") == "ok"
+    assert "origin/main" in line(result, "up-to-date")
+
+
+def test_a_remote_that_is_ahead_still_passes(
+    ready: Path, tmp_path: Path, git: Git
+) -> None:
+    other = tmp_path / "other"
+    git(tmp_path, "clone", "-q", "-b", "main", str(tmp_path / "remote.git"), str(other))
+    git(
+        other,
+        "-c",
+        "user.name=T",
+        "-c",
+        "user.email=t@e",
+        "commit",
+        "--allow-empty",
+        "-q",
+        "-m",
+        "ahead",
+    )
+    git(other, "push", "-q", "origin", "main")
+
+    result = doctor(ready)
+
+    assert status(result, "up-to-date") == "ok"
+
+
+def test_a_disabled_check_passes_without_contacting_the_remote(
+    ready: Path, git: Git
+) -> None:
+    configure(ready, "require_up_to_date = false")
+    git(ready, "remote", "set-url", "origin", str(ready / "nowhere"))
+
+    result = doctor(ready)
+
+    assert status(result, "up-to-date") == "ok"
+    assert "disabled" in line(result, "up-to-date")
+
+
+def test_a_ref_without_a_remote_fails_and_the_fix_names_the_way_out(
+    ready: Path,
+) -> None:
+    configure(ready, 'require_up_to_date = "main"')
+
+    result = doctor(ready)
+
+    assert status(result, "up-to-date") == "fail"
+    assert "<remote>/<branch>" in line(result, "up-to-date")
+    assert "require_up_to_date = false" in fix_after(result, "up-to-date")
+
+
+def test_a_remote_that_is_not_configured_fails_and_is_named(ready: Path) -> None:
+    configure(ready, 'require_up_to_date = "upstream/develop"')
+
+    result = doctor(ready)
+
+    assert status(result, "up-to-date") == "fail"
+    assert "upstream" in line(result, "up-to-date")
+
+
+def test_an_unreachable_remote_fails_and_the_fix_names_the_way_out(
+    ready: Path, git: Git
+) -> None:
+    git(ready, "remote", "set-url", "origin", str(ready / "no" / "such" / "dir"))
+
+    result = doctor(ready)
+
+    assert status(result, "up-to-date") == "fail"
+    assert "cannot be reached" in line(result, "up-to-date")
+    assert "require_up_to_date = false" in fix_after(result, "up-to-date")
+
+
+def test_a_branch_the_remote_lacks_fails_and_names_the_ref(ready: Path) -> None:
+    configure(ready, 'require_up_to_date = "origin/gone"')
+
+    result = doctor(ready)
+
+    assert status(result, "up-to-date") == "fail"
+    assert "origin/gone" in line(result, "up-to-date")
+
+
+def test_a_branch_name_with_a_slash_is_looked_up_whole(ready: Path, git: Git) -> None:
+    git(ready, "push", "-q", "origin", "main:refs/heads/release/1")
+    configure(ready, 'require_up_to_date = "origin/release/1"')
+
+    result = doctor(ready)
+
+    assert status(result, "up-to-date") == "ok"
+
+
+class _Unauthorized(http.server.BaseHTTPRequestHandler):
+    def do_GET(self) -> None:  # noqa: N802 (the name http.server calls)
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="repo"')
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def log_message(self, format: str, *args: object) -> None:
+        """Say nothing."""
+
+
+def test_a_remote_that_wants_credentials_is_unreachable_without_a_prompt(
+    ready: Path, git: Git
+) -> None:
+    server = http.server.HTTPServer(("127.0.0.1", 0), _Unauthorized)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        git(
+            ready,
+            "remote",
+            "set-url",
+            "origin",
+            f"http://127.0.0.1:{server.server_port}/repo.git",
+        )
+
+        result = doctor(ready)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert status(result, "up-to-date") == "fail"
+    assert "cannot be reached" in line(result, "up-to-date")
+    assert "terminal prompts disabled" in line(result, "up-to-date")
+
+
+# Doctor changes nothing
+
+
+def snapshot(root: Path) -> dict[str, tuple[int, int]]:
+    """Every file and directory below `root` with its size and modification time."""
+    found: dict[str, tuple[int, int]] = {}
+    for path in sorted(root.rglob("*")):
+        info = path.lstat()
+        found[path.relative_to(root).as_posix()] = (info.st_size, info.st_mtime_ns)
+    return found
+
+
+def test_a_set_up_repository_is_left_exactly_as_it_was(ready: Path) -> None:
+    before = snapshot(ready)
+
+    result = doctor(ready, env=FULL)
+
+    assert result.returncode == 0, result.stdout
+    assert snapshot(ready) == before
+
+
+def test_a_broken_repository_is_left_exactly_as_it_was(repo: Path, git: Git) -> None:
+    before = snapshot(repo)
+
+    result = doctor(repo)
+
+    assert result.returncode == 1
+    assert snapshot(repo) == before
+    assert git(repo, "config", "core.hooksPath", check=False).stdout == ""
+
+
+def test_doctor_does_not_fetch(ready: Path, tmp_path: Path, git: Git) -> None:
+    other = tmp_path / "other"
+    git(tmp_path, "clone", "-q", "-b", "main", str(tmp_path / "remote.git"), str(other))
+    git(
+        other,
+        "-c",
+        "user.name=T",
+        "-c",
+        "user.email=t@e",
+        "commit",
+        "--allow-empty",
+        "-q",
+        "-m",
+        "ahead",
+    )
+    git(other, "push", "-q", "origin", "main")
+    tracking = git(ready, "rev-parse", "origin/main").stdout
+
+    doctor(ready, env=FULL)
+
+    assert git(ready, "rev-parse", "origin/main").stdout == tracking

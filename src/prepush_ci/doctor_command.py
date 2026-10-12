@@ -1,7 +1,9 @@
 """`prepush-ci doctor`: look at what git would run and say what is missing, changing nothing."""
 
 import os
+import subprocess
 import sys
+import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -19,6 +21,7 @@ from prepush_ci.core.hook_managers import (
     choose,
 )
 from prepush_ci.core.install import HOOKS, HOOKS_DIRECTORY, PYTHON_FILE
+from prepush_ci.core.preflight import missing_env
 from prepush_ci.git import git
 from prepush_ci.repo_config import load_repository_config
 
@@ -49,9 +52,9 @@ def run(
         doctor.CONFIG: config_check,
         doctor.COMMIT_MSG: commit_msg,
         doctor.PRE_PUSH: pre_push,
-        doctor.PREFLIGHT: _needs_config(config, doctor.PREFLIGHT),
+        doctor.PREFLIGHT: _preflight(config, root, env),
         doctor.PREPUSH_CI: doctor.prepush_ci_check(env.get("PREPUSH_CI"), mode),
-        doctor.UP_TO_DATE: _needs_config(config, doctor.UP_TO_DATE),
+        doctor.UP_TO_DATE: _up_to_date(config, root, env),
     }
     checks = [found[name] for name in doctor.NAMES]
     print("\n".join(doctor.render(checks)))
@@ -73,10 +76,64 @@ def _config(root: Path) -> tuple[Config | None, doctor.Check]:
     return config, doctor.config_check(source, [], missing=False)
 
 
-def _needs_config(config: Config | None, name: str) -> doctor.Check:
+def _preflight(
+    config: Config | None, root: Path, env: Mapping[str, str]
+) -> doctor.Check:
+    """The `preflight` verdict: the variables, then the command run as the hook runs it."""
     if config is None:
-        return doctor.config_skip(name)
-    return doctor.skip(name, "not checked yet")
+        return doctor.config_skip(doctor.PREFLIGHT)
+    return doctor.preflight_check(
+        config.preflight,
+        config.require_env,
+        missing_env(config.require_env, env),
+        lambda: _run_preflight(config.preflight or "", root, env),
+    )
+
+
+def _run_preflight(command: str, root: Path, env: Mapping[str, str]) -> tuple[int, str]:
+    """The exit status and the output of `command`, from the repository root, asking nothing.
+
+    The output goes to an unnamed temporary file, not a pipe: a process the command leaves
+    running keeps a pipe open and would hold `doctor`, while the hook returns at once.
+    """
+    with tempfile.TemporaryFile() as output:
+        outcome = subprocess.run(
+            command,
+            shell=True,
+            cwd=root,
+            env=dict(env),
+            stdin=subprocess.DEVNULL,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        output.seek(0)
+        return outcome.returncode, output.read().decode(errors="replace")
+
+
+def _up_to_date(
+    config: Config | None, root: Path, env: Mapping[str, str]
+) -> doctor.Check:
+    """The `up-to-date` verdict: the remote answers and has the branch; nothing is fetched."""
+    if config is None:
+        return doctor.config_skip(doctor.UP_TO_DATE)
+    quiet = {**env, "GIT_TERMINAL_PROMPT": "0"}  # a credential prompt is no diagnosis
+
+    def ls_remote(remote: str, branch: str) -> tuple[int, str]:
+        result = git(
+            root,
+            "ls-remote",
+            "--exit-code",
+            "--",
+            remote,
+            f"refs/heads/{branch}",
+            env=quiet,
+        )
+        return result.returncode, next(iter(result.stderr.strip().splitlines()), "")
+
+    return doctor.up_to_date_check(
+        config.require_up_to_date, git(root, "remote").stdout.split(), ls_remote
+    )
 
 
 def _hook_checks(

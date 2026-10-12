@@ -1,6 +1,6 @@
 """What `prepush-ci doctor` says: one line per check, a fix after every failure, a closing line."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from prepush_ci.core.config_source import PREPUSH_CI_FILE
@@ -19,6 +19,7 @@ SKIP = "skip"
 
 MODES = ("full", "off", "unset")
 _VALID_VALUES = ("full", "off", "")
+_WAY_OUT = "set `require_up_to_date = false` in the config"
 _MEANING = {
     "full": "commits get the trailer",
     "off": "a push of a commit with the trailer is refused",
@@ -114,3 +115,74 @@ def prepush_ci_check(value: str | None, mode: str | None) -> Check:
     if found:
         return ok(PREPUSH_CI, f"PREPUSH_CI={found}: {_MEANING[found]}")
     return ok(PREPUSH_CI, f"PREPUSH_CI is unset: {_MEANING['']}")
+
+
+def preflight_check(
+    command: str | None,
+    required: Sequence[str],
+    missing: Sequence[str],
+    run_command: Callable[[], tuple[int, str]],
+) -> Check:
+    """`missing` are the required variables that are unset or empty; `run_command` runs the
+    preflight command and gives its exit status and output, and is called only when no variable
+    is missing."""
+    if missing:
+        names = ", ".join(missing)
+        return fail(
+            PREFLIGHT,
+            f"these environment variables are unset or empty: {names}",
+            f"set {names} (`require_env` in the config); the command was not run",
+        )
+    if command is None:
+        if required:
+            return ok(PREFLIGHT, f"{', '.join(required)} set; no `preflight` command")
+        return ok(PREFLIGHT, "nothing to verify: no `preflight` and no `require_env`")
+    status, output = run_command()
+    if status != 0:
+        return fail(
+            PREFLIGHT,
+            f"`{command}` exited {status}",
+            f"make `{command}` pass; its output follows",
+            output.splitlines(),
+        )
+    return ok(PREFLIGHT, "the `preflight` command exited 0")
+
+
+def up_to_date_check(
+    ref: str | None,
+    remotes: Sequence[str],
+    ls_remote: Callable[[str, str], tuple[int, str]],
+) -> Check:
+    """`ref` is `require_up_to_date` (None when disabled); `ls_remote(remote, branch)` gives the
+    exit status of `git ls-remote --exit-code` and its error output, and is called only for a
+    ref of a configured remote."""
+    if ref is None:
+        return ok(UP_TO_DATE, "disabled: `require_up_to_date = false`")
+    remote, separator, branch = ref.partition("/")
+    if not separator or not remote or not branch:
+        return fail(
+            UP_TO_DATE,
+            f'`require_up_to_date = "{ref}"` must be `<remote>/<branch>`, such as `origin/main`',
+            f"write the ref as `<remote>/<branch>`, or {_WAY_OUT}",
+        )
+    if remote not in remotes:
+        return fail(
+            UP_TO_DATE,
+            f"{ref}: the repository has no remote named `{remote}`",
+            f"add it with `git remote add {remote} <url>`, or {_WAY_OUT}",
+        )
+    status, error = ls_remote(remote, branch)
+    if status == 2:
+        return fail(
+            UP_TO_DATE,
+            f"{ref}: the remote `{remote}` has no branch `{branch}`",
+            f"push `{branch}` to `{remote}`, or {_WAY_OUT}",
+        )
+    if status != 0:
+        reason = f": {error}" if error else ""
+        return fail(
+            UP_TO_DATE,
+            f"{ref}: the remote `{remote}` cannot be reached{reason}",
+            f"check the URL (`git remote get-url {remote}`) and the network, or {_WAY_OUT}",
+        )
+    return ok(UP_TO_DATE, f"{ref} is on the remote `{remote}`")
