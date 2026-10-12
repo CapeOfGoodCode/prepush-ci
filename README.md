@@ -14,6 +14,8 @@
 
 Run the full CI check in the `pre-push` hook of an AI agent's cloud session (or any machine that opts in), and let pull request CI skip commits that provably went through it. The default branch always runs CI in full.
 
+The full check can run on any machine that opts in, for example on the VM of a [Claude Code cloud session](https://code.claude.com/docs/en/claude-code-on-the-web), which has no separate VM charge; pull request CI then does not repeat it on billed runners.
+
 > **Status: under construction.** The tool is being built by a small fleet of AI coding loops from the intent in [issue #1](https://github.com/CapeOfGoodCode/prepush-ci/issues/1). Nothing here is released yet.
 
 ## How it works (in one paragraph)
