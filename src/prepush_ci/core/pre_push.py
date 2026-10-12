@@ -93,17 +93,22 @@ def demand_keys(*configs: Config) -> frozenset[str]:
     return frozenset(keys)
 
 
+def is_demanding(line: str, keys: Iterable[str]) -> bool:
+    """Whether a `Key: value` line has a demanding key (lower-cased `keys`), whatever its value."""
+    key, separator, _value = line.partition(":")
+    return bool(separator) and key.strip().lower() in set(keys)
+
+
 def matching_trailer(trailers: str, keys: Iterable[str]) -> str | None:
     """The first trailer of the tip with a demanding key, whatever its value, as git shows it.
 
     `trailers` is `git log --format=%(trailers:only,unfold)` of the tip: one `Key: value` per
     line, so git decides what a trailer is. `keys` are lower-cased. One matcher serves the
-    pre-push hook and `verify`, so the two cannot read a trailer differently.
+    pre-push hook, `verify` and `strip`, so the three cannot read a trailer differently.
     """
     wanted = set(keys)
     for line in trailers.splitlines():
-        key, separator, _value = line.partition(":")
-        if separator and key.strip().lower() in wanted:
+        if is_demanding(line, wanted):
             return line.strip()
     return None
 
