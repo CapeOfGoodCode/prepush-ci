@@ -4,6 +4,17 @@ import os
 import sys
 from pathlib import Path
 
+from prepush_ci.core.hook_managers import (
+    MANAGERS,
+    MARKERS,
+    Refusal,
+    choose,
+    edit_file,
+    holds_block,
+    manager_files,
+    manager_report,
+    missing_message,
+)
 from prepush_ci.core.install import (
     HOOKS,
     HOOKS_DIRECTORY,
@@ -19,7 +30,7 @@ from prepush_ci.core.install import (
 from prepush_ci.git import git
 
 
-def run(cwd: Path) -> int:
+def run(cwd: Path, hooks: str | None = None) -> int:
     try:
         common_dir = git(cwd, "rev-parse", "--git-common-dir")
     except OSError as error:  # git cannot even start
@@ -28,6 +39,14 @@ def run(cwd: Path) -> int:
     if common_dir.returncode != 0:
         print(NO_REPOSITORY, file=sys.stderr)
         return 1
+    root = _worktree_root(cwd)
+    try:
+        chosen = choose(hooks, _found(root))
+    except Refusal as refusal:
+        print(f"prepush-ci install: {refusal}", file=sys.stderr)
+        return 1
+    if chosen in MANAGERS:
+        return _install_manager(root, chosen)
     common = _resolve(cwd, common_dir.stdout.strip())
     directory = common.joinpath(*HOOKS_DIRECTORY)
     ours = _hooks_path(cwd) == directory
@@ -60,6 +79,64 @@ def run(cwd: Path) -> int:
     chained = forwarded or [hook for hook in HOOKS if hook in entries]
     print(report(word, directory.as_posix(), previous.as_posix() if chained else None))
     return 0
+
+
+def _worktree_root(cwd: Path) -> Path | None:
+    """The top of the worktree; None in a bare repository."""
+    top = git(cwd, "rev-parse", "--show-toplevel")
+    return _resolve(cwd, top.stdout.strip()) if top.returncode == 0 else None
+
+
+def _found(root: Path | None) -> list[str]:
+    """The managers whose files the worktree root holds."""
+    if root is None:
+        return []
+    return [m for m in MANAGERS if any((root / name).exists() for name in MARKERS[m])]
+
+
+def _install_manager(root: Path | None, manager: str) -> int:
+    """Edit the files of `manager`; every file is read and edited before the first is written, so
+    a refusal leaves them all as they were."""
+    if root is None:
+        print("prepush-ci install: there is no worktree here", file=sys.stderr)
+        return 1
+    present = [name for name in MARKERS[manager] if (root / name).exists()]
+    if not present:
+        print(f"prepush-ci install: {missing_message(manager)}", file=sys.stderr)
+        return 1
+    names = manager_files(manager, present)
+    plan: dict[str, tuple[str | None, str]] = {}
+    for name in names:
+        path = root / name
+        try:
+            old = _read(path)
+            plan[name] = (old, edit_file(manager, name, old))
+        except (Refusal, OSError, UnicodeDecodeError) as problem:
+            print(f"prepush-ci install: {name}: {problem}", file=sys.stderr)
+            return 1
+    for name, (old, new) in plan.items():
+        if old != new:
+            (root / name).write_text(new, encoding="utf-8", newline="")
+    was_installed = any(
+        old is not None and holds_block(old) for old, _ in plan.values()
+    )
+    changed = any(old != new for old, new in plan.values())
+    print(
+        manager_report(
+            outcome(was_installed=was_installed, changed=changed), manager, names
+        )
+    )
+    return 0
+
+
+def _read(path: Path) -> str | None:
+    """The contents of the file, None when it does not exist; a directory is an error."""
+    if not path.exists():
+        return None
+    with path.open(
+        encoding="utf-8", newline=""
+    ) as file:  # newline="": keep the line ends
+        return file.read()
 
 
 def _resolve(base: Path, text: str) -> Path:
