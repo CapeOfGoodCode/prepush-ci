@@ -806,3 +806,87 @@ def test_ci_none_prints_no_snippet(repo: Path) -> None:
     assert result.returncode == 0, result.stderr
     for name in ("github-actions.yml", "gitlab-ci.yml", "gate.sh"):
         assert gate_text(name) not in result.stdout
+
+
+def test_the_snippet_is_written_to_the_file_and_not_printed(repo: Path) -> None:
+    result = ci_init(repo, "--ci", "github", "--ci-gate-file", "ci/gate.yml")
+
+    assert result.returncode == 0, result.stderr
+    assert (repo / "ci" / "gate.yml").read_text() == gate_text("github-actions.yml")
+    assert gate_text("github-actions.yml") not in result.stdout
+    assert "written: ci/gate.yml" in result.stdout
+
+
+def test_another_file_in_the_way_stops_init_before_any_write(repo: Path) -> None:
+    (repo / "ci").mkdir()
+    (repo / "ci" / "gate.yml").write_text("mine\n")
+    before = snapshot(repo)
+
+    result = ci_init(repo, "--ci-gate-file", "ci/gate.yml")
+
+    assert result.returncode == 1
+    assert "ci/gate.yml" in result.stderr
+    assert snapshot(repo) == before
+
+
+def test_a_file_that_holds_the_snippet_already_is_left_alone(repo: Path) -> None:
+    ci_init(repo, "--ci-gate-file", "gate.sh")
+    before = snapshot(repo)
+
+    second = ci_init(repo, "--ci-gate-file", "gate.sh")
+
+    assert second.returncode == 0, second.stderr
+    assert "kept: gate.sh" in second.stdout
+    assert "already set up" in last_line(second)
+    assert snapshot(repo) == before
+
+
+def test_init_from_a_subdirectory_puts_the_files_at_the_root_and_the_gate_here(
+    repo: Path,
+) -> None:
+    sub = repo / "sub"
+    sub.mkdir()
+
+    result = init(
+        sub,
+        "--non-interactive",
+        "--check",
+        "scripts/ci",
+        "--hooks",
+        "none",
+        "--ci-gate-file",
+        "gate.yml",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert files(repo) == {".prepush-ci.toml", SESSION_HOOK, SETTINGS, "sub/gate.yml"}
+
+
+def test_a_whole_second_run_changes_nothing(repo: Path) -> None:
+    args = (
+        "--non-interactive",
+        "--check",
+        "scripts/ci",
+        "--hooks",
+        "native",
+        "--ci",
+        "github",
+        "--ci-gate-file",
+        "ci/gate.yml",
+    )
+    init(repo, *args)
+    before = snapshot(repo)
+
+    second = init(repo, *args)
+
+    assert second.returncode == 0, second.stderr
+    assert "already set up" in last_line(second)
+    assert snapshot(repo) == before
+
+
+def test_a_whole_first_run_with_every_step_ends_with_set_up(repo: Path) -> None:
+    result = init(repo, "--non-interactive", "--check", "scripts/ci")
+
+    assert result.returncode == 0, result.stderr
+    assert "set up" in last_line(result)
+    assert "already set up" not in last_line(result)

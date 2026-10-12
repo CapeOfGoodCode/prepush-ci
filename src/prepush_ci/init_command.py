@@ -45,6 +45,7 @@ class Options:
     hooks: str | None = None
     session_hook: bool = True
     ci: str | None = None
+    ci_gate_file: str | None = None
 
 
 def run(options: Options, cwd: Path) -> int:
@@ -90,6 +91,17 @@ def run(options: Options, cwd: Path) -> int:
         except SettingsError as error:
             print(f"prepush-ci init: {error}", file=sys.stderr)
             return 1
+    gate = _gate(options.ci, root)
+    target = None if options.ci_gate_file is None else cwd / options.ci_gate_file
+    if gate is not None and target is not None:
+        other = _read(target)
+        if other is not None and other != gate[1]:
+            print(
+                f"prepush-ci init: {options.ci_gate_file} exists with other contents; "
+                "not overwriting it",
+                file=sys.stderr,
+            )
+            return 1
     changed = False
     if text is not None:
         (root / PREPUSH_CI_FILE).write_text(text, encoding="utf-8", newline="\n")
@@ -103,25 +115,40 @@ def run(options: Options, cwd: Path) -> int:
     if options.session_hook:
         changed = _session_hook(root, options.hooks) or changed
         changed = _settings(root, settings_old, settings_new) or changed
-    _ci_gate(options.ci, root)
+    if gate is not None:
+        if target is None:
+            print(f"CI gate ({gate[0]}): add this to your CI")
+            print(gate[1], end="")
+        else:
+            changed = _gate_file(options.ci_gate_file or "", target, gate[1]) or changed
     print(closing(changed or installed))
     return 0
 
 
-def _ci_gate(ci: str | None, root: Path) -> None:
-    """Print the CI gate snippet of the system in use, or of the one asked for."""
+def _gate(ci: str | None, root: Path) -> tuple[str, str] | None:
+    """The system whose CI gate to show and the text of the snippet; None for `--ci none`."""
     system = ci or detect_ci(
         workflows=_has_workflows(root), gitlab=(root / ".gitlab-ci.yml").is_file()
     )
     if system == "none":
-        return
+        return None
     text = (
         resources.files("prepush_ci")
         .joinpath("ci_gates", CI_FILES[system])
         .read_text(encoding="utf-8")
     )
-    print(f"CI gate ({system}): add this to your CI")
-    print(text if text.endswith("\n") else text + "\n", end="")
+    return system, text if text.endswith("\n") else text + "\n"
+
+
+def _gate_file(name: str, target: Path, text: str) -> bool:
+    """Write the snippet to `target` unless it holds it already; whether it was written."""
+    if _read(target) == text:
+        print(f"kept: {name}")
+        return False
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(text, encoding="utf-8", newline="\n")
+    print(f"written: {name}")
+    return True
 
 
 def _has_workflows(root: Path) -> bool:
