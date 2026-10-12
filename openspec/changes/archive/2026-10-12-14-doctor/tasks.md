@@ -16,4 +16,4 @@
 - [x] 3.1 Add the `preflight` check: variables, the command run as the hook runs it, output shown only on failure; verify with specs for each outcome and the working directory
 - [x] 3.2 Add the `up-to-date` check with `git ls-remote` (no fetch, `GIT_TERMINAL_PROMPT=0`); verify with specs for each failure, a disabled check, a branch with a slash and the proof that a local tracking ref does not move
 - [x] 3.3 Prove that `doctor` changes nothing: a snapshot of the working tree and the git directory before and after, in a set-up and a broken repository
-- [ ] 3.4 Run `sh scripts/ci` and verify it passes
+- [x] 3.4 Run `sh scripts/ci` and verify it passes
