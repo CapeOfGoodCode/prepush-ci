@@ -56,28 +56,29 @@ def _decide(stdin_text: str, env: Mapping[str, str], cwd: Path) -> int:
     tips = branch_tips(_pushed_refs(stdin_text, env, cwd))
     if not tips:
         return 0
-    config = load_repository_config(cwd)
-    demanding = [sha for sha in tips if _demands_check(sha, config, cwd)]
+    root = _worktree_root(cwd)
+    config = load_repository_config(root)
+    demanding = [sha for sha in tips if _demands_check(sha, config, root)]
     if not demanding:
         return 0
-    return _enforce(demanding, env.get(ENV_VAR) == "off", config, cwd)
+    return _enforce(demanding, env.get(ENV_VAR) == "off", config, root)
 
 
-def _enforce(demanding: list[str], off: bool, config: Config, cwd: Path) -> int:
+def _enforce(demanding: list[str], off: bool, config: Config, root: Path) -> int:
     """Refuse for the cheap, certain reasons first; run the check only on a state that is the commit."""
     if off:  # unset, empty and `full` behave alike: the trailer demands the check, not the variable
         raise HookError(message_off(demanding))
-    head = _head(cwd)
+    head = _head(root)
     others = [sha for sha in demanding if sha != head]
     if others:
         raise HookError(message_not_head(others, head))
-    dirty = dirty_paths(_status(cwd))
+    dirty = dirty_paths(_status(root))
     if dirty:
         raise HookError(message_dirty(dirty))
-    hidden = hidden_paths(_listing(cwd, "the index flags", "ls-files", "-v", "-z"))
+    hidden = hidden_paths(_listing(root, "the index flags", "ls-files", "-v", "-z"))
     if hidden:
         raise HookError(message_hidden(hidden))
-    return _run_check(config, cwd)
+    return _run_check(config, root)
 
 
 def _head(cwd: Path) -> str:
@@ -166,8 +167,16 @@ def _tip_file(sha: str, name: str, cwd: Path) -> str | None:
     return blob.stdout
 
 
-def _run_check(config: Config, cwd: Path) -> int:
-    root = Path(_git(cwd, "rev-parse", "--show-toplevel").stdout.strip())
+def _worktree_root(cwd: Path) -> Path:
+    result = _git(cwd, "rev-parse", "--show-toplevel")
+    if result.returncode != 0:
+        raise HookError(
+            "the repository has no worktree, so the hook cannot check a commit here"
+        )
+    return Path(result.stdout.strip())
+
+
+def _run_check(config: Config, root: Path) -> int:
     outcome = subprocess.run(
         config.check, shell=True, cwd=root, stdin=subprocess.DEVNULL, check=False
     )

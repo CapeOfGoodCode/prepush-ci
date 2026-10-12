@@ -14,8 +14,9 @@ Git = Callable[..., "subprocess.CompletedProcess[str]"]
 def git() -> Git:
     """Run real git in a directory; a failing command fails the test unless `check=False`.
 
-    `PREPUSH_CI` is dropped from the inherited environment so a developer's own opt-in
-    never leaks into a spec; pass it through `env` when a spec needs it.
+    `PREPUSH_CI` and `PRE_COMMIT_*` are dropped from the inherited environment so a developer's
+    own opt-in, or the pre-commit run that started the suite as a pre-push hook, never leaks
+    into a spec; pass them through `env` when a spec needs them.
     """
 
     def run(
@@ -24,7 +25,11 @@ def git() -> Git:
         env: dict[str, str] | None = None,
         check: bool = True,
     ) -> "subprocess.CompletedProcess[str]":
-        inherited = {k: v for k, v in os.environ.items() if k != "PREPUSH_CI"}
+        inherited = {
+            k: v
+            for k, v in os.environ.items()
+            if k != "PREPUSH_CI" and not k.startswith("PRE_COMMIT_")
+        }
         return subprocess.run(
             ["git", *args],
             cwd=repo,

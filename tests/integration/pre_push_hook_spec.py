@@ -689,3 +689,59 @@ def test_off_pushes_a_tip_without_the_trailer_without_a_hint(
 
     assert result.returncode == 0, result.stderr
     assert "git commit --amend --no-edit" not in result.stderr
+
+
+# The hook fails closed
+
+
+def test_a_pushed_sha_that_is_no_object_of_the_repository_aborts_the_push_and_is_named(
+    pushing_repo: Path,
+) -> None:
+    unknown = "1234567890abcdef1234567890abcdef12345678"
+
+    result = run_hook(
+        pushing_repo, stdin=ref_line("refs/heads/x", unknown, "refs/heads/x")
+    )
+
+    assert result.returncode != 0
+    assert unknown in result.stderr
+
+
+def test_a_push_from_a_bare_repository_is_refused_because_it_has_no_worktree(
+    pushing_repo: Path, git: Git
+) -> None:
+    sha = commit(pushing_repo, git, "work" + TRAILER)
+    assert push(pushing_repo, git, "main").returncode == 0
+    bare = pushing_repo.parent / "remote.git"
+
+    result = run_hook(bare, stdin=ref_line("refs/heads/main", sha, "refs/heads/main"))
+
+    assert result.returncode != 0
+    assert "no worktree" in result.stderr
+    assert ran(pushing_repo) == 1  # only the push above ran the check
+
+
+def test_an_unborn_head_refuses_the_push_without_a_check(
+    pushing_repo: Path, git: Git
+) -> None:
+    commit(pushing_repo, git, "work" + TRAILER)
+    git(pushing_repo, "symbolic-ref", "HEAD", "refs/heads/unborn")
+
+    result = push(pushing_repo, git, "main")
+
+    assert result.returncode != 0
+    assert "HEAD" in result.stderr
+    assert ran(pushing_repo) == 0
+
+
+def test_a_status_git_cannot_report_aborts_the_push_without_a_check(
+    pushing_repo: Path, git: Git
+) -> None:
+    commit(pushing_repo, git, "work" + TRAILER)
+    (pushing_repo / ".git" / "index").write_bytes(b"not an index")
+
+    result = push(pushing_repo, git, "main")
+
+    assert result.returncode != 0
+    assert "status could not be read" in result.stderr
+    assert ran(pushing_repo) == 0
