@@ -2,7 +2,7 @@
 
 ## 1. Pure logic
 
-- [ ] 1.1 In `src/prepush_ci/core/`, build the cache key from a SHA, a tree hash and the result-relevant config values, name the record file for a key and tell an intact record from a damaged one; verify with unit specs named after the scenarios at 100% branch coverage
+- [x] 1.1 In `src/prepush_ci/core/`, build the cache key from a SHA, a tree hash and the result-relevant config values, name the record file for a key and tell an intact record from a damaged one; verify with unit specs named after the scenarios at 100% branch coverage
 
 ## 2. The cache and `run`
 
