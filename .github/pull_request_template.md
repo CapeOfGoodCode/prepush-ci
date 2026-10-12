@@ -14,6 +14,8 @@ Closes #
 
 **Demo**
 
+<!-- Show what the human would look at: a transcript for the tool; for anything visual, the image or a screenshot (raw URL at the head commit). -->
+
 ```
 $ …
 ```

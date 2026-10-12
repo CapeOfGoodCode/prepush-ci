@@ -59,7 +59,7 @@ Issue types (see `AGENTS.md`) say what an issue is; slices of the intent are sub
 The human approves on the proof, so it must stand on its own **and be read in two minutes**. The **Proof** section of a pull request has three short parts, in this order:
 
 1. **Acceptance**: one line per acceptance criterion of the issue: `- [x] <criterion, in a few words>: <one test name>`. Pick the test that shows the criterion best; robocop checks that the others exist.
-2. **Demo**: one terminal transcript of the tool doing the new thing in a scratch repository, at most 15 lines: the main path and the most important refusal.
+2. **Demo**: what the human would look at, shown, not described. For the tool: one terminal transcript in a scratch repository, at most 15 lines: the main path and the most important refusal. For anything visual (images, a rendered README, a page): the image itself or a screenshot, embedded with its raw URL at the head commit (`https://raw.githubusercontent.com/<repo>/<sha>/<path>`). Measurements and file checks go into the details.
 3. **Check**: one line from `scripts/ci` on the head commit: tests passed, coverage, specs valid.
 
 Everything else (the full list of new test names, further transcripts, round-by-round notes) goes into one collapsed `<details><summary>Details for the reviewer</summary>` block below it. **Decisions** lists at most five one-liners the human might disagree with; the rest belong in the change's `design.md` or the commit bodies.
