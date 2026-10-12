@@ -43,16 +43,21 @@ def config_of(repo: Path) -> Config:
 
 
 def files(root: Path) -> set[str]:
-    """Every file below `root` outside `.git`, as posix paths relative to it."""
+    """Every file below `root`, as posix paths relative to it; of `.git` only the hooks this
+    tool wrote."""
     return {
         p.relative_to(root).as_posix()
         for p in root.rglob("*")
-        if p.is_file() and ".git" not in p.relative_to(root).parts[:1]
+        if p.is_file()
+        and (
+            p.relative_to(root).parts[0] != ".git"
+            or p.relative_to(root).parts[1] == "prepush-ci"
+        )
     }
 
 
 def snapshot(root: Path) -> dict[str, tuple[bytes, int]]:
-    """Contents and modification time of every file below `root` outside `.git`."""
+    """Contents and modification time of the files `files` lists."""
     return {
         name: ((root / name).read_bytes(), (root / name).stat().st_mtime_ns)
         for name in files(root)
@@ -351,3 +356,63 @@ def test_two_managers_end_init_with_the_refusal_before_the_session_hook(
     assert result.returncode == 1
     assert "--hooks" in result.stderr
     assert not (repo / ".claude").exists()
+
+
+def last_line(result: "subprocess.CompletedProcess[str]") -> str:
+    return result.stdout.rstrip("\n").splitlines()[-1]
+
+
+def test_outside_a_repository_init_says_so_and_writes_nothing(tmp_path: Path) -> None:
+    result = init(tmp_path, "--non-interactive", "--check", "scripts/ci")
+
+    assert result.returncode == 1
+    assert "no git repository" in result.stderr
+    assert files(tmp_path) == set()
+
+
+def test_the_config_goes_to_the_root_of_the_worktree_from_a_subdirectory(
+    repo: Path,
+) -> None:
+    sub = repo / "sub"
+    sub.mkdir()
+
+    result = init(sub, "--non-interactive", "--check", "scripts/ci", "--hooks", "none")
+
+    assert result.returncode == 0, result.stderr
+    assert files(repo) == {".prepush-ci.toml"}
+
+
+def test_a_first_run_ends_with_set_up_and_reports_each_step(repo: Path) -> None:
+    result = init(
+        repo, "--non-interactive", "--check", "scripts/ci", "--hooks", "native"
+    )
+
+    assert "set up" in last_line(result)
+    assert "already set up" not in last_line(result)
+    assert "written: .prepush-ci.toml" in result.stdout
+
+
+def test_a_second_run_changes_nothing_and_says_already_set_up(repo: Path) -> None:
+    args = ("--non-interactive", "--check", "scripts/ci", "--hooks", "native")
+    init(repo, *args)
+    before = snapshot(repo)
+
+    second = init(repo, *args)
+
+    assert second.returncode == 0, second.stderr
+    assert "already set up" in last_line(second)
+    assert "kept: .prepush-ci.toml" in second.stdout
+    assert snapshot(repo) == before
+
+
+def test_a_second_run_with_a_manager_file_leaves_it_alone(repo: Path) -> None:
+    (repo / ".pre-commit-config.yaml").write_text(
+        "repos:\n  - repo: local\n    hooks: []\n"
+    )
+    init(repo, "--non-interactive", "--check", "scripts/ci")
+    before = snapshot(repo)
+
+    second = init(repo, "--non-interactive", "--check", "scripts/ci")
+
+    assert "already set up" in last_line(second)
+    assert snapshot(repo) == before

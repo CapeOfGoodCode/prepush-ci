@@ -16,9 +16,11 @@ from prepush_ci.core.config_source import (
     load_config,
 )
 from prepush_ci.core.init import (
+    ALREADY_INSTALLED,
     NEED_CHECK,
     NO_REPOSITORY,
     ConfigFlags,
+    closing,
     config_text,
     disagreement_message,
     disagreements,
@@ -69,24 +71,31 @@ def run(options: Options, cwd: Path) -> int:
         except ConfigError as error:
             print(problems_message(error), file=sys.stderr)
             return 1
+    changed = False
     if text is not None:
         (root / PREPUSH_CI_FILE).write_text(text, encoding="utf-8", newline="\n")
         print(f"written: {PREPUSH_CI_FILE}")
+        changed = True
     else:
         print(f"kept: {_source(root)}")
-    return _install(options.hooks, cwd)
+    code, installed = _install(options.hooks, cwd)
+    if code != 0:
+        return code
+    print(closing(changed or installed))
+    return 0
 
 
-def _install(hooks: str | None, cwd: Path) -> int:
-    """Run `install`, show what it printed; its refusal ends `init` with its message."""
+def _install(hooks: str | None, cwd: Path) -> tuple[int, bool]:
+    """Run `install` and show what it printed: its exit code, and whether it changed anything.
+    A refusal ends `init` with its message."""
     if hooks == "none":
         print("skipped: hooks (--hooks none)")
-        return 0
+        return 0, False
     printed = io.StringIO()
     with contextlib.redirect_stdout(printed):
         code = install_command.run(cwd, hooks)
     print(printed.getvalue(), end="")
-    return code
+    return code, not printed.getvalue().startswith(ALREADY_INSTALLED)
 
 
 def _source(root: Path) -> str:

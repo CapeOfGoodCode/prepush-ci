@@ -4,7 +4,7 @@
 
 - [x] 1.1 Add `prepush-ci init --non-interactive` with its flags: write `.prepush-ci.toml` from the flags (pure text and validation in `core/`), keep an existing config and refuse a config that does not load and flags that disagree with it, require `--check` while there is no config; verify with specs for every flag, the quoted check, `--require-up-to-date false`, the config in `pyproject.toml`, and the two refusals
 - [x] 1.2 Run `install` from `init` (`--hooks` including `none`), print its output, stop on its refusal; verify with specs for a detected manager, an existing pre-push hook that still refuses a push, `none`, and several managers
-- [ ] 1.3 Place files at the root of the working tree wherever `init` runs, refuse outside a git repository and report `written`, `updated` or `kept` per step and the closing `set up` or `already set up`; verify with specs that run `init` twice, including with a manager file
+- [x] 1.3 Place files at the root of the working tree wherever `init` runs, refuse outside a git repository and report `written`, `updated` or `kept` per step and the closing `set up` or `already set up`; verify with specs that run `init` twice, including with a manager file
 
 ## 2. Claude Code
 
