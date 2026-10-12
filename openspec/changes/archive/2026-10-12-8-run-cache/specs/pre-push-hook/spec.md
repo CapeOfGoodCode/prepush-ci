@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: A demanding tip runs the check
-When a pushed tip demands the check, the hook SHALL run the `check` of the worktree config (the tip's own, as the tip is `HEAD` and the worktree clean) through the shell from the repository root, whatever `PREPUSH_CI` is (unset, empty or `full`), show its output, and exit non-zero when the check exits non-zero so that git aborts the push. It SHALL run the check only after the requirements of the `preflight` capability pass, and SHALL skip it only for a cached pass as the `run-cache` capability specifies. When several pushed refs have the same demanding tip, the check SHALL run once.
+When a pushed tip demands the check, the hook SHALL run the `check` of the worktree config (the tip's own) through the shell from the repository root, whatever `PREPUSH_CI` is other than `off`, show its output and exit non-zero when the check does. It SHALL run the check only after the requirements of the `preflight` capability pass, and SHALL skip it only for a cached pass as the `run-cache` capability specifies. Several pushed refs with one demanding tip SHALL run it once.
 
 #### Scenario: Check passes
 - **WHEN** a tip with the trailer is pushed and the check exits 0

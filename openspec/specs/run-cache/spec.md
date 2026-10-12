@@ -1,4 +1,9 @@
-## ADDED Requirements
+# run-cache Specification
+
+## Purpose
+`prepush-ci run`, which starts the pre-push hook's sequence by hand on HEAD, and the local result cache that lets the hook skip a check that already passed on exactly that commit, tree and config. The cache can only cost time: anything damaged, stale or unwritable means the check runs.
+
+## Requirements
 
 ### Requirement: Run checks HEAD
 `prepush-ci run` SHALL, from any directory inside a worktree, require `HEAD` to point to a commit, then require the worktree to be clean and free of hidden changes with the same rules and reasons as the `pre-push-hook` capability, then satisfy the `preflight` capability, then run the `check` of the worktree config through the shell from the repository root with its output shown. It SHALL exit 0 when the check exits 0 and 1 in every other case, and SHALL run nothing after a refusal.
@@ -51,7 +56,7 @@
 - **THEN** the check runs again
 
 ### Requirement: A pass is cached
-When the check passes in `prepush-ci run` or in the pre-push hook, and `cache` is `true`, the tool SHALL record the pass under `prepush-ci/` in the repository's git directory, for the key made of the commit sha of `HEAD`, its tree hash and the values of `check`, `preflight`, `require_env` and `require_up_to_date`. It SHALL record nothing when the check fails or a refusal stops the run.
+When the check passes in `prepush-ci run` or in the pre-push hook, and `cache` is `true`, the tool SHALL record the pass under `prepush-ci/` in the repository's git directory, for the key made of the commit sha of `HEAD`, its tree hash and the values of `check`, `preflight`, `require_env` and `require_up_to_date`, read before the check starts. It SHALL record nothing when the check fails or a refusal stops the run.
 
 #### Scenario: Pass is recorded
 - **WHEN** `prepush-ci run` passes
@@ -68,6 +73,10 @@ When the check passes in `prepush-ci run` or in the pre-push hook, and `cache` i
 #### Scenario: Hook pass is recorded
 - **WHEN** a push of a tip with the trailer passes the check in the hook
 - **THEN** the git directory holds a record under `prepush-ci/`
+
+#### Scenario: Commit made during the check
+- **WHEN** the check makes a commit and then passes
+- **THEN** the record is for the commit that was checked, and a push of the new commit runs the check
 
 ### Requirement: A cached pass skips the check in the hook
 When the pre-push hook has satisfied every requirement that precedes the check, including the preflight, and the cache holds a record for the key of the pushed tip, it SHALL NOT run the check, SHALL print a line on standard error that names the commit and says the check passed earlier, and SHALL let the push go on.
