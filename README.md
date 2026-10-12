@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/CapeOfGoodCode/prepush-ci/main/docs/assets/logo.svg" alt="prepush-ci logo" width="128">
+</p>
+
 # prepush-ci
 
 [![CI](https://github.com/CapeOfGoodCode/prepush-ci/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/CapeOfGoodCode/prepush-ci/actions/workflows/ci.yml)
