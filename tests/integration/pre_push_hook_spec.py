@@ -267,7 +267,7 @@ def test_any_value_of_the_trailer_runs_the_check(pushing_repo: Path, git: Git) -
 def test_a_legacy_key_runs_the_check(pushing_repo: Path, git: Git) -> None:
     ran_log = pushing_repo.parent / "ran.log"
     (pushing_repo / ".prepush-ci.toml").write_text(
-        f'check = "echo ran >> {ran_log.as_posix()}"\nlegacy_keys = ["Full-Pre-Push"]\n'
+        f'check = "echo ran >> {ran_log.as_posix()}"\nrequire_up_to_date = false\nlegacy_keys = ["Full-Pre-Push"]\n'
     )
     git(pushing_repo, "commit", "-q", "-a", "-m", "legacy key")
     commit(pushing_repo, git, "work\n\nFull-Pre-Push: required")
@@ -280,7 +280,7 @@ def test_a_legacy_key_runs_the_check(pushing_repo: Path, git: Git) -> None:
 def test_a_configured_key_runs_the_check(pushing_repo: Path, git: Git) -> None:
     ran_log = pushing_repo.parent / "ran.log"
     (pushing_repo / ".prepush-ci.toml").write_text(
-        f'check = "echo ran >> {ran_log.as_posix()}"\n'
+        f'check = "echo ran >> {ran_log.as_posix()}"\nrequire_up_to_date = false\n'
         'trailer = { key = "Full-Check", value = "yes" }\n'
     )
     git(pushing_repo, "commit", "-q", "-a", "-m", "configured key")
@@ -320,11 +320,13 @@ def test_a_key_set_only_by_the_worktree_config_demands_the_check(
 ) -> None:
     ran_log = pushing_repo.parent / "ran.log"
     # The tip commits pyproject.toml; the dedicated file that wins in the worktree is ignored.
-    (pushing_repo / "pyproject.toml").write_text('[tool.prepush-ci]\ncheck = "true"\n')
+    (pushing_repo / "pyproject.toml").write_text(
+        '[tool.prepush-ci]\ncheck = "true"\nrequire_up_to_date = false\n'
+    )
     (pushing_repo / ".gitignore").write_text(".prepush-ci.toml\n")
     git(pushing_repo, "rm", "-q", "--cached", ".prepush-ci.toml")
     (pushing_repo / ".prepush-ci.toml").write_text(
-        f'check = "echo ran >> {ran_log.as_posix()}"\nlegacy_keys = ["Full-Pre-Push"]\n'
+        f'check = "echo ran >> {ran_log.as_posix()}"\nrequire_up_to_date = false\nlegacy_keys = ["Full-Pre-Push"]\n'
     )
     git(pushing_repo, "add", "pyproject.toml", ".gitignore")
     git(pushing_repo, "commit", "-q", "-m", "work\n\nFull-Pre-Push: required")
@@ -431,7 +433,9 @@ def test_a_passing_check_lets_the_push_through(pushing_repo: Path, git: Git) -> 
 def test_a_failing_check_aborts_the_push_and_the_output_names_the_check(
     pushing_repo: Path, git: Git
 ) -> None:
-    (pushing_repo / ".prepush-ci.toml").write_text('check = "exit 1"\n')
+    (pushing_repo / ".prepush-ci.toml").write_text(
+        'check = "exit 1"\nrequire_up_to_date = false\n'
+    )
     git(pushing_repo, "commit", "-q", "-a", "-m", "work" + TRAILER)
 
     result = push(pushing_repo, git, "main")
@@ -453,7 +457,9 @@ def test_the_check_runs_with_the_variable_unset(pushing_repo: Path, git: Git) ->
 def test_the_check_runs_from_the_repository_root_when_pushing_from_a_subdirectory(
     pushing_repo: Path, git: Git
 ) -> None:
-    (pushing_repo / ".prepush-ci.toml").write_text('check = "echo here > cwd-marker"\n')
+    (pushing_repo / ".prepush-ci.toml").write_text(
+        'check = "echo here > cwd-marker"\nrequire_up_to_date = false\n'
+    )
     (pushing_repo / "sub").mkdir()
     git(pushing_repo, "add", "-A")
     git(pushing_repo, "commit", "-q", "-a", "-m", "work" + TRAILER)
@@ -482,7 +488,7 @@ def test_a_key_set_only_by_the_tips_config_demands_the_check(
 ) -> None:
     git(pushing_repo, "checkout", "-q", "-b", "feature")
     (pushing_repo / ".prepush-ci.toml").write_text(
-        'check = "true"\ntrailer = { key = "Full-Check", value = "yes" }\n'
+        'check = "true"\nrequire_up_to_date = false\ntrailer = { key = "Full-Check", value = "yes" }\n'
     )
     git(pushing_repo, "commit", "-q", "-a", "-m", "work\n\nFull-Check: yes")
     git(pushing_repo, "checkout", "-q", "main")
@@ -657,7 +663,9 @@ def test_a_dirty_worktree_does_not_matter_for_a_tip_without_the_trailer(
     pushing_repo: Path, git: Git
 ) -> None:
     commit(pushing_repo, git, "work")
-    (pushing_repo / ".prepush-ci.toml").write_text('check = "true"\n# edited\n')
+    (pushing_repo / ".prepush-ci.toml").write_text(
+        'check = "true"\nrequire_up_to_date = false\n# edited\n'
+    )
 
     result = push(pushing_repo, git, "main")
 

@@ -6,9 +6,9 @@
 
 ## 2. The hook
 
-- [ ] 2.1 Refuse a demanding tip whose required variables are missing, and run the `preflight` command before the check; verify with integration specs that push to a bare repository with real `git push`
-- [ ] 2.2 Fetch the up-to-date ref and refuse a tip that does not contain it, including a failing fetch, an empty remote, an unknown remote and `require_up_to_date = false`; verify with the matching integration specs
-- [ ] 2.3 Run `sh scripts/ci` and verify it passes
+- [x] 2.1 Refuse a demanding tip whose required variables are missing, and run the `preflight` command before the check; verify with integration specs that push to a bare repository with real `git push`
+- [x] 2.2 Fetch the up-to-date ref and refuse a tip that does not contain it, including a failing fetch, an empty remote, an unknown remote and `require_up_to_date = false`; verify with the matching integration specs
+- [x] 2.3 Run `sh scripts/ci` and verify it passes
 
 ## Workflow follow-up
 
