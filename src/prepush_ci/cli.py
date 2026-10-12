@@ -14,6 +14,7 @@ from prepush_ci import (
     strip_command,
     verify_command,
 )
+from prepush_ci.core.hook_managers import CHOICES
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -41,7 +42,14 @@ def main(argv: list[str] | None = None) -> int:
         "run",
         help="run the preflight and the check on HEAD, as the pre-push hook would",
     )
-    commands.add_parser("install", help="point git at hooks that run this tool")
+    install = commands.add_parser(
+        "install", help="point git at hooks that run this tool"
+    )
+    install.add_argument(
+        "--hooks",
+        choices=CHOICES,
+        help="whose hooks to install (default: the hook manager found, else native)",
+    )
     commit_msg = hooks.add_parser(
         "commit-msg", help="write the trailer when PREPUSH_CI=full"
     )
@@ -70,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         return run_command.run(os.environ, Path.cwd())
     if args.command == "install":
-        return install_command.run(Path.cwd())
+        return install_command.run(Path.cwd(), args.hooks)
     if args.command == "hook" and args.hook == "pre-push":
         return pre_push_hook.run(sys.stdin, os.environ, Path.cwd())
     if args.command == "hook":
