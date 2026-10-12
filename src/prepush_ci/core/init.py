@@ -162,3 +162,45 @@ def session_start_script(hooks: str | None) -> str:
     """The SessionStart hook skeleton; `install` gets `--hooks <hooks>` unless there is none."""
     flag = "" if hooks in (None, "none") else f" --hooks {hooks}"
     return _SESSION_HOOK.replace("@HOOKS@", flag)
+
+
+SETTINGS_FILE = ".claude/settings.json"
+SESSION_COMMAND = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/session-start.sh'
+_SCRIPT_NAME = "session-start.sh"
+
+
+class SettingsError(Exception):
+    """`.claude/settings.json` cannot be edited safely; the message names the file."""
+
+
+def _names_the_script(group: object) -> bool:
+    if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+        return False
+    return any(
+        isinstance(hook, dict)
+        and isinstance(hook.get("command"), str)
+        and _SCRIPT_NAME in hook["command"]
+        for hook in group["hooks"]
+    )
+
+
+def register_session_hook(text: str | None) -> str:
+    """The text of `.claude/settings.json` with the script registered as a SessionStart hook:
+    `text` itself when a command already names it, else the JSON with one group added (every
+    other setting kept, two-space indent). `text` is None when the file does not exist."""
+    try:
+        data = {} if text is None else json.loads(text)
+    except json.JSONDecodeError as error:
+        raise SettingsError(f"{SETTINGS_FILE} is not valid JSON: {error}") from error
+    if not isinstance(data, dict):
+        raise SettingsError(f"{SETTINGS_FILE} must hold a JSON object")
+    hooks = data.setdefault("hooks", {})
+    if not isinstance(hooks, dict):
+        raise SettingsError(f"{SETTINGS_FILE}: `hooks` must be an object")
+    groups = hooks.setdefault("SessionStart", [])
+    if not isinstance(groups, list):
+        raise SettingsError(f"{SETTINGS_FILE}: `hooks.SessionStart` must be a list")
+    if text is not None and any(_names_the_script(group) for group in groups):
+        return text
+    groups.append({"hooks": [{"type": "command", "command": SESSION_COMMAND}]})
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"

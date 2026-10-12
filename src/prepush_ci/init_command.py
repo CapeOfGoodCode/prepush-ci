@@ -20,12 +20,15 @@ from prepush_ci.core.init import (
     NEED_CHECK,
     NO_REPOSITORY,
     SESSION_HOOK_FILE,
+    SETTINGS_FILE,
     ConfigFlags,
+    SettingsError,
     closing,
     config_text,
     disagreement_message,
     disagreements,
     problems_message,
+    register_session_hook,
     session_start_script,
     validate,
 )
@@ -74,6 +77,15 @@ def run(options: Options, cwd: Path) -> int:
         except ConfigError as error:
             print(problems_message(error), file=sys.stderr)
             return 1
+    settings_old: str | None = None
+    settings_new: str | None = None
+    if options.session_hook:
+        settings_old = _read(root / SETTINGS_FILE)
+        try:
+            settings_new = register_session_hook(settings_old)
+        except SettingsError as error:
+            print(f"prepush-ci init: {error}", file=sys.stderr)
+            return 1
     changed = False
     if text is not None:
         (root / PREPUSH_CI_FILE).write_text(text, encoding="utf-8", newline="\n")
@@ -86,8 +98,21 @@ def run(options: Options, cwd: Path) -> int:
         return code
     if options.session_hook:
         changed = _session_hook(root, options.hooks) or changed
+        changed = _settings(root, settings_old, settings_new) or changed
     print(closing(changed or installed))
     return 0
+
+
+def _settings(root: Path, old: str | None, new: str | None) -> bool:
+    """Write the settings file with the hook registered; whether it changed."""
+    if new is None or new == old:
+        print(f"kept: {SETTINGS_FILE}")
+        return False
+    path = root / SETTINGS_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(new, encoding="utf-8", newline="\n")
+    print(f"{'written' if old is None else 'updated'}: {SETTINGS_FILE}")
+    return True
 
 
 def _session_hook(root: Path, hooks: str | None) -> bool:

@@ -1,11 +1,13 @@
 """`prepush-ci init`: one command sets a repository up, run as users run it."""
 
+import json
 import os
 import shutil
 import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -383,7 +385,7 @@ def test_the_config_goes_to_the_root_of_the_worktree_from_a_subdirectory(
     result = init(sub, "--non-interactive", "--check", "scripts/ci", "--hooks", "none")
 
     assert result.returncode == 0, result.stderr
-    assert files(repo) == {".prepush-ci.toml", SESSION_HOOK}
+    assert files(repo) == {".prepush-ci.toml", SESSION_HOOK, SETTINGS}
 
 
 def test_a_first_run_ends_with_set_up_and_reports_each_step(repo: Path) -> None:
@@ -656,3 +658,84 @@ def test_opting_out_writes_no_session_hook(repo: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert not (repo / ".claude").exists()
+
+
+SETTINGS = ".claude/settings.json"
+
+
+def settings_of(repo: Path) -> dict[str, Any]:
+    parsed: dict[str, Any] = json.loads((repo / SETTINGS).read_text(encoding="utf-8"))
+    return parsed
+
+
+def quick_init(repo: Path, *extra: str) -> "subprocess.CompletedProcess[str]":
+    return init(
+        repo, "--non-interactive", "--check", "scripts/ci", "--hooks", "none", *extra
+    )
+
+
+def test_the_settings_file_is_created_with_the_hook_registered(repo: Path) -> None:
+    result = quick_init(repo)
+
+    assert result.returncode == 0, result.stderr
+    hook = settings_of(repo)["hooks"]["SessionStart"][0]["hooks"][0]
+    assert hook["type"] == "command"
+    assert ".claude/hooks/session-start.sh" in hook["command"]
+    assert f"written: {SETTINGS}" in result.stdout
+
+
+def test_existing_settings_stay_and_the_hook_is_added_next_to_them(repo: Path) -> None:
+    before = {
+        "permissions": {"allow": ["Bash(ls)"]},
+        "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": []}]},
+    }
+    (repo / ".claude").mkdir()
+    (repo / SETTINGS).write_text(json.dumps(before))
+
+    result = quick_init(repo)
+
+    after = settings_of(repo)
+    assert after["permissions"] == before["permissions"]
+    assert after["hooks"]["PreToolUse"] == before["hooks"]["PreToolUse"]
+    assert (
+        ".claude/hooks/session-start.sh"
+        in after["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+    )
+    assert f"updated: {SETTINGS}" in result.stdout
+
+
+def test_a_second_run_registers_the_hook_only_once(repo: Path) -> None:
+    quick_init(repo)
+    before = (repo / SETTINGS).read_bytes()
+
+    second = quick_init(repo)
+
+    assert len(settings_of(repo)["hooks"]["SessionStart"]) == 1
+    assert (repo / SETTINGS).read_bytes() == before
+    assert f"kept: {SETTINGS}" in second.stdout
+
+
+def test_settings_that_are_not_json_are_refused_before_any_write(repo: Path) -> None:
+    (repo / ".claude").mkdir()
+    (repo / SETTINGS).write_text("{not json")
+    before = snapshot(repo)
+
+    result = quick_init(repo)
+
+    assert result.returncode == 1
+    assert SETTINGS in result.stderr
+    assert snapshot(repo) == before
+
+
+def test_settings_of_an_unexpected_shape_are_refused_and_left_as_they_are(
+    repo: Path,
+) -> None:
+    (repo / ".claude").mkdir()
+    (repo / SETTINGS).write_text('{"hooks": {"SessionStart": "x"}}')
+    before = snapshot(repo)
+
+    result = quick_init(repo)
+
+    assert result.returncode == 1
+    assert SETTINGS in result.stderr
+    assert snapshot(repo) == before

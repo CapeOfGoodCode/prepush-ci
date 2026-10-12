@@ -1,15 +1,19 @@
+import json
 import tomllib
 
 import pytest
 
 from prepush_ci.core.config import Config, ConfigError, parse_config
 from prepush_ci.core.init import (
+    SESSION_COMMAND,
     ConfigFlags,
+    SettingsError,
     closing,
     config_text,
     disagreement_message,
     disagreements,
     problems_message,
+    register_session_hook,
     resolved_up_to_date,
     session_start_script,
     toml_string,
@@ -175,3 +179,70 @@ def test_the_session_script_never_runs_uvx_or_a_manager_activation() -> None:
     assert not [
         line for line in commands if "uvx" in line or "pre-commit install" in line
     ]
+
+
+def command_of(text: str) -> str:
+    group = json.loads(text)["hooks"]["SessionStart"][-1]
+    return str(group["hooks"][0]["command"])
+
+
+def test_a_missing_settings_file_becomes_one_with_the_hook() -> None:
+    text = register_session_hook(None)
+
+    assert json.loads(text)["hooks"]["SessionStart"] == [
+        {"hooks": [{"type": "command", "command": SESSION_COMMAND}]}
+    ]
+    assert text.endswith("}\n")
+
+
+def test_the_command_runs_the_script_from_the_project_directory() -> None:
+    assert SESSION_COMMAND == '"$CLAUDE_PROJECT_DIR"/.claude/hooks/session-start.sh'
+
+
+def test_every_other_setting_and_hook_stays() -> None:
+    before = {
+        "permissions": {"allow": ["x"]},
+        "hooks": {
+            "PreToolUse": [1],
+            "SessionStart": [{"hooks": [{"type": "command", "command": "other.sh"}]}],
+        },
+    }
+
+    after = json.loads(register_session_hook(json.dumps(before)))
+
+    assert after["permissions"] == before["permissions"]
+    assert after["hooks"]["PreToolUse"] == [1]
+    assert after["hooks"]["SessionStart"][0] == before["hooks"]["SessionStart"][0]
+    assert command_of(json.dumps(after)) == SESSION_COMMAND
+
+
+def test_a_registered_hook_leaves_the_text_exactly_as_it_was() -> None:
+    text = '{"hooks":{"SessionStart":[{"hooks":[{"command":"sh .claude/hooks/session-start.sh"}]}]}}'
+
+    assert register_session_hook(text) == text
+
+
+def test_odd_entries_are_skipped_when_looking_for_the_registration() -> None:
+    odd = [1, {"hooks": "x"}, {"hooks": [2, {"command": 3}, {}]}]
+    text = json.dumps({"hooks": {"SessionStart": odd}})
+
+    after = json.loads(register_session_hook(text))
+
+    assert after["hooks"]["SessionStart"][:3] == odd
+    assert len(after["hooks"]["SessionStart"]) == 4
+
+
+def test_settings_that_are_not_json_are_refused_naming_the_file() -> None:
+    with pytest.raises(
+        SettingsError, match=r"\.claude/settings\.json is not valid JSON"
+    ):
+        register_session_hook("{nope")
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["[]", '{"hooks": []}', '{"hooks": {"SessionStart": {}}}'],
+)
+def test_settings_of_an_unexpected_shape_are_refused_naming_the_file(text: str) -> None:
+    with pytest.raises(SettingsError, match=r"\.claude/settings\.json"):
+        register_session_hook(text)
