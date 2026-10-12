@@ -96,6 +96,7 @@ What each role needs to know about prepush-ci in particular; the rest of its job
 - The skill the intent asks for starts from `skills/prepush-ci-setup/SKILL.md` (the draft attached to #1); evolve it with the commands it describes.
 - The GitHub Action goes in `action.yml` at the repository root, CI gate examples in `docs/ci/`: `.github/` is reserved, and the bot cannot push workflow files. Making this repository use prepush-ci itself (dogfooding) is a human task after the first release.
 - One open change per capability spec: deltas are written against `main`, so two changes to the same `openspec/specs/<capability>/` conflict when the first is archived. Plan the order so they don't overlap, or wait.
+- **Releases** (`AGENTS.md`, Versioning): tag only what the human approved, and check that the release workflow ran green and the version is on PyPI; a failed run is a `Bug` and a message to the human.
 - **The plan comment on #1 is the marker**: once it exists, plan only to replace slices that turned out wrong; don't re-plan every wake.
 - Open decisions to settle in a design: section 5.2 "Server-made commits" is empty in the intent; the maintainer's comment asks that setup handles existing pre-push setups and hooks, and that the skill explicitly asks the user what should happen with pre-push locally.
 

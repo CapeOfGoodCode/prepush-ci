@@ -67,7 +67,7 @@ The rulebook for everyone who changes this repository, human or agent. `README.m
 ## Versioning
 
 - **Semantic versioning**; the version lives only in `pyproject.toml`. Until 1.0.0, a minor bump may break the CLI or config; say so in the release notes.
-- **Only a human releases**: bump the version in a `chore(release): …` pull request, then push the tag `vX.Y.Z` on `main`. `.github/workflows/release.yml` refuses a tag that does not match the version, publishes to PyPI and creates the GitHub release.
+- **A human decides every release, a loop carries it out**: bruce-lee bumps the version in a `chore(release): …` pull request; the human's approval of it is the release decision. Once it is merged, bruce-lee pushes the tag `vX.Y.Z` on `main`. A tag for the version already on `main` (e.g. a first upload that reserves the name) needs the human's yes in an issue instead. `.github/workflows/release.yml` refuses a tag that does not match the version, publishes to PyPI and creates the GitHub release.
 
 ## Quality gates
 
