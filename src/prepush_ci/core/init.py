@@ -117,3 +117,11 @@ def disagreement_message(keys: list[str], source: str) -> str:
 
 def problems_message(error: ConfigError) -> str:
     return "\n".join(f"prepush-ci init: {problem}" for problem in error.problems)
+
+
+ALREADY_INSTALLED = "already installed"
+
+
+def closing(changed: bool) -> str:
+    """The last line of the output: `already set up` exactly when no file changed."""
+    return "set up" if changed else "already set up"

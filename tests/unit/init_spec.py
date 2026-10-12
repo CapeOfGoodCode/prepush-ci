@@ -5,6 +5,7 @@ import pytest
 from prepush_ci.core.config import Config, ConfigError, parse_config
 from prepush_ci.core.init import (
     ConfigFlags,
+    closing,
     config_text,
     disagreement_message,
     disagreements,
@@ -150,3 +151,8 @@ def test_the_message_names_each_key_and_the_source() -> None:
 
     assert "`check`, `preflight`" in message
     assert ".prepush-ci.toml" in message
+
+
+def test_the_closing_line_says_already_set_up_only_when_nothing_changed() -> None:
+    assert closing(False) == "already set up"
+    assert closing(True) == "set up"
