@@ -29,4 +29,8 @@ jobs:
             echo "::error::The pull request description has no '## Proof' section with content. See LOOP.md, Proof."
             exit 1
           fi
+          if printf '%s\n' "$proof" | grep -q -e '<criterion of the issue>' -e 'test_…' -e '^\$ …$'; then
+            echo "::error::The Proof section still holds the template's placeholders. See LOOP.md, Proof."
+            exit 1
+          fi
           echo "Proof section present ($(printf '%s\n' "$proof" | wc -l) lines)."

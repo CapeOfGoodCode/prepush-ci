@@ -56,13 +56,17 @@ Issue types (see `AGENTS.md`) say what an issue is; slices of the intent are sub
 
 ## Proof
 
-The human merges on the proof, so it must stand on its own. The **Proof** section of a pull request contains:
+The human merges on the proof, so it must stand on its own **and be read in two minutes**. The **Proof** section of a pull request has three short parts, in this order:
 
-- the **new or changed test names**, which read as sentences about behavior;
-- a **terminal transcript** of the tool doing the new thing in a scratch repository (commands and output, trimmed, in a code block);
-- the last lines of `scripts/ci` on the head commit.
+1. **Acceptance**: one line per acceptance criterion of the issue: `- [x] <criterion, in a few words>: <one test name>`. Pick the test that shows the criterion best; robocop checks that the others exist.
+2. **Demo**: one terminal transcript of the tool doing the new thing in a scratch repository, at most 15 lines: the main path and the most important refusal.
+3. **Check**: one line from `scripts/ci` on the head commit: tests passed, coverage, specs valid.
 
-Robocop's approving review repeats the proof with its own run, so the human sees it twice from two loops. The notification to the human is one short message: PR link, one-line summary, the test names.
+Everything else (the full list of new test names, further transcripts, round-by-round notes) goes into one collapsed `<details><summary>Details for the reviewer</summary>` block below it. **Decisions** lists at most five one-liners the human might disagree with; the rest belong in the change's `design.md` or the commit bodies.
+
+A slice whose proof does not fit is too big: split it.
+
+Robocop's approving verdict reproduces the proof with its own run. The notification to the human is one short message: PR link, one-line summary, the acceptance lines.
 
 ## Rules for every loop
 
