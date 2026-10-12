@@ -85,6 +85,10 @@ def main(argv: list[str] | None = None) -> int:
         choices=CI_CHOICES,
         help="whose CI gate snippet to show (default: detected from the repository)",
     )
+    init.add_argument(
+        "--ci-gate-file",
+        help="write the CI gate snippet to this file instead of printing it",
+    )
     commit_msg = hooks.add_parser(
         "commit-msg", help="write the trailer when PREPUSH_CI=full"
     )
@@ -127,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.hooks,
                 not args.no_session_hook,
                 args.ci,
+                args.ci_gate_file,
             ),
             Path.cwd(),
         )
