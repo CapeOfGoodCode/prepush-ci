@@ -204,3 +204,19 @@ def register_session_hook(text: str | None) -> str:
         return text
     groups.append({"hooks": [{"type": "command", "command": SESSION_COMMAND}]})
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+
+
+CI_CHOICES = ("github", "gitlab", "generic", "none")
+CI_FILES = {
+    "github": "github-actions.yml",
+    "gitlab": "gitlab-ci.yml",
+    "generic": "gate.sh",
+}  # the files of docs/ci/, packaged beside the code as ci_gates/
+
+
+def detect_ci(*, workflows: bool, gitlab: bool) -> str:
+    """The CI system whose gate to show: GitHub Actions when `.github/workflows/` holds a
+    workflow, else GitLab CI when `.gitlab-ci.yml` exists, else the generic shell gate."""
+    if workflows:
+        return "github"
+    return "gitlab" if gitlab else "generic"

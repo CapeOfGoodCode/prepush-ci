@@ -16,7 +16,7 @@ from prepush_ci import (
     verify_command,
 )
 from prepush_ci.core.hook_managers import CHOICES
-from prepush_ci.core.init import ConfigFlags
+from prepush_ci.core.init import CI_CHOICES, ConfigFlags
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -80,6 +80,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="do not write the Claude Code SessionStart hook",
     )
+    init.add_argument(
+        "--ci",
+        choices=CI_CHOICES,
+        help="whose CI gate snippet to show (default: detected from the repository)",
+    )
     commit_msg = hooks.add_parser(
         "commit-msg", help="write the trailer when PREPUSH_CI=full"
     )
@@ -117,7 +122,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         return init_command.run(
             init_command.Options(
-                flags, args.non_interactive, args.hooks, not args.no_session_hook
+                flags,
+                args.non_interactive,
+                args.hooks,
+                not args.no_session_hook,
+                args.ci,
             ),
             Path.cwd(),
         )

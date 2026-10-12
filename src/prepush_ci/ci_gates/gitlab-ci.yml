@@ -1,0 +1,55 @@
+# A merge request pipeline that skips the real checks when the source branch's head commit
+# already went through them in the pre-push hook (`prepush-ci verify`). Put your real pipeline
+# in ci/pipeline.yml and copy the rest.
+#
+# GitLab cannot use variables from a report in `rules:`, so the gate job writes a child
+# pipeline: the real one, or a single `echo` job when the head verifies. The default branch
+# always runs the real pipeline. Do not skip for a merge request from a fork or from the default
+# branch: both are checked below.
+#
+# Do not use the merge request's Rebase button on a pipeline that relies on skipping: GitLab's
+# rebase keeps the trailer under the clicking user, so the new head would verify without a run.
+#
+# Optional, off by default: one full run per pull request anyway (a merge request here), as a
+# mitigation for developers whose local hooks are missing. Turn it on by making the trigger job
+# use the real pipeline whatever the gate says, for example when the merge request is marked ready.
+stages: [gate, run]
+
+gate:
+  stage: gate
+  image: ghcr.io/astral-sh/uv:python3.13-bookworm
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  before_script:
+    - command -v git >/dev/null || { apt-get update -qq && apt-get install -y -qq git; }
+  script:
+    - |
+      sha="${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}"
+      printf 'include:\n  - local: ci/pipeline.yml\n' > child.yml
+      if [ -n "$CI_MERGE_REQUEST_SOURCE_PROJECT_PATH" ] \
+        && [ "$CI_MERGE_REQUEST_SOURCE_PROJECT_PATH" = "$CI_PROJECT_PATH" ] \
+        && [ "$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" != "$CI_DEFAULT_BRANCH" ] \
+        && uvx prepush-ci verify "$sha"; then
+        printf 'verified:\n  script: echo "head commit verified by prepush-ci, skipping"\n' > child.yml
+      fi
+  artifacts:
+    paths: [child.yml]
+
+run-default-branch:
+  stage: run
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  trigger:
+    include: ci/pipeline.yml
+    strategy: depend
+
+run-merge-request:
+  stage: run
+  needs: [gate]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  trigger:
+    include:
+      - artifact: child.yml
+        job: gate
+    strategy: depend
