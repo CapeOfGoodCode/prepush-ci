@@ -73,7 +73,9 @@ def pushing_repo(repo: Path, tmp_path: Path, git: Git) -> Path:
     git(tmp_path, "init", "-q", "--bare", str(tmp_path / "remote.git"))
     git(repo, "symbolic-ref", "HEAD", "refs/heads/main")
     ran = tmp_path / "ran.log"
-    (repo / ".prepush-ci.toml").write_text(f'check = "echo ran >> {ran.as_posix()}"\n')
+    (repo / ".prepush-ci.toml").write_text(
+        f'check = "echo ran >> {ran.as_posix()}"\nrequire_up_to_date = false\n'
+    )
     hook = repo / ".git" / "hooks" / "pre-push"
     hook.write_text(
         f'#!/bin/sh\nexec "{Path(sys.executable).as_posix()}" -m prepush_ci hook pre-push "$@"\n'

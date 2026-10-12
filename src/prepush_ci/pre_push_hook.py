@@ -24,6 +24,8 @@ from prepush_ci.core.pre_push import (
     pre_commit_push,
 )
 from prepush_ci.git import GitError, committed_config, git, trailers
+from prepush_ci.preflight import PreflightRefused
+from prepush_ci.preflight import run as run_preflight
 from prepush_ci.repo_config import load_repository_config
 
 ENV_VAR = "PREPUSH_CI"
@@ -47,7 +49,13 @@ def run(stdin: TextIO, env: Mapping[str, str], cwd: Path) -> int:
         for problem in error.problems:
             print(f"prepush-ci: {problem}", file=sys.stderr)
         return 1
-    except (InvalidMode, MalformedRefLine, HookError, GitError) as error:
+    except (
+        InvalidMode,
+        MalformedRefLine,
+        HookError,
+        GitError,
+        PreflightRefused,
+    ) as error:
         print(f"prepush-ci: {error}", file=sys.stderr)
         return 1
 
@@ -63,12 +71,16 @@ def _decide(stdin_text: str, env: Mapping[str, str], cwd: Path) -> int:
         if env.get(ENV_VAR) == "full":  # a user who did not opt in is not nagged
             print(HINT, file=sys.stderr)
         return 0
-    return _enforce(demanding, env.get(ENV_VAR) == "off", config, root)
+    return _enforce(demanding, env, config, root)
 
 
-def _enforce(demanding: list[str], off: bool, config: Config, root: Path) -> int:
+def _enforce(
+    demanding: list[str], env: Mapping[str, str], config: Config, root: Path
+) -> int:
     """Refuse for the cheap, certain reasons first; run the check only on a state that is the commit."""
-    if off:  # unset, empty and `full` behave alike: the trailer demands the check, not the variable
+    if (
+        env.get(ENV_VAR) == "off"
+    ):  # unset, empty and `full` behave alike: the trailer demands the check, not the variable
         raise HookError(message_off(demanding))
     head = _head(root)
     others = [sha for sha in demanding if sha != head]
@@ -80,6 +92,7 @@ def _enforce(demanding: list[str], off: bool, config: Config, root: Path) -> int
     hidden = hidden_paths(_listing(root, "the index flags", "ls-files", "-v", "-z"))
     if hidden:
         raise HookError(message_hidden(hidden))
+    run_preflight(config, env, root)
     return _run_check(config, root)
 
 
