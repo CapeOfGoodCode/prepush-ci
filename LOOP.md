@@ -24,7 +24,7 @@ The `turn:*` label says whose move it is; only that loop touches the item.
 
 - **One carrier.** An issue carries the turn label until its pull request exists; the loop that opens the pull request moves the label from the issue to the pull request. From then on only the pull request has one, and always exactly one.
 - **Atomic moves.** Change it in one call (`gh pr edit <n> --add-label turn:review --remove-label turn:build`), then nudge the next loop, never before.
-- **Off the track.** `needs-human` replaces the turn label; the human puts one back when answering. A `turn:human` pull request the human wants changed goes back to `turn:build` with a comment.
+- **Off the track.** `needs-human` replaces the turn label; the human puts one back when answering. The human asks for changes with a GitHub review, *Request changes*; the review is the comment, the human moves no label. Robocop, which already watches `turn:human` pull requests for conflicts (step 5), moves such a pull request to `turn:build` linking the review: not a robocop verdict, no strike. After the fix it goes through review as usual and back to `turn:human`.
 
 ```
 issue ──bruce-lee──▶ PR [turn:spec-review] ──robocop──▶ [turn:build] ──chuck-norris──▶ [turn:review] ──robocop──▶ [turn:human] ──human approves──▶ merged
