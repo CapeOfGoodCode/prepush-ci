@@ -8,8 +8,8 @@
 [![Coverage](https://raw.githubusercontent.com/CapeOfGoodCode/prepush-ci/python-coverage-comment-action-data/badge.svg)](https://github.com/CapeOfGoodCode/prepush-ci/tree/python-coverage-comment-action-data)
 [![PyPI](https://img.shields.io/pypi/v/prepush-ci)](https://pypi.org/project/prepush-ci/)
 [![Python](https://img.shields.io/pypi/pyversions/prepush-ci)](https://pypi.org/project/prepush-ci/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Built by loops](https://img.shields.io/badge/built%20by-5%20AI%20loops-8a2be2)](LOOP.md)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/CapeOfGoodCode/prepush-ci/blob/main/LICENSE)
+[![Built by loops](https://img.shields.io/badge/built%20by-5%20AI%20loops-8a2be2)](https://github.com/CapeOfGoodCode/prepush-ci/blob/main/LOOP.md)
 [![Loops run on Spool](https://img.shields.io/badge/loops%20run%20on-Spool-0f172a)](https://github.com/enes-alatas/spool)
 
 Run the full CI check in the `pre-push` hook of an AI agent's cloud session (or any machine that opts in), and let pull request CI skip commits that provably went through it. The default branch always runs CI in full.
@@ -26,11 +26,11 @@ When `PREPUSH_CI=full` is set, a `commit-msg` hook writes the trailer `Prepush-C
 
 This repository is also an example of agentic engineering:
 
-- [`AGENTS.md`](AGENTS.md) is the rulebook for every contributor, human or agent (`CLAUDE.md` imports it).
-- [`LOOP.md`](LOOP.md) describes the loops that build the tool: their roles, the label state machine they share, what each may touch, and where a human decides.
-- [`openspec/`](openspec/) holds the specifications. Every feature starts as an OpenSpec change.
-- [`scripts/ci`](scripts/ci) is the one entry point for the full check; CI and the pre-push hook run the same script.
-- [`docs/agentic-engineering.md`](docs/agentic-engineering.md) maps the practices from [loop-engineering](https://github.com/cobusgreyling/loop-engineering) this repository adopts, and where it deviates.
+- [`AGENTS.md`](https://github.com/CapeOfGoodCode/prepush-ci/blob/main/AGENTS.md) is the rulebook for every contributor, human or agent (`CLAUDE.md` imports it).
+- [`LOOP.md`](https://github.com/CapeOfGoodCode/prepush-ci/blob/main/LOOP.md) describes the loops that build the tool: their roles, the label state machine they share, what each may touch, and where a human decides.
+- [`openspec/`](https://github.com/CapeOfGoodCode/prepush-ci/tree/main/openspec/) holds the specifications. Every feature starts as an OpenSpec change.
+- [`scripts/ci`](https://github.com/CapeOfGoodCode/prepush-ci/blob/main/scripts/ci) is the one entry point for the full check; CI and the pre-push hook run the same script.
+- [`docs/agentic-engineering.md`](https://github.com/CapeOfGoodCode/prepush-ci/blob/main/docs/agentic-engineering.md) maps the practices from [loop-engineering](https://github.com/cobusgreyling/loop-engineering) this repository adopts, and where it deviates.
 
 ## Development
 
@@ -42,4 +42,4 @@ sh scripts/ci              # the full check, exactly as CI runs it
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/CapeOfGoodCode/prepush-ci/blob/main/LICENSE)
