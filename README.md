@@ -6,21 +6,23 @@
 |--------------------------------------- | -------: | -------: | -------: | -------: | ------: | --------: |
 | src/prepush\_ci/\_\_init\_\_.py        |        0 |        0 |        0 |        0 |    100% |           |
 | src/prepush\_ci/\_\_main\_\_.py        |        2 |        0 |        0 |        0 |    100% |           |
-| src/prepush\_ci/cli.py                 |       28 |        0 |        8 |        0 |    100% |           |
+| src/prepush\_ci/cli.py                 |       32 |        0 |       10 |        0 |    100% |           |
 | src/prepush\_ci/commit\_msg\_hook.py   |       58 |        0 |       14 |        0 |    100% |           |
 | src/prepush\_ci/core/\_\_init\_\_.py   |        0 |        0 |        0 |        0 |    100% |           |
 | src/prepush\_ci/core/commit\_msg.py    |       65 |        0 |       26 |        0 |    100% |           |
 | src/prepush\_ci/core/config.py         |       88 |        0 |       34 |        0 |    100% |           |
 | src/prepush\_ci/core/config\_source.py |       31 |        0 |        8 |        0 |    100% |           |
-| src/prepush\_ci/core/pre\_push.py      |       85 |        0 |       30 |        0 |    100% |           |
+| src/prepush\_ci/core/pre\_push.py      |       87 |        0 |       30 |        0 |    100% |           |
 | src/prepush\_ci/core/preflight.py      |       25 |        0 |        2 |        0 |    100% |           |
+| src/prepush\_ci/core/strip.py          |       81 |        0 |       32 |        0 |    100% |           |
 | src/prepush\_ci/core/verify.py         |       45 |        0 |       16 |        0 |    100% |           |
-| src/prepush\_ci/git.py                 |       29 |        1 |        8 |        1 |     95% |        34 |
-| src/prepush\_ci/pre\_push\_hook.py     |       97 |        0 |       32 |        0 |    100% |           |
+| src/prepush\_ci/git.py                 |       45 |        3 |       12 |        2 |     91% | 37-38, 72 |
+| src/prepush\_ci/pre\_push\_hook.py     |       90 |        0 |       30 |        0 |    100% |           |
 | src/prepush\_ci/preflight.py           |       32 |        1 |       18 |        1 |     96% |        73 |
 | src/prepush\_ci/repo\_config.py        |       17 |        0 |        2 |        0 |    100% |           |
+| src/prepush\_ci/strip\_command.py      |      103 |        0 |       38 |        0 |    100% |           |
 | src/prepush\_ci/verify\_command.py     |       49 |        1 |       14 |        1 |     97% |        81 |
-| **TOTAL**                              |  **651** |    **3** |  **212** |    **3** | **99%** |           |
+| **TOTAL**                              |  **850** |    **5** |  **286** |    **4** | **99%** |           |
 
 
 ## Setup coverage badge
