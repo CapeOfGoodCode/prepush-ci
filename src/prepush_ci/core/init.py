@@ -122,6 +122,34 @@ def disagreements(config: Config, flags: ConfigFlags) -> list[str]:
     return wrong
 
 
+DEFAULT_FETCH = f"+refs/heads/*:refs/remotes/{REMOTE}/*"
+
+
+def branch_origin_lacks(
+    config: Config, remote_refs: Sequence[str], fetch_refspecs: Sequence[str]
+) -> str | None:
+    """The refusal for a default branch that `origin` lacks, else None. `remote_refs` are the
+    full names of the refs under `refs/remotes/origin/`, `fetch_refspecs` the values of
+    `remote.origin.fetch`. Nothing is checked without a remote-tracking branch (`HEAD` is none),
+    when no refspec is the default one (a single-branch or narrowed clone: the branches it holds
+    say nothing about what `origin` has) or when the up-to-date ref is not `origin/<branch>`."""
+    prefix = f"refs/remotes/{REMOTE}/"
+    branches = {ref[len(prefix) :] for ref in remote_refs if ref.startswith(prefix)}
+    branches.discard("HEAD")
+    branch = config.default_branch
+    if (
+        not branches
+        or DEFAULT_FETCH not in fetch_refspecs
+        or config.require_up_to_date != f"{REMOTE}/{branch}"
+        or branch in branches
+    ):
+        return None
+    return (
+        f'prepush-ci init: `default_branch` "{branch}" is not a branch of {REMOTE}; '
+        f"if it is new, run `git fetch {REMOTE}` first, else name the branch {REMOTE} has"
+    )
+
+
 def disagreement_message(keys: list[str], source: str) -> str:
     names = ", ".join(f"`{key}`" for key in keys)
     return f"prepush-ci init: the flags differ from the config in {source} for {names}"

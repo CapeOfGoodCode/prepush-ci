@@ -6,7 +6,7 @@
 
 ## 2. init refuses a default branch that origin lacks
 
-- [ ] 2.1 Make `init` refuse a flag or answer default branch for which `origin` has remote-tracking branches but not that one, when `origin` has the default fetch refspec and the up-to-date ref in effect is `origin/<branch>`, naming `default_branch`, the branch and `git fetch origin`; verify with a test for every scenario of the added requirement
+- [x] 2.1 Make `init` refuse a flag or answer default branch for which `origin` has remote-tracking branches but not that one, when `origin` has the default fetch refspec and the up-to-date ref in effect is `origin/<branch>`, naming `default_branch`, the branch and `git fetch origin`; verify with a test for every scenario of the added requirement
 - [ ] 2.2 Run `sh scripts/ci` and verify it passes
 
 ## Workflow follow-up
