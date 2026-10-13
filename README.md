@@ -36,7 +36,7 @@ To keep the skill with a project, copy the folder `skills/prepush-ci-setup/` int
 
 The agent needs a git repository with a remote it can push branches to, and a package index it can reach to install `prepush-ci`. It works on a branch and opens a pull request with the result; it does not push to the default branch.
 
-The agent always stops to ask you two things: to confirm the command that runs the full check, and what pre-push should do on your own machines. It asks more only where the repository leaves something open: which hook manager to use when there are two, the default branch when `origin/HEAD` is unset, and a yes before it removes a hook.
+The agent always stops to ask you two things: to confirm the command that runs the full check, and what pre-push should do on your own machines. It asks more only where the repository leaves something open: which hook manager to use when there are two, the default branch when `origin` is missing, cannot be reached, has no default branch, or the clone does not fetch it (a single-branch clone of another branch), and a yes before it removes a hook.
 
 The steps below are the manual core. On top of them the skill finds or writes the command that runs the full check, sets up the services and the preflight so that a missing service fails the check, extends the SessionStart script with dependencies and services, and proves the setup with `doctor`.
 
