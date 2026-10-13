@@ -115,3 +115,16 @@ def test_the_check_runs_the_workflow_lint_before_the_fast_exit() -> None:
 
     assert "scripts/lint-workflows" in text
     assert text.index("scripts/lint-workflows") < text.index('"--fast"')
+
+
+def test_a_python_script_and_a_directory_in_scripts_are_not_read_as_shell(
+    tree: Path,
+) -> None:
+    (tree / "scripts" / "tool.py").write_text(
+        '"""A `quoted` docstring."""\nprint("hi")\n', newline="\n"
+    )
+    (tree / "scripts" / "__pycache__").mkdir()
+
+    result = lint(tree)
+
+    assert result.returncode == 0, result.stdout + result.stderr
