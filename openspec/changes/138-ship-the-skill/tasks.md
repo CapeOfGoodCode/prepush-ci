@@ -11,7 +11,7 @@
 
 ## 3. The plugin
 
-- [ ] 3.1 Add `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` as in `design.md`; verify with specs for the names, the source, the missing version, the skill's front matter and the single `SKILL.md`
+- [x] 3.1 Add `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` as in `design.md`; verify with specs for the names, the source, the missing version, the skill's front matter and the single `SKILL.md`
 
 ## 4. The README reference
 

@@ -1,0 +1,13 @@
+{
+  "name": "prepush-ci",
+  "owner": {
+    "name": "CapeOfGoodCode"
+  },
+  "plugins": [
+    {
+      "name": "prepush-ci",
+      "source": "./",
+      "description": "Set prepush-ci up in a repository so that pull request CI skips commits that passed the full check in the pre-push hook."
+    }
+  ]
+}
