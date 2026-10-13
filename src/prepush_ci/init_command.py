@@ -142,7 +142,7 @@ def _plan(options: Options, cwd: Path, root: Path, stdin: TextIO) -> _Plan:
                 hooks = _ask_hooks(root, cwd, stdin)
             if session_hook:
                 session_hook = parse_yes_no(_ask(stdin, SESSION_QUESTION))
-        except Refusal as refusal:
+        except (Refusal, install_command.Unreadable) as refusal:
             raise _Stop(f"prepush-ci init: {refusal}") from refusal
     text = None
     if config is None:

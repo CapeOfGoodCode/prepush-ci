@@ -1299,3 +1299,67 @@ def test_init_sets_up_a_repository_whose_path_has_a_non_ascii_character_under_an
     assert "Traceback" not in result.stderr
     assert result.returncode == 0, result.stderr
     assert (where / ".prepush-ci.toml").is_file()
+
+
+def a_repository_with_a_recorded_previous_hooks_directory(
+    repo: Path, git: Git, tmp_path: Path
+) -> Path:
+    """Hooks installed natively over a `core.hooksPath` directory holding a `pre-push` hook."""
+    (repo / ".prepush-ci.toml").write_text('check = "true"\n')
+    previous = tmp_path / "previous-hooks"
+    previous.mkdir()
+    (previous / "pre-push").write_text("#!/bin/sh\nexit 0\n")
+    git(repo, "config", "--local", "core.hooksPath", previous.as_posix())
+    installed = subprocess.run(
+        [sys.executable, "-m", "prepush_ci", "install", "--hooks", "native"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert installed.returncode == 0, installed.stderr
+    return previous
+
+
+def refused_by_init_with_one_line(result: "subprocess.CompletedProcess[str]") -> None:
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
+    assert len(result.stderr.strip().splitlines()) == 1
+    assert result.stderr.startswith("prepush-ci init: cannot read ")
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="a directory cannot be made unreadable with chmod"
+)
+def test_interactive_init_refuses_in_one_line_when_the_previous_hooks_directory_cannot_be_read(
+    repo: Path, git: Git, tmp_path: Path
+) -> None:
+    previous = a_repository_with_a_recorded_previous_hooks_directory(
+        repo, git, tmp_path
+    )
+    previous.chmod(0o000)
+    try:
+        result = init(repo, stdin=answers("", ""))
+    finally:
+        previous.chmod(0o755)  # so that the temporary directory can be removed
+
+    refused_by_init_with_one_line(result)
+    assert previous.as_posix() in result.stderr
+
+
+@pytest.mark.parametrize("record", ["bytes", "directory"])
+def test_interactive_init_refuses_in_one_line_when_the_record_of_the_previous_directory_is_unreadable(
+    repo: Path, git: Git, tmp_path: Path, record: str
+) -> None:
+    a_repository_with_a_recorded_previous_hooks_directory(repo, git, tmp_path)
+    path = repo / ".git" / "prepush-ci" / "hooks" / "previous"
+    path.unlink()
+    if record == "bytes":
+        path.write_bytes(b"\xff\xfe")
+    else:
+        path.mkdir()
+
+    result = init(repo, stdin=answers("", ""))
+
+    refused_by_init_with_one_line(result)
+    assert path.as_posix() in result.stderr
