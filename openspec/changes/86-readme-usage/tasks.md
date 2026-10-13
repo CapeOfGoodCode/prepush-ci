@@ -12,7 +12,7 @@
 - [x] 2.1 Add the usage section; verify with specs for the steps and their order
 - [x] 2.2 Add the command reference with purpose, synopsis, example and exit codes; verify with specs for each command's entry
 - [x] 2.3 Add `PREPUSH_CI` and the config keys; verify with specs for the values and the keys, and that `readme_links_spec.py` still passes (absolute links only)
-- [ ] 2.4 Add the agent setup step at the head of the usage section; verify with specs for its place before the install step, the prompt, the link to the skill resolving to a file of the repository, what the agent always asks and what it asks only sometimes, the pull request it opens, and the manual core with what the skill does on top
+- [x] 2.4 Add the agent setup step at the head of the usage section; verify with specs for its place before the install step, the prompt, the link to the skill resolving to a file of the repository, what the agent always asks and what it asks only sometimes, the pull request it opens, and the manual core with what the skill does on top
 
 ## 3. Finish
 

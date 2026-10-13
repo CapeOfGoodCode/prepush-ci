@@ -404,6 +404,7 @@ def test_a_wrong_default_is_reported_with_the_one_the_config_loads() -> None:
 # --- The usage section walks from install to a push -----------------------------------------
 
 STEPS = [
+    ("agent setup", r"\bagent\b"),
     ("install", r"\binstall\b"),
     ("init", r"\binit\b"),
     ("opt in", r"PREPUSH_CI=full"),
@@ -441,6 +442,7 @@ def step_problems(text: str) -> list[str]:
 
 def usage(*, without: str = "", swap: bool = False) -> str:
     headings = {
+        "agent setup": "Let an agent set it up",
         "install": "Install",
         "init": "Set a repository up with `init`",
         "opt in": "Opt in with `PREPUSH_CI=full`",
@@ -463,8 +465,14 @@ def test_a_usage_step_left_out_is_reported() -> None:
     ]
 
 
+def test_an_agent_step_left_out_is_reported() -> None:
+    assert step_problems(usage(without="agent setup")) == [
+        "the step `agent setup` is missing"
+    ]
+
+
 def test_usage_steps_in_the_wrong_order_are_reported() -> None:
-    assert step_problems(usage(swap=True)) == ["the step `init` is out of order"]
+    assert step_problems(usage(swap=True)) == ["the step `install` is out of order"]
 
 
 def test_the_install_step_comes_with_a_command_to_run() -> None:
@@ -503,6 +511,107 @@ def test_the_step_after_the_gate_names_run_doctor_and_strip_with_one_sentence_ea
     for bullet in bullets.values():
         assert bullet.endswith(".")
         assert ". " not in bullet
+
+
+# --- The agent step ------------------------------------------------------------------------
+
+SKILL_FILE = "skills/prepush-ci-setup/SKILL.md"
+BLOB = "https://github.com/CapeOfGoodCode/prepush-ci/blob/main/"
+
+
+def agent_step() -> str:
+    return next(
+        body for heading, body in steps(shipped()).items() if "agent" in heading
+    )
+
+
+def agent_prompt() -> str:
+    blocks = re.findall(
+        r"^```[^\n]*\n(.*?)^```", agent_step(), re.MULTILINE | re.DOTALL
+    )
+    assert len(blocks) == 1
+    return flat(blocks[0])
+
+
+def test_the_agent_step_is_the_first_of_the_usage_section() -> None:
+    assert "agent" in list(steps(shipped()))[0]
+    assert "Install" in list(steps(shipped()))[1]
+
+
+def test_the_link_to_the_skill_is_absolute_and_names_a_file_of_the_repository() -> None:
+    links = re.findall(r"https://\S*skills/prepush-ci-setup/SKILL\.md", agent_step())
+
+    assert links
+    for link in links:
+        assert link == BLOB + SKILL_FILE
+    assert (README.parent / SKILL_FILE).is_file()
+
+
+def test_the_agent_step_has_a_prompt_with_the_link_that_asks_for_the_setup() -> None:
+    prompt = agent_prompt()
+
+    assert BLOB + SKILL_FILE in prompt
+    assert re.search(r"set this repository up with prepush-ci", prompt, re.IGNORECASE)
+
+
+def test_the_agent_step_names_the_skill_folder_and_where_a_project_keeps_skills() -> (
+    None
+):
+    text = flat(agent_step())
+
+    assert "skills/prepush-ci-setup/" in text
+    assert ".claude/skills/" in text
+
+
+def test_the_agent_step_says_the_following_steps_are_the_manual_core_and_what_the_skill_adds() -> (
+    None
+):
+    text = flat(agent_step()).lower()
+
+    assert "manual core" in text
+    for added in (
+        "command that runs the full check",
+        "services",
+        "preflight",
+        "sessionstart",
+        "`doctor`",
+    ):
+        assert added in text, added
+
+
+def test_the_agent_step_names_a_remote_to_push_branches_to_and_a_package_index() -> (
+    None
+):
+    text = flat(agent_step()).lower()
+
+    assert "remote" in text and "push branches" in text
+    assert "package index" in text
+
+
+def test_the_agent_step_says_the_agent_opens_a_pull_request_and_does_not_push_the_default_branch() -> (
+    None
+):
+    text = flat(agent_step()).lower()
+
+    assert "works on a branch and opens a pull request" in text
+    assert "not push to the default branch" in text
+
+
+def test_the_agent_step_says_what_the_agent_always_asks() -> None:
+    text = flat(agent_step()).lower()
+
+    assert "always" in text
+    assert "confirm the command that runs the full check" in text
+    assert "what pre-push should do" in text
+
+
+def test_the_agent_step_says_what_the_agent_asks_only_sometimes() -> None:
+    text = flat(agent_step()).lower()
+
+    assert "which hook manager" in text and "two" in text
+    assert "default branch" in text and "origin/head" in text
+    assert "a yes before" in text and "removes a hook" in text
+    assert "only" in text
 
 
 # --- What the README says about the command line and about strip -----------------------------

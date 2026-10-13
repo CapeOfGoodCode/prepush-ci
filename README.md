@@ -24,7 +24,23 @@ When `PREPUSH_CI=full` is set, a `commit-msg` hook writes the trailer `Prepush-C
 
 ## Usage
 
-### 1. Install
+### 1. Let an agent set it up
+
+The quickest way is to hand the job to a coding agent such as Claude Code, with the skill this repository ships. Give it this prompt:
+
+```text
+Follow the skill at https://github.com/CapeOfGoodCode/prepush-ci/blob/main/skills/prepush-ci-setup/SKILL.md to set this repository up with prepush-ci.
+```
+
+To keep the skill with a project, copy the folder `skills/prepush-ci-setup/` into `.claude/skills/` of the repository; the agent then finds it by itself.
+
+The agent needs a git repository with a remote it can push branches to, and a package index it can reach to install `prepush-ci`. It works on a branch and opens a pull request with the result; it does not push to the default branch.
+
+The agent always stops to ask you two things: to confirm the command that runs the full check, and what pre-push should do on your own machines. It asks more only where the repository leaves something open: which hook manager to use when there are two, the default branch when `origin/HEAD` is unset, and a yes before it removes a hook.
+
+The steps below are the manual core. On top of them the skill finds or writes the command that runs the full check, sets up the services and the preflight so that a missing service fails the check, extends the SessionStart script with dependencies and services, and proves the setup with `doctor`.
+
+### 2. Install
 
 ```sh
 uv tool install prepush-ci
@@ -35,7 +51,7 @@ uv tool install git+https://github.com/CapeOfGoodCode/prepush-ci
 
 `uvx prepush-ci` runs it without installing. It needs Python 3.11 or newer and git, and nothing else.
 
-### 2. Set a repository up with `init`
+### 3. Set a repository up with `init`
 
 ```sh
 cd your-repo
@@ -44,19 +60,19 @@ prepush-ci init
 
 `init` asks for the command that runs your full CI check, then writes `.prepush-ci.toml`, installs the git hooks (it finds `pre-commit`, husky and lefthook and edits their files instead of fighting them), writes a Claude Code SessionStart script that exports `PREPUSH_CI=full` in cloud sessions, and prints the CI gate snippet. Commit `.prepush-ci.toml` and the hook files you want shared. In a script, give it flags: `prepush-ci init --non-interactive --check "sh scripts/ci"`.
 
-### 3. Opt in with `PREPUSH_CI=full`
+### 4. Opt in with `PREPUSH_CI=full`
 
 Nothing happens until a machine opts in: set `PREPUSH_CI=full` in its environment (the SessionStart script does it in a cloud session; on your own machine, export it in your shell profile or leave it unset). The values are described [below](#prepush_ci).
 
-### 4. What a commit and a push do
+### 5. What a commit and a push do
 
 A commit made with `PREPUSH_CI=full` gets the trailer `Prepush-CI: full` from the `commit-msg` hook. A push whose tip commit carries the trailer runs the `pre-push` hook, which refuses the push unless your check passes on exactly that commit; a pass is remembered, so a retried push does not run the check twice. A push of a tip without the trailer goes through untouched.
 
-### 5. Skip CI on verified commits: the CI gate
+### 6. Skip CI on verified commits: the CI gate
 
 Add a first job to pull request CI that reads the trailer of the head commit with `prepush-ci verify <sha>`, and let the other jobs skip when it is verified. `init` prints the snippet for GitHub Actions, GitLab CI or any other CI (`--ci github|gitlab|generic`), and the same files are in [`docs/ci/`](https://github.com/CapeOfGoodCode/prepush-ci/tree/main/docs/ci). The default branch always runs CI in full, and pull requests from forks never skip.
 
-### 6. When a push is refused
+### 7. When a push is refused
 
 - `prepush-ci run` runs the preflight and the check on `HEAD` the way the hook does, so you can see why it fails.
 - `prepush-ci doctor` finds a setup fault: a missing hook, a broken config, a variable that is not set.
