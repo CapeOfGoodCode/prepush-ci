@@ -12,7 +12,7 @@ Work on a branch and open a pull request with the result; do not push to the def
 ## 0. Preconditions
 
 - The repository is a git repository with a remote, and you can push branches.
-- `prepush-ci` is reachable: `uvx prepush-ci --version` (or `pipx run`). If the network policy blocks the package index, stop and tell the user which host is needed.
+- `prepush-ci` is reachable: `uvx prepush-ci --version` (or `pipx run prepush-ci --version`). If the network policy blocks the package index, stop and tell the user which host is needed. Use `uvx` for the commands you run yourself, once; hooks and the SessionStart script never use it (below).
 - If `.prepush-ci.toml` already exists, run `uvx prepush-ci doctor`, report its findings, and fix only what it lists.
 
 ## 1. Find the full check
@@ -27,38 +27,71 @@ Work on a branch and open a pull request with the result; do not push to the def
 
 1. List what CI provides besides the code: service containers (PostgreSQL, MySQL, Redis, …), environment variables, secrets used by tests.
 2. Check what the cloud container offers (`command -v psql pg_ctlcluster redis-server docker`, installed versions). A different major version is acceptable; say so in the docs.
-3. Write or extend `.claude/hooks/session-start.sh` and register it in `.claude/settings.json` under `hooks.SessionStart`. It must:
-   - return immediately unless `CLAUDE_CODE_REMOTE` is `true` (laptops are not touched);
-   - install dependencies with the lockfile (`uv sync --frozen`, `npm ci`, …);
-   - start the services and create users/databases the way CI does;
-   - run `uvx prepush-ci install` (or the repository's hook manager install);
-   - export `PREPUSH_CI=full` and the service variables by appending `export NAME=VALUE` lines to `$CLAUDE_ENV_FILE`;
-   - be idempotent and finish well within the hook timeout.
-4. Write the preflight: list required variables in `require_env`, or write `scripts/ci-preflight` that exits non-zero when a service is unreachable. **A missing service must fail the full check, never skip tests.** A suite that skips its database tests while the commit carries the trailer makes the pull request CI skip unchecked code.
-5. If a service cannot run in the container at all, tell the user: the full check cannot replace CI for that part, and either that step stays in pull request CI (not skipped) or the setup stops here.
+3. Write the preflight: list required variables for `--require-env <NAME>` (once per variable), or write `scripts/ci-preflight` that exits non-zero when a service is unreachable and pass it as `--preflight "<command>"`. **A missing service must fail the full check, never skip tests.** A suite that skips its database tests while the commit carries the trailer makes the pull request CI skip unchecked code.
+4. If a service cannot run in the container at all, tell the user: the full check cannot replace CI for that part, and either that step stays in pull request CI (not skipped) or the setup stops here.
 
-## 3. Hooks and config
+## 3. Look at the existing hooks
 
-Run `uvx prepush-ci init --non-interactive` with:
+Before you change anything, list what the repository already has and tell the user what you found:
 
-- `--check "<confirmed command>"`, `--preflight …` or `--require-env …` from step 2;
-- `--hooks <manager>`: `pre-commit` if `.pre-commit-config.yaml` exists, `husky` or `lefthook` if configured, else `native` (`core.hooksPath`);
-- `--default-branch <name>` from `git symbolic-ref refs/remotes/origin/HEAD`;
-- `--require-up-to-date origin/<default branch>` (the default; leave it on unless the user objects).
+- `git config core.hooksPath`, and the effective hooks directory (`git rev-parse --git-path hooks`);
+- the files `commit-msg` and `pre-push` in that directory;
+- the files of the hook managers: `.pre-commit-config.yaml`, `.husky/`, `lefthook.yml`.
 
-For pre-commit, check that `default_install_hook_types` contains `commit-msg` and `pre-push` and that no `args:` duplicate the check command (the config file is the single source of truth). If the repository already has legacy trailers from a hand-made version of this setup, add them to `legacy_keys`.
+If there is more than one manager, ask the user which one to use and pass the choice as `--hooks`. Without a manager the value is `native`.
 
-## 4. CI gate
+## 4. Ask what pre-push should do locally
 
-Add the gate for pull/merge request pipelines only. Never skip on the default branch, and never for pull requests from forks.
+Stop and ask the user: "What should happen with pre-push on your own machines? (1) keep the existing hooks and run ours after them; (2) install the hooks only in cloud sessions; (3) fold the existing pre-push steps into the full check and remove the old hook." Wait for the answer before you run any command that installs hooks: `init` installs them at once, so the question comes first, never after.
 
-- **GitHub Actions:** a first job that runs `prepush-ci verify "${{ github.event.pull_request.head.sha }}"` after a checkout with enough history (or uses `prepush-ci/gate@v1` if the user prefers), exposes `verified`, and every other pull request job gets `needs: <gate>` plus `if: needs.<gate>.outputs.verified != 'true'`. Jobs on `push` to the default branch keep running unconditionally. Mention that the gate costs one rounded minute per workflow.
-- **GitLab CI:** a `rules:` entry that skips merge request pipelines when `$CI_COMMIT_MESSAGE` contains the trailer, plus `prepush-ci verify` in the first job for the committer check.
-- **Other systems:** call `prepush-ci verify` first and exit early with success when it returns 0.
+- **Keep the existing hooks** (the default): run `init` with the `--hooks` value you found (step 5).
+  - Native hooks: `init` chains the existing hooks, which run first; leave the existing hook files as they are, never edit, move or remove `commit-msg` or `pre-push` in the hooks directory.
+  - pre-commit: the only changes to `.pre-commit-config.yaml` are the block `init` writes and the keys `default_install_hook_types` and `default_stages`, every other line stays as it is. Commit these changes together with `.prepush-ci.toml`: committed, the session's `install` finds nothing to change.
+  - husky or lefthook: the only change to the files under `.husky/` or to `lefthook.yml` is the block `init` writes (a new hook file also starts with `#!/usr/bin/env sh`), every other line stays as it is. Commit the block together with `.prepush-ci.toml`.
+- **Cloud sessions only**: run `init` with `--hooks none`. It applies when no hook manager is in use: the hooks then exist only where the SessionStart script installs them.
+- **Fold into the check**: the tool cannot do this by itself. Show the user the hook file, move its steps into the check command first, and remove the file only after the user confirms it by name. Without that yes, change no hook file.
+
+With a hook manager only the first and the third answer are offered; say so and why: the session's `install` would modify the tracked config and leave the worktree dirty, so that every push refuses, while committing the block gives `commit-msg` and `pre-push` hooks to every developer who runs the manager's install, and they fail where the tool is missing.
+
+## 5. Run init
+
+Run `init` once, with the check from step 1, the preflight from step 2 and the answer from step 4:
+
+```sh
+uvx prepush-ci init --non-interactive \
+  --check "<check command>" \
+  --hooks <hooks> \
+  --default-branch "<default branch>"
+```
+
+- `<hooks>` is `pre-commit`, `husky`, `lefthook` or `native` for answers 1 and 3, `none` for answer 2;
+- `<default branch>` comes from `git symbolic-ref refs/remotes/origin/HEAD`;
+- add `--preflight "<command>"` or `--require-env <NAME>` from step 2; `--require-up-to-date` stays at its default unless the user objects; `--ci github|gitlab|generic|none` picks the gate snippet it prints (default: detected).
+
+`init` writes `.prepush-ci.toml`, installs the hooks, writes the SessionStart script and registers it, and prints the CI gate snippet; do not write those files by hand. If the repository already has legacy trailers from a hand-made version of this setup, add them to `legacy_keys` in `.prepush-ci.toml`. For pre-commit, check that no `args:` duplicate the check command (the config file is the single source of truth).
+
+## 6. Extend the SessionStart script
+
+`init` wrote `.claude/hooks/session-start.sh`. Extend that script with what the repository needs to run its check, after the `prepush-ci install` line; do not write another. It already returns immediately unless `CLAUDE_CODE_REMOTE` is `true`, installs the tool with `uv tool install`, installs the hooks and exports `PREPUSH_CI=full` and `PATH` through `$CLAUDE_ENV_FILE`. Add:
+
+- dependencies from the lockfile (`uv sync --frozen`, `npm ci`, …);
+- the services, with the users and databases CI sets up;
+- the activation of the hook manager when the repository uses one: `pre-commit install` or `lefthook install` (husky activates itself through its `prepare` script);
+- the service variables, as `export NAME=VALUE` lines appended to `$CLAUDE_ENV_FILE`.
+
+Keep it idempotent and well within the hook timeout.
+
+## 7. CI gate
+
+Add the gate for pull/merge request pipelines only. Start from the snippet `init --ci` printed, or from `docs/ci/`. Pull requests from forks never skip and the default branch never skips; say so in the pull request.
+
+- **GitHub Actions:** a first job that checks out the pull request's head commit with enough history and uses `CapeOfGoodCode/prepush-ci@<ref>` (pin a release tag or a commit sha), which exposes `verified`; every other pull request job gets `needs: <gate>` plus `if: needs.<gate>.outputs.verified != 'true'`. Jobs on `push` to the default branch keep running unconditionally. Mention that the gate costs one rounded minute per workflow.
+- **GitLab CI:** a `rules:` entry that skips merge request pipelines when `$CI_COMMIT_MESSAGE` contains the trailer, plus `prepush-ci verify "$CI_COMMIT_SHA"` in the first job for the committer check.
+- **Other systems:** call `prepush-ci verify "$SHA"` first and exit early with success when it returns 0.
 
 Show the diff and say plainly: this change is where CI minutes are saved, and the default branch stays the backstop.
 
-## 5. Documentation
+## 8. Documentation
 
 Add a short section to `CLAUDE.md` (or `AGENTS.md`, whichever the repository uses):
 
@@ -69,12 +102,12 @@ Add a short section to `CLAUDE.md` (or `AGENTS.md`, whichever the repository use
 
 Also add a sentence to the README for humans: how to opt in locally (`export PREPUSH_CI=full`) and that nothing changes for them otherwise.
 
-## 6. Prove it
+## 9. Prove it
 
 The SessionStart hook did not run for the current session. Then:
 
 1. Run `.claude/hooks/session-start.sh` by hand (with `CLAUDE_CODE_REMOTE=true` and `CLAUDE_ENV_FILE` set) and source the exported variables into your shell.
-2. Run `uvx prepush-ci doctor`; fix everything it reports.
+2. Run `prepush-ci doctor --mode full`; fix everything it reports.
 3. Commit the setup on the branch. This commit may lack the trailer (the hooks were not installed yet when it was written); that is harmless, CI runs in full on it.
 4. Make a second, trivial commit (e.g. the docs section). Confirm with `git log -1 --format=%B` that it carries `Prepush-CI: full`.
 5. Push with a long timeout; show that the full check ran and passed.
