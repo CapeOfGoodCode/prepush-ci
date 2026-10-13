@@ -1,0 +1,18 @@
+#!/bin/sh
+# Lints what runs in CI and what users copy into their own: the workflows, the action and the
+# GitHub Actions example (zizmor, offline: a template injection, a broad token permission), the
+# workflows and the example (actionlint, which runs shellcheck on their `run:` blocks) and the
+# shell scripts (shellcheck). zizmor reads only .github/ and action.yml by itself, so the example
+# is named.
+# Usage: scripts/lint-workflows [root]   (default: this repository; the tools are always its own)
+set -eu
+repository=$(cd "$(dirname "$0")/.." && pwd)
+root=${1:-$repository}
+lint() { uv run --project "$repository" "$@"; }
+
+echo "==> zizmor"
+lint zizmor --offline "$root" "$root"/docs/ci/github-actions.yml
+echo "==> actionlint"
+lint actionlint "$root"/.github/workflows/*.yml "$root"/docs/ci/github-actions.yml
+echo "==> shellcheck"
+lint shellcheck "$root"/docs/ci/gate.sh "$root"/scripts/*
