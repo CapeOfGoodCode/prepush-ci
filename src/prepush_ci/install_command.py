@@ -129,11 +129,12 @@ def found_files(root: Path | None) -> dict[str, str]:
 
 
 def previous_pre_push(cwd: Path) -> Path | None:
-    """The `pre-push` hook `install` would chain to, if one is there to run."""
+    """The `pre-push` hook `install` would chain to, if one is there to run; unreadable is an
+    error."""
     common = _resolve(cwd, git(cwd, "rev-parse", "--git-common-dir").stdout.strip())
     directory = common.joinpath(*HOOKS_DIRECTORY)
     hook = _previous(cwd, common, directory) / "pre-push"
-    return hook if hook.is_file() else None
+    return hook if hook.name in _listing(hook.parent) else None
 
 
 def _marker(root: Path, name: str) -> bool:
