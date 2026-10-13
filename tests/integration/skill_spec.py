@@ -409,3 +409,129 @@ def test_the_proof_step_runs_doctor_with_the_mode_after_sourcing_the_variables()
     step = section("Prove")
     assert "doctor --mode full" in step
     assert step.index("source") < step.index("doctor --mode full")
+
+
+# --- The default branch hint yields a branch name ---------------------------------------------
+
+ORIGIN_PREFIX = "refs/remotes/origin/"
+
+
+def default_branch_step() -> str:
+    """The bullet of the init step that tells where `<default branch>` comes from."""
+    for line in section("Run init").splitlines():
+        if line.startswith("- `<default branch>`"):
+            return flat(line)
+    raise AssertionError("SKILL.md has no `<default branch>` bullet in the init step")
+
+
+def hint_command() -> list[str]:
+    """The command the `<default branch>` step gives, as the words git is run with."""
+    for span in re.findall(r"`([^`]+)`", default_branch_step()):
+        if span.startswith("git "):
+            return shlex.split(span)[1:]
+    raise AssertionError("the `<default branch>` step names no git command")
+
+
+def repo_with_origin_head(repo: Path, git: Git, branch: str | None) -> Path:
+    """`repo` with one commit, and `origin/HEAD` naming `origin/<branch>` unless `branch` is None."""
+    (repo / "f").write_text("x")
+    git(repo, "add", "f")
+    git(repo, "commit", "-q", "-m", "init")
+    if branch is not None:
+        git(repo, "update-ref", f"refs/remotes/origin/{branch}", "HEAD")
+        git(
+            repo,
+            "symbolic-ref",
+            "refs/remotes/origin/HEAD",
+            f"refs/remotes/origin/{branch}",
+        )
+    return repo
+
+
+def init_default_branch(repo: Path, branch: str) -> "subprocess.CompletedProcess[str]":
+    """Run the skill's `init` invocation in `repo` with `branch` as the default branch."""
+    words = [word.replace("<default branch>", branch) for word in init_invocation()]
+    return subprocess.run(
+        [sys.executable, "-m", "prepush_ci", *filled(words)],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def loaded_default_branch(repo: Path) -> str:
+    import tomllib
+
+    from prepush_ci.core.config import parse_config
+
+    table = tomllib.loads((repo / ".prepush-ci.toml").read_text(encoding="utf-8"))
+    return parse_config(table).default_branch
+
+
+def follow_the_hint(repo: Path, git: Git) -> str:
+    """What an agent does with the step: run its command, remove the leading prefix."""
+    output = git(repo, *hint_command()).stdout.strip()
+    assert output.startswith(ORIGIN_PREFIX), output
+    return output[len(ORIGIN_PREFIX) :]
+
+
+def hint_gives_the_name_init_accepts(
+    repo: Path, git: Git, origin_head: str, local_branch: str | None = None
+) -> None:
+    repo_with_origin_head(repo, git, origin_head)
+    if local_branch:
+        git(repo, "branch", local_branch)
+
+    result = init_default_branch(repo, follow_the_hint(repo, git))
+
+    assert result.returncode == 0, result.stderr
+    assert loaded_default_branch(repo) == origin_head
+
+
+def test_a_repository_with_origin_head_gets_its_default_branch_from_the_hint(
+    repo: Path, git: Git
+) -> None:
+    hint_gives_the_name_init_accepts(repo, git, "trunk")
+
+
+def test_a_default_branch_name_with_a_slash_survives_the_hint(
+    repo: Path, git: Git
+) -> None:
+    hint_gives_the_name_init_accepts(repo, git, "release/1")
+
+
+def test_a_local_branch_named_like_the_remote_branch_does_not_change_the_hint(
+    repo: Path, git: Git
+) -> None:
+    hint_gives_the_name_init_accepts(repo, git, "trunk", local_branch="origin/trunk")
+
+
+def test_the_default_branch_step_names_the_command_and_says_to_remove_the_prefix() -> (
+    None
+):
+    step = default_branch_step()
+    assert "`git symbolic-ref refs/remotes/origin/HEAD`" in step
+    assert "remove the leading `refs/remotes/origin/`" in step
+
+
+def test_without_origin_head_the_hint_fails_and_init_takes_the_name_the_user_gave(
+    repo: Path, git: Git
+) -> None:
+    repo_with_origin_head(repo, git, None)
+
+    hint = git(repo, *hint_command(), check=False)
+    result = init_default_branch(repo, "trunk")
+
+    assert hint.returncode != 0
+    assert result.returncode == 0, result.stderr
+    assert loaded_default_branch(repo) == "trunk"
+
+
+def test_the_default_branch_step_says_the_command_fails_without_origin_head_and_to_ask() -> (
+    None
+):
+    step = default_branch_step()
+    assert "fails when `origin/HEAD` is unset" in step
+    assert "ask the user for the default branch" in step
+    assert "do not guess" in step
