@@ -1332,7 +1332,7 @@ def refused_by_init_with_one_line(result: "subprocess.CompletedProcess[str]") ->
     sys.platform == "win32", reason="a directory cannot be made unreadable with chmod"
 )
 def test_interactive_init_refuses_in_one_line_when_the_previous_hooks_directory_cannot_be_read(
-    repo: Path, git: Git, tmp_path: Path
+    repo: Path, git: Git, tmp_path: Path, printed: Callable[[str], str]
 ) -> None:
     previous = a_repository_with_a_recorded_previous_hooks_directory(
         repo, git, tmp_path
@@ -1344,12 +1344,12 @@ def test_interactive_init_refuses_in_one_line_when_the_previous_hooks_directory_
         previous.chmod(0o755)  # so that the temporary directory can be removed
 
     refused_by_init_with_one_line(result)
-    assert previous.as_posix() in result.stderr
+    assert printed(previous.as_posix()) in result.stderr
 
 
 @pytest.mark.parametrize("record", ["bytes", "directory"])
 def test_interactive_init_refuses_in_one_line_when_the_record_of_the_previous_directory_is_unreadable(
-    repo: Path, git: Git, tmp_path: Path, record: str
+    repo: Path, git: Git, tmp_path: Path, record: str, printed: Callable[[str], str]
 ) -> None:
     a_repository_with_a_recorded_previous_hooks_directory(repo, git, tmp_path)
     path = repo / ".git" / "prepush-ci" / "hooks" / "previous"
@@ -1362,7 +1362,7 @@ def test_interactive_init_refuses_in_one_line_when_the_record_of_the_previous_di
     result = init(repo, stdin=answers("", ""))
 
     refused_by_init_with_one_line(result)
-    assert path.as_posix() in result.stderr
+    assert printed(path.as_posix()) in result.stderr
 
 
 # --- A default branch that origin lacks ---------------------------------------------------------

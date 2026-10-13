@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 Git = Callable[..., "subprocess.CompletedProcess[str]"]
+Locale = Callable[..., dict[str, str]]  # `pre_commit_locale`: pre-commit's environment
 
 CONFIG = 'check = "true"\nrequire_up_to_date = false\n'
 
@@ -282,7 +283,7 @@ def install(repo: Path, *args: str) -> None:
     )
 
 
-def pre_commit_install(repo: Path, tmp_path: Path) -> None:
+def pre_commit_install(repo: Path, tmp_path: Path, pre_commit_locale: Locale) -> None:
     """The step the fix line asks for: `pre-commit install` installs the hook types the config names."""
     subprocess.run(
         [sys.executable, "-m", "pre_commit", "install"],
@@ -290,7 +291,9 @@ def pre_commit_install(repo: Path, tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         check=True,
-        env={**os.environ, "PRE_COMMIT_HOME": str(tmp_path / "pre-commit-home")},
+        env=pre_commit_locale(
+            {**os.environ, "PRE_COMMIT_HOME": str(tmp_path / "pre-commit-home")}
+        ),
     )
 
 
@@ -471,10 +474,12 @@ def test_a_relative_hooks_path_is_judged_from_the_worktree_root(
 # The choice of hooks
 
 
-def test_a_detected_manager_is_judged_without_hooks(repo: Path, tmp_path: Path) -> None:
+def test_a_detected_manager_is_judged_without_hooks(
+    repo: Path, tmp_path: Path, pre_commit_locale: Locale
+) -> None:
     (repo / ".pre-commit-config.yaml").write_text(PRE_COMMIT_CONFIG)
     install(repo)
-    pre_commit_install(repo, tmp_path)
+    pre_commit_install(repo, tmp_path, pre_commit_locale)
 
     assert both(doctor(repo)) == ("ok", "ok")
 
@@ -636,16 +641,19 @@ def test_a_lefthook_section_that_lost_its_block_fails_only_its_own_check(
 # Activation of pre-commit and lefthook
 
 
-def test_pre_commit_that_was_activated_passes(repo: Path, tmp_path: Path) -> None:
+def test_pre_commit_that_was_activated_passes(
+    repo: Path, tmp_path: Path, pre_commit_locale: Locale
+) -> None:
     (repo / ".pre-commit-config.yaml").write_text(PRE_COMMIT_CONFIG)
     install(repo)
-    pre_commit_install(repo, tmp_path)
+    pre_commit_install(repo, tmp_path, pre_commit_locale)
 
     assert both(doctor(repo)) == ("ok", "ok")
 
 
 def test_pre_commit_that_was_not_activated_fails_and_the_fix_is_pre_commit_install(
     repo: Path,
+    pre_commit_locale: Locale,
 ) -> None:
     (repo / ".pre-commit-config.yaml").write_text(PRE_COMMIT_CONFIG)
     install(repo)
@@ -658,7 +666,9 @@ def test_pre_commit_that_was_not_activated_fails_and_the_fix_is_pre_commit_insta
 
 
 def test_pre_commit_activated_for_the_default_hook_type_only_fails_both(
-    repo: Path, tmp_path: Path
+    repo: Path,
+    tmp_path: Path,
+    pre_commit_locale: Locale,
 ) -> None:
     (repo / ".pre-commit-config.yaml").write_text(PRE_COMMIT_CONFIG)
     install(repo)
@@ -667,7 +677,9 @@ def test_pre_commit_activated_for_the_default_hook_type_only_fails_both(
         cwd=repo,
         capture_output=True,
         check=True,
-        env={**os.environ, "PRE_COMMIT_HOME": str(tmp_path / "pre-commit-home")},
+        env=pre_commit_locale(
+            {**os.environ, "PRE_COMMIT_HOME": str(tmp_path / "pre-commit-home")}
+        ),
     )
 
     assert both(doctor(repo)) == ("fail", "fail")
@@ -939,7 +951,7 @@ def test_a_missing_variable_stops_the_preflight_command(
 
 
 def test_a_failing_preflight_names_the_command_and_status_and_shows_its_output(
-    ready: Path, tmp_path: Path
+    ready: Path, tmp_path: Path, printed: Callable[[str], str]
 ) -> None:
     command = python_command(
         tmp_path, "down", "import sys; print('db is down'); sys.exit(3)"
@@ -950,7 +962,7 @@ def test_a_failing_preflight_names_the_command_and_status_and_shows_its_output(
 
     text = line(result, "preflight")
     assert status(result, "preflight") == "fail"
-    assert command in text and "3" in text
+    assert printed(command) in text and "3" in text
     assert "    db is down" in result.stdout.splitlines()
 
 
@@ -970,14 +982,14 @@ def test_the_preflight_runs_from_the_repository_root(
     command = python_command(
         tmp_path,
         "cwd",
-        "import os, sys, pathlib; pathlib.Path(sys.argv[1]).write_text(os.getcwd())",
+        "import os, sys, pathlib; pathlib.Path(sys.argv[1]).write_bytes(os.fsencode(os.getcwd()))",
     )
     configure(ready, preflight(f'{command} "{where}"'))
     (ready / "src").mkdir()
 
     doctor(ready / "src")
 
-    assert Path(where.read_text()).resolve() == ready.resolve()
+    assert Path(os.fsdecode(where.read_bytes())).resolve() == ready.resolve()
 
 
 def test_a_preflight_that_reads_standard_input_does_not_wait_for_it(

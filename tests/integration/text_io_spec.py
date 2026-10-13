@@ -2,6 +2,8 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 ASCII = {"LC_ALL": "C", "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0"}
 
 CODE = """
@@ -14,6 +16,10 @@ print(text_io.from_os(os_string) == "or\\u00e9", text_io.from_os(text_io.to_os("
 """
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows has no ASCII file system encoding: its strings are UTF-8",
+)
 def test_the_tools_text_survives_the_operating_systems_strings_under_an_ascii_file_system_encoding() -> (
     None
 ):

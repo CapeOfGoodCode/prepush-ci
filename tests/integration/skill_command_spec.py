@@ -204,17 +204,23 @@ def blocked_by_a_directory(root: Path) -> None:
 
 @pytest.mark.parametrize("block", [blocked_by_a_file, blocked_by_a_directory])
 def test_a_target_that_cannot_be_written_exits_1_with_one_line_naming_it_and_the_reason(
-    repo: Path, git: Git, block: Callable[[Path], None]
+    repo: Path,
+    git: Git,
+    block: Callable[[Path], None],
+    printed: Callable[[str], str],
 ) -> None:
     block(repo)
     before = git(repo, "status", "--porcelain").stdout
-    target = (repo.resolve() / PROJECT_SKILL).as_posix()
+    target = printed((repo.resolve() / PROJECT_SKILL).as_posix())
 
     result = skill(repo, "--write")
 
     assert result.returncode == 1
     assert b"Traceback" not in result.stderr
-    lines = result.stderr.decode().splitlines()
+    shown = (
+        "cp1252" if sys.platform == "win32" else "utf-8"
+    )  # what the tool prints is encoded for the terminal
+    lines = result.stderr.decode(shown, "replace").splitlines()
     assert len(lines) == 1
     assert re.fullmatch(
         rf"prepush-ci skill: cannot write {re.escape(target)}: \S.*", lines[0]

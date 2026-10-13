@@ -8,9 +8,9 @@
 
 ## 2. The variant
 
-- [ ] 2.1 Add the `utf8` and `ascii` variants to the `repo` fixture and the CLI helper of `tests/integration/conftest.py`, with the helper for printed text; verify with specs for "Both variants run" and "The ascii variant is hostile"
-- [ ] 2.2 Fix, with one spec each, what the variant finds in the command that breaks; each fix folds into the commit that adds its spec; verify with the scenarios of "The tool's text is UTF-8", "A file the tool parses must be UTF-8", "A file the tool edits keeps its bytes", "A file the tool writes reads back equal" and "Every command handles non-ASCII names the same way" (the check and preflight scenarios included) (the reproductions of #130, #134, #144, #145, #146, #150)
-- [ ] 2.3 Add the scenarios of "The terminal never makes a command fail" (#115); verify them in the `ascii` variant and report the time the integration tier takes in the two variants in the pull request
+- [x] 2.1 Add the `utf8` and `ascii` variants to the `repo` fixture and the CLI helper of `tests/integration/conftest.py`, with the helper for printed text; verify with specs for "Both variants run" and "The ascii variant is hostile"
+- [x] 2.2 Fix, with one spec each, what the variant finds in the command that breaks; each fix folds into the commit that adds its spec; verify with the scenarios of "The tool's text is UTF-8", "A file the tool parses must be UTF-8", "A file the tool edits keeps its bytes", "A file the tool writes reads back equal" and "Every command handles non-ASCII names the same way" (the check and preflight scenarios included) (the reproductions of #130, #134, #144, #145, #146, #150)
+- [x] 2.3 Add the scenarios of "The terminal never makes a command fail" (#115); verify them in the `ascii` variant and report the time the integration tier takes in the two variants in the pull request
 
 ## 3. Finish
 

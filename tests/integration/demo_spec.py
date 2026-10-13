@@ -20,6 +20,8 @@ from xml.etree import ElementTree
 
 import pytest
 
+pytestmark = pytest.mark.starts_the_cli  # it runs the recording script
+
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "record_demo.py"
 ASSET = ROOT / "docs" / "assets" / "demo.svg"

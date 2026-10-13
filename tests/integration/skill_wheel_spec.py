@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.starts_the_cli  # it runs the installed script
+
 ROOT = Path(__file__).resolve().parents[2]
 SKILL = ROOT / "skills" / "prepush-ci-setup" / "SKILL.md"
 PROJECT_SKILL = Path(".claude") / "skills" / "prepush-ci-setup" / "SKILL.md"
