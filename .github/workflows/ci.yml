@@ -1,8 +1,8 @@
 name: ci
 
-# Pull requests run only once they are ready for review: drafts are work in progress. The merge
-# queue runs everything again on the exact state that will land, so main is never tested after the
-# fact; a push to main runs only the Linux check, for the coverage badge.
+# Pull requests run only once they are ready for review: drafts are work in progress. The human's
+# approval merges through auto-merge; two pull requests that pass alone can still break together,
+# so every push to main runs the full check again, Linux and Windows (the coverage badge too).
 # Description edits do not trigger this workflow (proof.yml checks those), so an edit can never
 # cancel a running check and leave a skipped, "passing" one behind.
 # The ruleset requires ci-passed (and proof): a job added here is required without touching it.
@@ -10,7 +10,6 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
-  merge_group:
   push:
     branches: [main]
 
@@ -38,8 +37,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           code=true specs=false
           # The compare API lists at most 300 files; a longer list is treated as code.
@@ -119,7 +118,7 @@ jobs:
   # broke there twice (#26, #36) and only the human's pre-push hook noticed.
   check-windows:
     needs: changes
-    if: needs.changes.outputs.code == 'true' && github.event_name != 'push'
+    if: needs.changes.outputs.code == 'true'
     runs-on: windows-latest
     permissions:
       contents: read
