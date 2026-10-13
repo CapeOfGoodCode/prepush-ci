@@ -9,6 +9,7 @@ from prepush_ci.core.install import (
     forwardable,
     forwarder_script,
     hook_script,
+    native_hooks_refusal,
     outcome,
     report,
 )
@@ -170,3 +171,26 @@ def test_the_commit_msg_script_warns_and_lets_the_commit_go_when_the_interpreter
     assert script.index("exit 0", script.index('[ ! -x "$py" ]')) < script.index(
         "-m prepush_ci"
     )
+
+
+def test_the_native_hooks_refusal_names_the_setting_the_command_and_the_rerun() -> None:
+    message = native_hooks_refusal("pre-commit", None)
+
+    assert "core.hooksPath" in message
+    assert "git config --local --unset core.hooksPath" in message
+    assert "pre-commit" in message
+    assert "install" in message and "again" in message
+
+
+def test_the_native_hooks_refusal_says_nothing_about_lost_hooks_when_none_are_lost() -> (
+    None
+):
+    assert "no longer run" not in native_hooks_refusal("lefthook", None)
+
+
+def test_the_native_hooks_refusal_names_the_directory_whose_hooks_stop_running() -> (
+    None
+):
+    message = native_hooks_refusal("lefthook", "/work/custom-hooks")
+
+    assert "/work/custom-hooks" in message and "no longer run" in message

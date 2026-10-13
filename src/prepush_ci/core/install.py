@@ -136,3 +136,22 @@ def report(word: str, directory: str, previous: str | None) -> str:
 
 
 NO_REPOSITORY = "prepush-ci install: there is no git repository here"
+
+
+UNSET_HOOKS_PATH = "git config --local --unset core.hooksPath"
+
+
+def native_hooks_refusal(manager: str, lost: str | None) -> str:
+    """Why `install` refuses `manager` while the native hooks hold `core.hooksPath`, and what to
+    do. `lost` is the previous hooks directory whose hooks git stops running once the setting is
+    gone, None when nothing is lost."""
+    message = (
+        f"core.hooksPath still points at the native prepush-ci hooks and {manager} refuses to "
+        f"install while it is set; run `{UNSET_HOOKS_PATH}`, then run `prepush-ci install` again"
+    )
+    if lost is not None:
+        message += (
+            f". The hooks in {lost} will no longer run after that; move them into the "
+            f"configuration of {manager} first"
+        )
+    return message

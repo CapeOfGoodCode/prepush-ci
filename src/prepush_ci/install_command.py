@@ -25,11 +25,14 @@ from prepush_ci.core.install import (
     changes,
     desired_files,
     forwardable,
+    native_hooks_refusal,
     outcome,
     report,
 )
 from prepush_ci.core.uv_cache import TEMPORARY_WARNING, is_temporary
 from prepush_ci.git import git
+
+HOOKS_PATH_REFUSERS = ("pre-commit", "lefthook")  # husky sets core.hooksPath itself
 
 
 def run(cwd: Path, hooks: str | None = None) -> int:
@@ -48,7 +51,7 @@ def run(cwd: Path, hooks: str | None = None) -> int:
         print(f"prepush-ci install: {refusal}", file=sys.stderr)
         return 1
     if chosen in MANAGERS:
-        return _install_manager(root, chosen)
+        return _install_manager(cwd, root, chosen)
     common = _resolve(cwd, common_dir.stdout.strip())
     directory = common.joinpath(*HOOKS_DIRECTORY)
     ours = _hooks_path(cwd) == directory
@@ -122,11 +125,17 @@ def _marker(root: Path, name: str) -> bool:
     return path.is_dir() if name == HUSKY_DIRECTORY else path.is_file()
 
 
-def _install_manager(root: Path | None, manager: str) -> int:
+def _install_manager(cwd: Path, root: Path | None, manager: str) -> int:
     """Edit the files of `manager`; every file is read and edited before the first is written, so
     a refusal leaves them all as they were."""
     if root is None:
         print("prepush-ci install: there is no worktree here", file=sys.stderr)
+        return 1
+    if manager in HOOKS_PATH_REFUSERS and _holds_hooks_path(cwd, root):
+        print(
+            f"prepush-ci install: {native_hooks_refusal(manager, _lost_hooks(cwd, root))}",
+            file=sys.stderr,
+        )
         return 1
     present = [name for name in MARKERS[manager] if _marker(root, name)]
     if not present:
@@ -158,6 +167,53 @@ def _install_manager(root: Path | None, manager: str) -> int:
         )
     )
     return 0
+
+
+def _native_directory(cwd: Path) -> Path:
+    common = _resolve(cwd, git(cwd, "rev-parse", "--git-common-dir").stdout.strip())
+    return common.joinpath(*HOOKS_DIRECTORY)
+
+
+def _holds_hooks_path(cwd: Path, root: Path) -> bool:
+    """Whether the local `core.hooksPath` is the native hooks directory: the only value the
+    command the refusal names removes."""
+    local = git(cwd, "config", "--local", "--type=path", "--get", "core.hooksPath")
+    value = local.stdout.strip()
+    return (
+        local.returncode == 0
+        and bool(value)
+        and _resolve(root, value) == _native_directory(cwd)
+    )
+
+
+def _lost_hooks(cwd: Path, root: Path) -> str | None:
+    """The previous hooks directory, when it holds a hook and git stops using it once the local
+    `core.hooksPath` is gone."""
+    recorded = _native_directory(cwd) / PREVIOUS_FILE
+    if not recorded.is_file():
+        return None
+    previous = Path(recorded.read_text(encoding="utf-8").strip()).resolve()
+    if not any(not name.endswith(".sample") for name in _files(previous)):
+        return None
+    return None if previous == _hooks_without_local(cwd, root) else previous.as_posix()
+
+
+def _hooks_without_local(cwd: Path, root: Path) -> Path:
+    """The directory git takes hooks from when the local `core.hooksPath` is gone."""
+    scoped = git(
+        cwd, "config", "--show-scope", "--type=path", "--get-all", "core.hooksPath"
+    )
+    others = [
+        line.split("\t", 1)[1]
+        for line in scoped.stdout.splitlines()
+        if not line.startswith("local\t")
+    ]
+    if others:
+        return _resolve(root, others[-1])
+    return (
+        _resolve(cwd, git(cwd, "rev-parse", "--git-common-dir").stdout.strip())
+        / "hooks"
+    )
 
 
 def _read(path: Path) -> str | None:
