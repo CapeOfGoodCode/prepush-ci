@@ -27,5 +27,7 @@ if [ -n "${CI:-}" ]; then workers="-n auto"; else workers=""; fi
 # shellcheck disable=SC2086  # $workers is empty or two words
 uv run coverage run -m pytest -q $workers
 uv run coverage report --fail-under=95 --skip-covered
+echo "==> built wheel starts in an empty environment"
+sh scripts/check-wheel
 echo "==> openspec validate";   npx --no-install openspec validate --all --strict --no-interactive
 echo "==> full check passed"
