@@ -1,6 +1,7 @@
 """`prepush-ci doctor` in real temporary git repositories, started as the module."""
 
 import http.server
+import json
 import os
 import subprocess
 import sys
@@ -843,6 +844,22 @@ def configure(repo: Path, *lines: str) -> None:
     (repo / ".prepush-ci.toml").write_text("\n".join(['check = "true"', *lines, ""]))
 
 
+def python_command(tmp_path: Path, name: str, source: str) -> str:
+    """A command that runs `source` and means the same to `sh` and to `cmd.exe`.
+
+    `check` and `preflight` run through the shell, which is `cmd.exe` on Windows: `;`, `&`,
+    `cat`, `sleep` and `pwd` mean nothing there, a Python script means the same everywhere.
+    """
+    script = tmp_path / f"{name}.py"
+    script.write_text(source)
+    return f'"{sys.executable}" "{script}"'
+
+
+def preflight(command: str) -> str:
+    """The `preflight` line of a config, the command as a TOML string whatever it contains."""
+    return f"preflight = {json.dumps(command)}"
+
+
 FULL = {"PREPUSH_CI": "full"}
 
 
@@ -911,9 +928,10 @@ def test_a_missing_variable_stops_the_preflight_command(
     ready: Path, tmp_path: Path
 ) -> None:
     marker = tmp_path / "ran.marker"
-    configure(
-        ready, 'require_env = ["A_URL"]', f'preflight = "touch {marker.as_posix()}"'
+    command = python_command(
+        tmp_path, "touch", "import sys, pathlib; pathlib.Path(sys.argv[1]).touch()"
     )
+    configure(ready, 'require_env = ["A_URL"]', preflight(f'{command} "{marker}"'))
 
     doctor(ready)
 
@@ -921,15 +939,18 @@ def test_a_missing_variable_stops_the_preflight_command(
 
 
 def test_a_failing_preflight_names_the_command_and_status_and_shows_its_output(
-    ready: Path,
+    ready: Path, tmp_path: Path
 ) -> None:
-    configure(ready, "preflight = 'echo db is down; exit 3'")
+    command = python_command(
+        tmp_path, "down", "import sys; print('db is down'); sys.exit(3)"
+    )
+    configure(ready, preflight(command))
 
     result = doctor(ready)
 
     text = line(result, "preflight")
     assert status(result, "preflight") == "fail"
-    assert "echo db is down; exit 3" in text and "3" in text
+    assert command in text and "3" in text
     assert "    db is down" in result.stdout.splitlines()
 
 
@@ -946,18 +967,24 @@ def test_the_preflight_runs_from_the_repository_root(
     ready: Path, tmp_path: Path
 ) -> None:
     where = tmp_path / "cwd.txt"
-    configure(ready, f"preflight = 'pwd > {where.as_posix()}'")
+    command = python_command(
+        tmp_path,
+        "cwd",
+        "import os, sys, pathlib; pathlib.Path(sys.argv[1]).write_text(os.getcwd())",
+    )
+    configure(ready, preflight(f'{command} "{where}"'))
     (ready / "src").mkdir()
 
     doctor(ready / "src")
 
-    assert Path(where.read_text().strip()).resolve() == ready.resolve()
+    assert Path(where.read_text()).resolve() == ready.resolve()
 
 
 def test_a_preflight_that_reads_standard_input_does_not_wait_for_it(
-    ready: Path,
+    ready: Path, tmp_path: Path
 ) -> None:
-    configure(ready, "preflight = 'cat > /dev/null'")
+    command = python_command(tmp_path, "stdin", "import sys; sys.stdin.read()")
+    configure(ready, preflight(command))
 
     result = doctor(ready)
 
@@ -965,9 +992,18 @@ def test_a_preflight_that_reads_standard_input_does_not_wait_for_it(
 
 
 def test_a_preflight_that_leaves_a_background_process_does_not_hold_doctor(
-    ready: Path,
+    ready: Path, tmp_path: Path
 ) -> None:
-    configure(ready, "preflight = 'sleep 30 & echo service started'")
+    command = python_command(
+        tmp_path,
+        "service",
+        "import subprocess, sys, tempfile\n"
+        "subprocess.Popen(\n"
+        "    [sys.executable, '-c', 'import time; time.sleep(30)'], cwd=tempfile.gettempdir()\n"
+        ")\n"
+        "print('service started')\n",
+    )
+    configure(ready, preflight(command))
 
     started = time.monotonic()
     result = doctor(ready, timeout=20)
@@ -1091,6 +1127,20 @@ class _Unauthorized(http.server.BaseHTTPRequestHandler):
         """Say nothing."""
 
 
+def _without_credential_helpers() -> dict[str, str]:
+    """git's environment with `credential.helper` emptied, appended to the suite's own settings.
+
+    Git Credential Manager, which Git for Windows configures, prints its own warning for a
+    plain HTTP remote before git says why the remote failed; the spec is about git not asking.
+    """
+    count = int(os.environ.get("GIT_CONFIG_COUNT", "0"))
+    return {
+        f"GIT_CONFIG_KEY_{count}": "credential.helper",
+        f"GIT_CONFIG_VALUE_{count}": "",
+        "GIT_CONFIG_COUNT": str(count + 1),
+    }
+
+
 def test_a_remote_that_wants_credentials_is_unreachable_without_a_prompt(
     ready: Path, git: Git
 ) -> None:
@@ -1106,7 +1156,7 @@ def test_a_remote_that_wants_credentials_is_unreachable_without_a_prompt(
             f"http://127.0.0.1:{server.server_port}/repo.git",
         )
 
-        result = doctor(ready)
+        result = doctor(ready, env=_without_credential_helpers())
     finally:
         server.shutdown()
         server.server_close()
