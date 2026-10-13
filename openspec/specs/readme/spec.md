@@ -137,7 +137,7 @@ The agent step SHALL say what the agent needs: a git repository with a remote it
 - **THEN** it says the agent works on a branch and opens a pull request, and does not push to the default branch
 
 ### Requirement: The agent step says what the agent asks
-The agent step SHALL say that the agent always stops to ask the user two things: to confirm the command that is the full check, and what pre-push should do on their own machines. It SHALL say that the agent asks more only where the repository leaves something open: which hook manager to use when there are two, the default branch when `origin/HEAD` is unset, and a yes before it removes a hook.
+The agent step SHALL say that the agent always stops to ask the user to confirm the full check command and what pre-push should do on their own machines, and asks more only where the repository leaves something open: the hook manager when there are two, the default branch when `origin` is missing, cannot be reached, has no default branch, or the clone does not fetch it (a single-branch clone of another branch), and a yes before it removes a hook.
 
 #### Scenario: What the agent always asks
 - **WHEN** a reader looks at the agent step
@@ -145,7 +145,7 @@ The agent step SHALL say that the agent always stops to ask the user two things:
 
 #### Scenario: What the agent asks only sometimes
 - **WHEN** a reader looks at the agent step
-- **THEN** it says the agent also asks which hook manager to use when there are two, for the default branch when `origin/HEAD` is unset, and for a yes before it removes a hook, and not otherwise
+- **THEN** it says the agent also asks which hook manager to use when there are two, for the default branch when `origin` is missing, cannot be reached, has no default branch, or the clone does not fetch it (a single-branch clone of another branch), and for a yes before it removes a hook, and not otherwise
 
 ### Requirement: The usage section walks from install to a push
 The README SHALL have a usage section. After the agent setup step (previous requirement) its steps, in this order, are: install the package; set a repository up with `init`; opt in with `PREPUSH_CI=full`; what a commit does (writes the trailer) and what a push does (refuses a tip with the trailer unless the check passes on it); and the CI gate that skips on the trailer, with a pointer to `docs/ci/` or `init --ci`.
