@@ -1,10 +1,10 @@
 """`prepush-ci hook commit-msg <file>`: write the trailer that demands the full check."""
 
-import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
 
+from prepush_ci import text_io
 from prepush_ci.core.commit_msg import (
     InvalidMode,
     Mode,
@@ -17,6 +17,7 @@ from prepush_ci.core.commit_msg import (
     resolve_cleanup,
 )
 from prepush_ci.core.config import ConfigError
+from prepush_ci.git import GitError, git, git_bytes
 from prepush_ci.repo_config import load_repository_config
 
 ENV_VAR = "PREPUSH_CI"
@@ -42,9 +43,7 @@ def run(message_file: Path, env: Mapping[str, str], cwd: Path) -> int:
     except UnsupportedCommentChar as error:
         print(f"prepush-ci: {error}", file=sys.stderr)
         return 1
-    # Only classified here, never written back: git rewrites the file with its bytes as they are.
-    # `surrogateescape` keeps every byte distinct, so a text compares equal to what git prints.
-    text = message_file.read_text(encoding="utf-8", errors="surrogateescape")
+    text = text_io.read_text(message_file)
     editor_used = editor_was_used(env.get("GIT_EDITOR"), text)
     cleanup = resolve_cleanup(_git_config(cwd, "commit.cleanup"), editor_used)
     comment = _comment_prefix(cwd)
@@ -55,9 +54,9 @@ def run(message_file: Path, env: Mapping[str, str], cwd: Path) -> int:
     )  # git checks only after an editor
     if template is not None and is_template_untouched(text, template, cleanup, comment):
         return 0
-    subprocess.run(
-        [
-            "git",
+    try:
+        git_bytes(
+            cwd,
             "interpret-trailers",
             "--in-place",
             "--no-divider",
@@ -67,10 +66,11 @@ def run(message_file: Path, env: Mapping[str, str], cwd: Path) -> int:
             "doNothing",
             "--trailer",
             config.trailer.line(),
-            str(message_file),
-        ],
-        check=True,
-    )
+            text_io.text_of(message_file),
+        )
+    except GitError as error:
+        print(f"prepush-ci: {error}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -84,29 +84,14 @@ def _comment_setting(cwd: Path) -> str | None:
 
 
 def _git_config(cwd: Path, name: str, *, as_path: bool = False) -> str | None:
-    result = subprocess.run(
-        ["git", "config", "--get", *(["--type=path"] if as_path else []), name],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        errors="surrogateescape",
-        check=False,
-    )
+    result = git(cwd, "config", "--get", *(["--type=path"] if as_path else []), name)
     return result.stdout.removesuffix("\n") if result.returncode == 0 else None
 
 
 def _comment_prefix(cwd: Path) -> str:
     """The comment prefix of the git that runs the hook, whichever settings it honours."""
-    result = subprocess.run(
-        ["git", "stripspace", "--comment-lines"],
-        cwd=cwd,
-        input="x\n",
-        capture_output=True,
-        encoding="utf-8",
-        errors="surrogateescape",
-        check=True,
-    )
-    return result.stdout.removesuffix(" x\n")
+    result = git_bytes(cwd, "stripspace", "--comment-lines", stdin=b"x\n")
+    return text_io.decode(result).removesuffix(" x\n")
 
 
 def _commit_template(cwd: Path) -> str | None:
@@ -115,6 +100,6 @@ def _commit_template(cwd: Path) -> str | None:
     if path is None:
         return None
     try:
-        return (cwd / path).read_text(encoding="utf-8", errors="surrogateescape")
+        return text_io.read_text(cwd / text_io.to_path(path))
     except OSError:
         return None

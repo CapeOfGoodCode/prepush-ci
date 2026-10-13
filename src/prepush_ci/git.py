@@ -1,10 +1,9 @@
 """Read a commit through git: the shared I/O of the commands that decide about a commit."""
 
-import subprocess
-import sys
 from collections.abc import Mapping
 from pathlib import Path
 
+from prepush_ci import text_io
 from prepush_ci.core.config import Config, ConfigError
 from prepush_ci.core.config_source import (
     PREPUSH_CI_FILE,
@@ -13,37 +12,25 @@ from prepush_ci.core.config_source import (
     load_config,
 )
 from prepush_ci.core.pre_push import dirty_paths, hidden_paths
+from prepush_ci.text_io import Completed
 
 
 class GitError(Exception):
     """git cannot tell what a command needs to know; the message says what and why."""
 
 
-def git(
-    cwd: Path, *args: str, env: Mapping[str, str] | None = None
-) -> "subprocess.CompletedProcess[str]":
-    """Run git; `env` replaces the environment (None: inherit it). The output is decoded the way
-    the operating system decodes a path (`os.fsdecode`), so that a path git prints is one the
-    process can open again, whatever the locale is."""
-    return subprocess.run(
-        ["git", *args],
-        cwd=cwd,
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding=sys.getfilesystemencoding(),
-        errors="surrogateescape",
-        check=False,
-    )
+def git(cwd: Path, *args: str, env: Mapping[str, str] | None = None) -> Completed:
+    """Run git; `env` replaces the environment (None: inherit it). Arguments and output are the
+    tool's text, so a path git prints is one `text_io.to_path` turns into a path the process can
+    open again, whatever the locale is."""
+    return text_io.run(["git", *args], cwd=cwd, env=env)
 
 
 def git_bytes(cwd: Path, *args: str, stdin: bytes | None = None) -> bytes:
     """Run git and return its standard output as bytes; a failure raises `GitError`."""
-    result = subprocess.run(
-        ["git", *args], cwd=cwd, input=stdin, capture_output=True, check=False
-    )
+    result = text_io.run_bytes(["git", *args], cwd=cwd, stdin=stdin)
     if result.returncode != 0:
-        detail = result.stderr.decode(errors="replace").strip()
+        detail = text_io.decode(result.stderr).strip()
         raise GitError(f"`git {args[0]}` failed: {detail}")
     return result.stdout
 
@@ -85,9 +72,9 @@ def trailers(sha: str, cwd: Path) -> str:
 def committed_config(sha: str, cwd: Path) -> Config | None:
     """The config committed in `sha`; None when the commit has none."""
     try:
-        return load_config(
-            _file(sha, PREPUSH_CI_FILE, cwd), _file(sha, PYPROJECT_FILE, cwd)
-        )
+        dedicated = _file(sha, PREPUSH_CI_FILE, cwd)
+        pyproject = None if dedicated is not None else _file(sha, PYPROJECT_FILE, cwd)
+        return load_config(dedicated, pyproject)
     except ConfigMissing:
         return None
     except ConfigError as error:
@@ -102,7 +89,11 @@ def _file(sha: str, name: str, cwd: Path) -> str | None:
         raise GitError(f"cannot read {name} of {sha}: {listing.stderr.strip()}")
     if not listing.stdout.strip():
         return None
-    blob = git(cwd, "cat-file", "blob", f"{sha}:{name}")
+    blob = text_io.run_bytes(["git", "cat-file", "blob", f"{sha}:{name}"], cwd=cwd)
     if blob.returncode != 0:
-        raise GitError(f"cannot read {name} of {sha}: {blob.stderr.strip()}")
-    return blob.stdout
+        detail = text_io.decode(blob.stderr).strip()
+        raise GitError(f"cannot read {name} of {sha}: {detail}")
+    try:
+        return text_io.decode_utf8(blob.stdout, name)
+    except text_io.NotUtf8 as error:
+        raise ConfigError([str(error)]) from error

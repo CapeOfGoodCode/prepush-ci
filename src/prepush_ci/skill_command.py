@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError, PackagePath, distribution
 from pathlib import Path
 
+from prepush_ci import text_io
 from prepush_ci.core.skill import (
     NO_REPOSITORY,
     NOT_INSTALLED,
@@ -39,7 +40,7 @@ def run(
         print(NO_REPOSITORY, file=sys.stderr)
         return 1
     # Only the newline git ends its answer with goes: a root that ends in a space is a root.
-    target = Path(top.stdout.removesuffix("\n")) / PROJECT_SKILL
+    target = text_io.to_path(top.stdout.removesuffix("\n")) / PROJECT_SKILL
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         # bytes: no newline translation may change the skill
@@ -48,7 +49,7 @@ def run(
         # a file in the way, a directory at the target, no permission
         reason = error.strerror or str(error)
         print(
-            f"prepush-ci skill: cannot write {target.as_posix()}: {reason}",
+            f"prepush-ci skill: cannot write {text_io.text_of(target)}: {reason}",
             file=sys.stderr,
         )
         return 1

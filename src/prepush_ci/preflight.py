@@ -1,9 +1,9 @@
 """The preflight of the pre-push hook: variables, the default branch, the `preflight` command."""
 
-import subprocess
 from collections.abc import Mapping
 from pathlib import Path
 
+from prepush_ci import text_io
 from prepush_ci.core.config import Config
 from prepush_ci.core.preflight import (
     fetch_refspec,
@@ -36,17 +36,9 @@ def run(config: Config, env: Mapping[str, str], root: Path) -> None:
     if config.require_up_to_date is not None:
         _up_to_date(config.require_up_to_date, root)
     if config.preflight is not None:
-        outcome = subprocess.run(
-            config.preflight,
-            shell=True,
-            cwd=root,
-            stdin=subprocess.DEVNULL,
-            check=False,
-        )
-        if outcome.returncode != 0:
-            raise PreflightRefused(
-                message_preflight_failed(config.preflight, outcome.returncode)
-            )
+        status = text_io.run_shell(config.preflight, cwd=root)
+        if status != 0:
+            raise PreflightRefused(message_preflight_failed(config.preflight, status))
 
 
 def _up_to_date(ref: str, root: Path) -> None:

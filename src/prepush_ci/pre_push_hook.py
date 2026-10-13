@@ -1,9 +1,8 @@
 """`prepush-ci hook pre-push`: a pushed commit that carries the trailer was checked before it goes."""
 
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import TextIO
 
 from prepush_ci.checking import Refused, head, require_clean, run_check, worktree_root
 from prepush_ci.core.commit_msg import InvalidMode, parse_mode
@@ -34,11 +33,12 @@ HINT = (
 )
 
 
-def run(stdin: TextIO, env: Mapping[str, str], cwd: Path) -> int:
-    """Run the hook; return the exit code (non-zero makes git abort the push)."""
+def run(read_stdin: Callable[[], str], env: Mapping[str, str], cwd: Path) -> int:
+    """Run the hook; return the exit code (non-zero makes git abort the push). `read_stdin`
+    reads the ref lines git writes, after the mode is checked."""
     try:
         parse_mode(env.get(ENV_VAR))  # refuse unknown values before any ref is read
-        return _decide(stdin.read(), env, cwd)
+        return _decide(read_stdin(), env, cwd)
     except ConfigError as error:
         for problem in error.problems:
             print(f"prepush-ci: {problem}", file=sys.stderr)

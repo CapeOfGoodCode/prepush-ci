@@ -4,6 +4,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from prepush_ci import text_io
 from prepush_ci.core.config import REMOTE, Config, ConfigError
 from prepush_ci.core.pre_push import demand_keys
 from prepush_ci.core.strip import (
@@ -23,10 +24,6 @@ from prepush_ci.core.strip import (
 )
 from prepush_ci.git import GitError, dirty, git, git_bytes, hidden, trailers
 from prepush_ci.repo_config import load_repository_config
-
-_BYTES = (
-    "surrogateescape"  # a commit may hold bytes that are no UTF-8; they must survive
-)
 
 
 class Refused(Exception):
@@ -70,7 +67,7 @@ def _worktree_root(cwd: Path) -> Path:
     result = git(cwd, "rev-parse", "--show-toplevel")
     if result.returncode != 0:
         raise Refused("not inside a git worktree, so there is nothing to strip")
-    return Path(result.stdout.strip())
+    return text_io.to_path(result.stdout.strip())
 
 
 def _check_state(root: Path) -> None:
@@ -79,7 +76,7 @@ def _check_state(root: Path) -> None:
     existing = {
         marker
         for marker, path in zip(MARKERS, paths.splitlines(), strict=True)
-        if (root / path).exists()
+        if (root / text_io.to_os(path)).exists()
     }
     problem = in_progress(existing)
     if problem is not None:
@@ -149,20 +146,20 @@ def _rewrite(base: str, tip: str, config: Config, root: Path) -> dict[str, str]:
     keys = demand_keys(config)
     mapping: dict[str, str] = {}
     for sha in _range(base, tip, root):
-        raw = git_bytes(root, "cat-file", "commit", sha).decode(errors=_BYTES)
+        raw = text_io.decode(git_bytes(root, "cat-file", "commit", sha))
         old_message = commit_message(raw)
         message = strip_message(old_message, trailers(sha, root), keys)
         if message == old_message and all(
             mapping.get(parent, parent) == parent for parent in parent_shas(raw)
         ):
             continue
-        rebuilt = rebuild_commit(raw, mapping, message).encode(errors=_BYTES)
+        rebuilt = text_io.encode(rebuild_commit(raw, mapping, message))
         written = git_bytes(
             root, "hash-object", "-t", "commit", "-w", "--stdin", stdin=rebuilt
         )
-        mapping[sha] = written.decode().strip()
+        mapping[sha] = text_io.decode(written).strip()
     return mapping
 
 
 def _git(root: Path, *args: str) -> str:
-    return git_bytes(root, *args).decode(errors="replace").strip()
+    return text_io.decode(git_bytes(root, *args)).strip()

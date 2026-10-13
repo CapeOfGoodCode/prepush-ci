@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 
+from prepush_ci import text_io
 from prepush_ci.core.config import Config
 from prepush_ci.core.run_cache import (
     Key,
@@ -22,12 +23,8 @@ def has_pass(config: Config, root: Path, key: Key) -> bool:
     if not config.cache:
         return False
     try:
-        record = (_directory(root) / record_name(key)).read_text(encoding="utf-8")
-    except (
-        GitError,
-        OSError,
-        ValueError,
-    ):  # unreadable and undecodable alike: run the check
+        record = text_io.read_text(_directory(root) / record_name(key))
+    except (GitError, OSError):  # unreadable: run the check
         return False
     return is_pass_for(record, key)
 
@@ -40,9 +37,7 @@ def record_pass(config: Config, root: Path, key: Key) -> None:
     try:
         directory = _directory(root)
         directory.mkdir(parents=True, exist_ok=True)
-        (directory / record_name(key)).write_text(
-            pass_record(key), encoding="utf-8", newline="\n"
-        )
+        text_io.write_text(directory / record_name(key), pass_record(key))
     except (GitError, OSError) as error:
         print(message_not_cached(str(error)), file=sys.stderr)
 
@@ -59,4 +54,4 @@ def _directory(root: Path) -> Path:
     result = git(root, "rev-parse", "--git-path", DIRECTORY)
     if result.returncode != 0:
         raise GitError(f"cannot find the git directory: {result.stderr.strip()}")
-    return (root / result.stdout.strip()).resolve()
+    return (root / text_io.to_path(result.stdout.strip())).resolve()
