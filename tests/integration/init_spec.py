@@ -921,6 +921,22 @@ def test_detected_defaults_are_shown_and_taken_on_an_empty_answer(
     assert (config.check, config.default_branch) == ("scripts/ci", "trunk")
 
 
+def test_the_branch_default_survives_a_local_branch_named_like_the_remote_one(
+    repo: Path, git: Git
+) -> None:
+    (repo / "scripts").mkdir()
+    (repo / "scripts" / "ci").write_text("#!/bin/sh\n")
+    git(repo, "commit", "-q", "--allow-empty", "-m", "start")
+    git(repo, "branch", "origin/trunk")
+    git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
+
+    result = init(repo, "--hooks", "none", stdin=answers(*EMPTY, ""))
+
+    assert result.returncode == 0, result.stderr
+    assert "[trunk]" in result.stdout
+    assert config_of(repo).default_branch == "trunk"
+
+
 def test_a_typed_check_is_what_the_config_holds(repo: Path) -> None:
     result = init(repo, "--hooks", "none", stdin=answers("make ci", "", "", "", "", ""))
 

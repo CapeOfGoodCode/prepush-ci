@@ -269,8 +269,8 @@ def default_check(*, scripts_ci: bool, bin_ci: bool, makefile: str | None) -> st
 
 
 def default_branch_of(origin_head: str | None) -> str:
-    """The branch `origin/HEAD` names (`origin/trunk` is `trunk`), else `main`."""
-    prefix = f"{REMOTE}/"
+    """The branch the ref `origin/HEAD` points at names (`refs/remotes/origin/trunk` is `trunk`), else `main`."""
+    prefix = f"refs/remotes/{REMOTE}/"
     if origin_head is not None and origin_head.startswith(prefix):
         return origin_head[len(prefix) :] or DEFAULT_BRANCH
     return DEFAULT_BRANCH
