@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_93afe14790f192de_install_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-13 13:53 +0000
+            created at 2026-10-13 14:33 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -353,8 +353,8 @@
     <p class="pln"><span class="n"><a id="t269" href="#t269">269</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t270" href="#t270">270</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t271" href="#t271">271</a></span><span class="t"><span class="key">def</span> <span class="nam">default_branch_of</span><span class="op">(</span><span class="nam">origin_head</span><span class="op">:</span> <span class="nam">str</span> <span class="op">|</span> <span class="key">None</span><span class="op">)</span> <span class="op">-&gt;</span> <span class="nam">str</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t272" href="#t272">272</a></span><span class="t">    <span class="str">&quot;&quot;&quot;The branch `origin/HEAD` names (`origin/trunk` is `trunk`), else `main`.&quot;&quot;&quot;</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t273" href="#t273">273</a></span><span class="t">    <span class="nam">prefix</span> <span class="op">=</span> <span class="fst">f&quot;</span><span class="op">{</span><span class="nam">REMOTE</span><span class="op">}</span><span class="fst">/</span><span class="fst">&quot;</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t272" href="#t272">272</a></span><span class="t">    <span class="str">&quot;&quot;&quot;The branch the ref `origin/HEAD` points at names (`refs/remotes/origin/trunk` is `trunk`), else `main`.&quot;&quot;&quot;</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t273" href="#t273">273</a></span><span class="t">    <span class="nam">prefix</span> <span class="op">=</span> <span class="fst">f&quot;</span><span class="fst">refs/remotes/</span><span class="op">{</span><span class="nam">REMOTE</span><span class="op">}</span><span class="fst">/</span><span class="fst">&quot;</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t274" href="#t274">274</a></span><span class="t">    <span class="key">if</span> <span class="nam">origin_head</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span> <span class="key">and</span> <span class="nam">origin_head</span><span class="op">.</span><span class="nam">startswith</span><span class="op">(</span><span class="nam">prefix</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t275" href="#t275">275</a></span><span class="t">        <span class="key">return</span> <span class="nam">origin_head</span><span class="op">[</span><span class="nam">len</span><span class="op">(</span><span class="nam">prefix</span><span class="op">)</span> <span class="op">:</span><span class="op">]</span> <span class="key">or</span> <span class="nam">DEFAULT_BRANCH</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t276" href="#t276">276</a></span><span class="t">    <span class="key">return</span> <span class="nam">DEFAULT_BRANCH</span>&nbsp;</span><span class="r"></span></p>
@@ -464,7 +464,7 @@
             <a class="nav" href="z_93afe14790f192de_install_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-13 13:53 +0000
+            created at 2026-10-13 14:33 +0000
         </p>
     </div>
 </footer>
