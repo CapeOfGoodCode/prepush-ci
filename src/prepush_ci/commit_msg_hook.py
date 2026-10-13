@@ -42,7 +42,9 @@ def run(message_file: Path, env: Mapping[str, str], cwd: Path) -> int:
     except UnsupportedCommentChar as error:
         print(f"prepush-ci: {error}", file=sys.stderr)
         return 1
-    text = message_file.read_text(encoding="utf-8")
+    # Only classified here, never written back: git rewrites the file with its bytes as they are.
+    # `surrogateescape` keeps every byte distinct, so a text compares equal to what git prints.
+    text = message_file.read_text(encoding="utf-8", errors="surrogateescape")
     editor_used = editor_was_used(env.get("GIT_EDITOR"), text)
     cleanup = resolve_cleanup(_git_config(cwd, "commit.cleanup"), editor_used)
     comment = _comment_prefix(cwd)
@@ -87,6 +89,7 @@ def _git_config(cwd: Path, name: str, *, as_path: bool = False) -> str | None:
         cwd=cwd,
         capture_output=True,
         text=True,
+        errors="surrogateescape",
         check=False,
     )
     return result.stdout.removesuffix("\n") if result.returncode == 0 else None
@@ -99,7 +102,8 @@ def _comment_prefix(cwd: Path) -> str:
         cwd=cwd,
         input="x\n",
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         check=True,
     )
     return result.stdout.removesuffix(" x\n")
@@ -111,6 +115,6 @@ def _commit_template(cwd: Path) -> str | None:
     if path is None:
         return None
     try:
-        return (cwd / path).read_text(encoding="utf-8", errors="replace")
+        return (cwd / path).read_text(encoding="utf-8", errors="surrogateescape")
     except OSError:
         return None

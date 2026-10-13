@@ -5,6 +5,8 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
+
 Git = Callable[..., "subprocess.CompletedProcess[str]"]
 
 
@@ -20,9 +22,14 @@ def editor_command(editor: Path) -> str:
 
 
 def run_hook(
-    message_file: Path, *, mode: str | None, cwd: Path
+    message_file: Path,
+    *,
+    mode: str | None,
+    cwd: Path,
+    extra_env: dict[str, str] | None = None,
 ) -> "subprocess.CompletedProcess[str]":
     env = {k: v for k, v in os.environ.items() if k != "PREPUSH_CI"}
+    env.update(extra_env or {})
     if mode is not None:
         env["PREPUSH_CI"] = mode
     return subprocess.run(
@@ -762,3 +769,150 @@ def test_known_limit_the_no_op_editor_with_an_unchanged_template_makes_a_commit_
     )
 
     assert last_message(hooked_repo, git) == "Subject here\n\nPrepush-CI: full\n"
+
+
+def test_a_message_that_is_not_utf8_gets_the_trailer_with_its_bytes_kept(
+    hooked_repo: Path, git: Git, tmp_path: Path
+) -> None:
+    message_file = tmp_path / "MSG"
+    message_file.write_bytes(b"vierte Nachricht \xe9\n")
+
+    result = run_hook(message_file, mode="full", cwd=hooked_repo)
+
+    assert result.returncode == 0
+    assert message_file.read_bytes() == b"vierte Nachricht \xe9\n\nPrepush-CI: full\n"
+
+
+def test_a_commit_message_that_is_not_utf8_is_committed_with_the_trailer(
+    hooked_repo: Path, git: Git, tmp_path: Path
+) -> None:
+    stage_a_file(hooked_repo, git)
+    message_file = tmp_path / "MSG"
+    message_file.write_bytes(b"vierte Nachricht \xe9\n")
+
+    result = git(
+        hooked_repo, "commit", "-q", "-F", str(message_file), env={"PREPUSH_CI": "full"}
+    )
+
+    assert result.returncode == 0
+    stored = subprocess.run(
+        ["git", "cat-file", "commit", "HEAD"],
+        cwd=hooked_repo,
+        capture_output=True,
+        check=True,
+    ).stdout
+    # git stores the message re-encoded to UTF-8
+    assert stored.endswith("vierte Nachricht é\n\nPrepush-CI: full\n".encode())
+
+
+def test_a_commit_template_path_that_is_not_utf8_does_not_stop_the_trailer(
+    hooked_repo: Path, tmp_path: Path
+) -> None:
+    config = hooked_repo / ".git" / "config"
+    config.write_bytes(config.read_bytes() + b'[commit]\n\ttemplate = "t\xe9.txt"\n')
+    message_file = tmp_path / "MSG"
+    message_file.write_text("add x\n")
+
+    result = run_hook(message_file, mode="full", cwd=hooked_repo)
+
+    assert result.returncode == 0
+    assert message_file.read_text() == "add x\n\nPrepush-CI: full\n"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Git for Windows does not hand a raw non-UTF-8 comment byte back unchanged",
+)
+def test_a_message_of_comment_lines_with_a_comment_char_that_is_not_utf8_is_left_unchanged(
+    hooked_repo: Path, tmp_path: Path
+) -> None:
+    config = hooked_repo / ".git" / "config"
+    config.write_bytes(config.read_bytes() + b'[core]\n\tcommentChar = "\xe9"\n')
+    message_file = tmp_path / "MSG"
+    message_file.write_bytes(b"\xe9 only a comment\n")
+
+    result = run_hook(message_file, mode="full", cwd=hooked_repo)
+
+    assert result.returncode == 0
+    assert message_file.read_bytes() == b"\xe9 only a comment\n"
+
+
+def git_is_older_than(major: int, minor: int) -> bool:
+    words = subprocess.run(
+        ["git", "--version"], capture_output=True, text=True, check=True
+    ).stdout.split()
+    found = tuple(int(part) for part in words[2].split(".")[:2])
+    return found < (major, minor)
+
+
+@pytest.mark.skipif(
+    git_is_older_than(2, 45),
+    reason="git before 2.45 refuses a comment string of more than one byte",
+)
+def test_a_message_of_comment_lines_with_a_comment_string_of_two_bytes_is_left_unchanged_under_an_ascii_locale(
+    hooked_repo: Path, tmp_path: Path
+) -> None:
+    config = hooked_repo / ".git" / "config"
+    config.write_bytes(
+        config.read_bytes() + '[core]\n\tcommentString = "\u00e9"\n'.encode()
+    )
+    message_file = tmp_path / "MSG"
+    message_file.write_bytes("\u00e9 only a comment\n".encode())
+
+    result = run_hook(
+        message_file,
+        mode="full",
+        cwd=hooked_repo,
+        extra_env={
+            "LC_ALL": "C",
+            "PYTHONCOERCECLOCALE": "0",
+            "PYTHONUTF8": "0",
+        },
+    )
+
+    assert result.returncode == 0
+    assert message_file.read_bytes() == "\u00e9 only a comment\n".encode()
+
+
+NOT_UTF8_ON_DISK = pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows file names are Unicode"
+)
+
+
+@NOT_UTF8_ON_DISK
+def test_an_unchanged_commit_template_at_a_path_that_is_not_utf8_aborts_the_commit_in_full_mode(
+    hooked_repo: Path, git: Git
+) -> None:
+    stage_a_file(hooked_repo, git)
+    template = Path(os.fsdecode(os.fsencode(hooked_repo) + b"/t\xe9.txt"))
+    template.write_bytes(b"Subject here\n\n# describe why\n")
+    git(hooked_repo, "config", "--local", "commit.template", os.fspath(template))
+
+    result = git(
+        hooked_repo,
+        "commit",
+        env={"PREPUSH_CI": "full", "GIT_EDITOR": "true"},
+        check=False,
+    )
+
+    assert_commit_aborted(hooked_repo, git, result)
+    assert "did not edit the message" in result.stderr
+
+
+def test_an_unchanged_commit_template_that_is_not_utf8_aborts_the_commit_in_full_mode(
+    hooked_repo: Path, git: Git
+) -> None:
+    stage_a_file(hooked_repo, git)
+    (hooked_repo / "template.txt").write_bytes(b"Betreff \xe9\n\n# describe why\n")
+
+    result = git(
+        hooked_repo,
+        "-c",
+        "commit.template=template.txt",
+        "commit",
+        env={"PREPUSH_CI": "full", "GIT_EDITOR": "true"},
+        check=False,
+    )
+
+    assert_commit_aborted(hooked_repo, git, result)
+    assert "did not edit the message" in result.stderr
