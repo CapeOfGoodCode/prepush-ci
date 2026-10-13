@@ -2,8 +2,8 @@
 
 ## 1. The scenario
 
-- [ ] 1.1 Add the integration scenario for the non-ASCII trailer value to `tests/integration/commit_msg_hook_spec.py`, named after it; it passes on top of #154 in both variants
-- [ ] 1.2 Break it once: in `text_io`, pass an argument without `to_os` and see the scenario fail in the `ascii` variant
+- [x] 1.1 Add the integration scenario for the non-ASCII trailer value to `tests/integration/commit_msg_hook_spec.py`, named after it; it passes on top of #154 in both variants
+- [x] 1.2 Break it once: in `text_io`, pass an argument without `to_os` and see the scenario fail in the `ascii` variant
 
 ## 2. Close
 
