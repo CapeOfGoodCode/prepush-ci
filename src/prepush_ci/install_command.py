@@ -188,12 +188,16 @@ def _holds_hooks_path(cwd: Path, root: Path) -> bool:
 
 def _lost_hooks(cwd: Path, root: Path) -> str | None:
     """The previous hooks directory, when it holds a hook and git stops using it once the local
-    `core.hooksPath` is gone."""
+    `core.hooksPath` is gone; None when that cannot be known (the record or the directory cannot
+    be read), so that the refusal still says how to unblock the install."""
     recorded = _native_directory(cwd) / PREVIOUS_FILE
-    if not recorded.is_file():
-        return None
-    previous = Path(recorded.read_text(encoding="utf-8").strip()).resolve()
-    if not any(not name.endswith(".sample") for name in _files(previous)):
+    try:
+        if not recorded.is_file():
+            return None
+        previous = Path(recorded.read_text(encoding="utf-8").strip()).resolve()
+        if not any(not name.endswith(".sample") for name in _files(previous)):
+            return None
+    except (OSError, ValueError):  # UnicodeDecodeError is a ValueError
         return None
     return None if previous == _hooks_without_local(cwd, root) else previous.as_posix()
 

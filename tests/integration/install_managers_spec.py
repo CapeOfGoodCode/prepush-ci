@@ -1256,3 +1256,45 @@ def test_the_refusal_still_comes_when_the_record_of_the_previous_directory_is_go
 
     assert result.returncode == 1
     assert UNSET in result.stderr and "no longer run" not in result.stderr
+
+
+def refused_with_the_unset_hint(result: "subprocess.CompletedProcess[str]") -> None:
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
+    assert "core.hooksPath" in result.stderr and UNSET in result.stderr
+    assert "no longer run" not in result.stderr
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="a directory cannot be made unreadable with chmod"
+)
+def test_the_refusal_comes_without_a_traceback_when_the_previous_directory_cannot_be_read(
+    pushing: Path, git: Git, env: dict[str, str]
+) -> None:
+    custom = pushing / "custom-hooks"
+    custom.mkdir()
+    (custom / "pre-push").write_text("#!/bin/sh\nexit 0\n")
+    git(pushing, "config", "--local", "core.hooksPath", "custom-hooks")
+    install(pushing, env, "--hooks", "native")
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+    custom.chmod(0o000)
+    try:
+        result = install(pushing, env)
+    finally:
+        custom.chmod(0o755)  # so that the temporary directory can be removed
+
+    refused_with_the_unset_hint(result)
+    assert (pushing / PRE_COMMIT_CONFIG).read_text() == (
+        "repos:\n  - repo: local\n    hooks: []\n"
+    )
+
+
+@pytest.mark.parametrize("record", [b"\xff\xfe", b"a\x00b"], ids=["bytes", "nul"])
+def test_the_refusal_comes_without_a_traceback_when_the_record_of_the_previous_directory_is_corrupt(
+    pushing: Path, env: dict[str, str], record: bytes
+) -> None:
+    install(pushing, env, "--hooks", "native")
+    (pushing / ".git" / "prepush-ci" / "hooks" / "previous").write_bytes(record)
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+
+    refused_with_the_unset_hint(install(pushing, env))
