@@ -922,3 +922,142 @@ def test_husky_named_where_a_file_is_called_husky_is_refused_naming_it(
     assert ".husky" in result.stderr
     assert "Traceback" not in result.stderr
     assert (pushing / ".husky").read_text() == "not a directory\n"
+
+
+# a manager while the native hooks hold core.hooksPath
+
+UNSET = "git config --local --unset core.hooksPath"
+
+
+def native_hooks_directory(repo: Path) -> Path:
+    return (repo / ".git" / "prepush-ci" / "hooks").resolve()
+
+
+def test_pre_commit_after_a_native_install_is_refused_and_nothing_changes(
+    pushing: Path, git: Git, env: dict[str, str]
+) -> None:
+    config = "repos:\n  - repo: local\n    hooks: []\n"
+    (pushing / PRE_COMMIT_CONFIG).write_text(config)
+    install(pushing, env, "--hooks", "native")
+
+    result = install(pushing, env)
+
+    assert result.returncode == 1
+    assert "core.hooksPath" in result.stderr and UNSET in result.stderr
+    assert (pushing / PRE_COMMIT_CONFIG).read_text() == config
+    assert Path(hooks_path(pushing, git)) == native_hooks_directory(pushing)
+
+
+def test_lefthook_after_a_native_install_is_refused_and_nothing_changes(
+    pushing: Path, git: Git, env: dict[str, str]
+) -> None:
+    (pushing / "lefthook.yml").write_text(LEFTHOOK_CONFIG)
+    install(pushing, env, "--hooks", "native")
+
+    result = install(pushing, env)
+
+    assert result.returncode == 1
+    assert "core.hooksPath" in result.stderr and UNSET in result.stderr
+    assert (pushing / "lefthook.yml").read_text() == LEFTHOOK_CONFIG
+    assert Path(hooks_path(pushing, git)) == native_hooks_directory(pushing)
+
+
+def test_a_rerun_after_the_setting_is_removed_installs_the_manager_block(
+    pushing: Path, git: Git, env: dict[str, str]
+) -> None:
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+    install(pushing, env, "--hooks", "native")
+    assert install(pushing, env).returncode == 1
+    git(pushing, "config", "--local", "--unset", "core.hooksPath")
+
+    result = install(pushing, env)
+
+    assert result.returncode == 0, result.stderr
+    assert "installed" in result.stdout
+    assert "prepush-ci hook" in (pushing / PRE_COMMIT_CONFIG).read_text()
+    assert hooks_path(pushing, git) == ""
+
+
+def test_husky_is_not_refused_after_a_native_install(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    install(husky_repo, env, "--hooks", "native")
+
+    result = install(husky_repo, env, "--hooks", "husky")
+
+    assert result.returncode == 0, result.stderr
+    for name in ("commit-msg", "pre-push"):
+        assert "prepush-ci hook" in (husky_repo / ".husky" / name).read_text()
+
+
+def test_a_core_hooks_path_that_is_not_ours_does_not_refuse_a_manager(
+    pushing: Path, git: Git, env: dict[str, str]
+) -> None:
+    git(pushing, "config", "--local", "core.hooksPath", "custom-hooks")
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+
+    result = install(pushing, env)
+
+    assert result.returncode == 0, result.stderr
+    assert "prepush-ci hook" in (pushing / PRE_COMMIT_CONFIG).read_text()
+    assert hooks_path(pushing, git) == "custom-hooks"
+
+
+def test_the_refusal_names_a_previous_directory_that_stops_being_used(
+    pushing: Path, git: Git, env: dict[str, str]
+) -> None:
+    custom = pushing / "custom-hooks"
+    custom.mkdir()
+    (custom / "pre-push").write_text("#!/bin/sh\nexit 0\n")
+    git(pushing, "config", "--local", "core.hooksPath", "custom-hooks")
+    install(pushing, env, "--hooks", "native")
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+
+    result = install(pushing, env)
+
+    assert result.returncode == 1
+    assert "custom-hooks" in result.stderr and "no longer run" in result.stderr
+
+
+def test_the_refusal_stays_quiet_about_a_previous_directory_that_stays_in_use(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    (pushing / ".git" / "hooks" / "pre-push").write_text("#!/bin/sh\nexit 0\n")
+    install(pushing, env, "--hooks", "native")
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+
+    result = install(pushing, env)
+
+    assert result.returncode == 1
+    assert "no longer run" not in result.stderr
+
+
+def test_the_refusal_stays_quiet_when_the_previous_directory_is_the_global_one(
+    pushing: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    shared = tmp_path / "shared-hooks"
+    shared.mkdir()
+    (shared / "pre-push").write_text("#!/bin/sh\nexit 0\n")
+    global_config = tmp_path / "global.gitconfig"
+    global_config.write_text(f"[core]\n\thooksPath = {shared.as_posix()}\n")
+    env = {**env, "GIT_CONFIG_GLOBAL": str(global_config)}
+    install(pushing, env, "--hooks", "native")
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+
+    result = install(pushing, env)
+
+    assert result.returncode == 1
+    assert "no longer run" not in result.stderr
+
+
+def test_the_refusal_still_comes_when_the_record_of_the_previous_directory_is_gone(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    install(pushing, env, "--hooks", "native")
+    (pushing / ".git" / "prepush-ci" / "hooks" / "previous").unlink()
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+
+    result = install(pushing, env)
+
+    assert result.returncode == 1
+    assert UNSET in result.stderr and "no longer run" not in result.stderr
