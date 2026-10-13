@@ -1,21 +1,15 @@
 """Find the repository's config on disk and load it (the I/O around `core.config_source`)."""
 
-import subprocess
 from pathlib import Path
 
 from prepush_ci.core.config import Config, ConfigError
 from prepush_ci.core.config_source import PREPUSH_CI_FILE, PYPROJECT_FILE, load_config
+from prepush_ci.git import git
 
 
 def repository_root(cwd: Path) -> Path:
     """The root of the working tree that contains `cwd`."""
-    result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = git(cwd, "rev-parse", "--show-toplevel")
     if result.returncode != 0:
         raise ConfigError(["not inside a git working tree: no config to read"])
     return Path(result.stdout.strip())

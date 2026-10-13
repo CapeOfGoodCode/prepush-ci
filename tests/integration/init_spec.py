@@ -1274,3 +1274,28 @@ def test_the_default_branch_name_is_accepted_by_init(repo: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert config_of(repo).default_branch == "main"
+
+
+def test_init_sets_up_a_repository_whose_path_has_a_non_ascii_character_under_an_ascii_locale(
+    tmp_path: Path, git: Git
+) -> None:
+    where = tmp_path / "dé"
+    where.mkdir()
+    git(where, "init", "-q")
+    ascii_only = {"LC_ALL": "C", "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0"}
+
+    result = init(
+        where,
+        "--non-interactive",
+        "--check",
+        "true",
+        "--hooks",
+        "none",
+        "--ci",
+        "none",
+        env=ascii_only,
+    )
+
+    assert "Traceback" not in result.stderr
+    assert result.returncode == 0, result.stderr
+    assert (where / ".prepush-ci.toml").is_file()
