@@ -1,5 +1,6 @@
 import json
 import tomllib
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -9,9 +10,11 @@ from prepush_ci.core.config import Config, ConfigError, parse_config
 from prepush_ci.core.hook_managers import Refusal
 from prepush_ci.core.init import (
     CI_FILES,
+    DEFAULT_FETCH,
     SESSION_COMMAND,
     ConfigFlags,
     SettingsError,
+    branch_origin_lacks,
     closing,
     config_text,
     default_branch_of,
@@ -439,3 +442,76 @@ def test_yes_and_no_answers() -> None:
     ]
     with pytest.raises(Refusal, match="y or n"):
         parse_yes_no("maybe")
+
+
+def lacking(
+    flags: ConfigFlags, *branches: str, fetch: tuple[str, ...] = (DEFAULT_FETCH,)
+) -> str | None:
+    return branch_origin_lacks(
+        validate(config_text(replace(flags, check="scripts/ci"))),
+        [f"refs/remotes/origin/{name}" for name in branches],
+        fetch,
+    )
+
+
+def test_a_default_branch_that_origin_lacks_is_refused_naming_the_key_the_branch_and_the_fetch() -> (
+    None
+):
+    message = lacking(ConfigFlags(default_branch="master"), "main")
+
+    assert message is not None
+    assert "`default_branch`" in message
+    assert '"master"' in message
+    assert "`git fetch origin`" in message
+
+
+def test_a_default_branch_that_origin_has_is_accepted_with_a_slash_and_among_others() -> (
+    None
+):
+    assert lacking(ConfigFlags(default_branch="trunk"), "main", "trunk") is None
+    assert lacking(ConfigFlags(default_branch="release/1"), "release/1") is None
+
+
+def test_a_default_branch_that_is_only_the_start_of_a_branch_origin_has_is_refused() -> (
+    None
+):
+    assert lacking(ConfigFlags(default_branch="release"), "release/1") is not None
+
+
+def test_the_default_branch_is_not_checked_without_remote_tracking_branches_of_origin() -> (
+    None
+):
+    assert lacking(ConfigFlags(default_branch="trunk")) is None
+    assert lacking(ConfigFlags(default_branch="trunk"), "HEAD") is None
+
+
+def test_the_default_branch_is_not_checked_when_the_up_to_date_ref_is_not_origin_and_the_branch() -> (
+    None
+):
+    for other in ("upstream/trunk", "false", "origin/main"):
+        flags = ConfigFlags(default_branch="trunk", require_up_to_date=other)
+        assert lacking(flags, "main") is None
+
+
+def test_the_default_branch_main_is_checked_when_the_config_leaves_the_key_out() -> (
+    None
+):
+    assert lacking(ConfigFlags(), "master") is not None
+
+
+def test_the_default_branch_is_not_checked_when_no_fetch_refspec_is_the_default_one() -> (
+    None
+):
+    single = ("+refs/heads/feature:refs/remotes/origin/feature",)
+    flags = ConfigFlags(default_branch="main")
+
+    assert lacking(flags, "feature", fetch=single) is None
+    assert lacking(flags, "feature", fetch=()) is None
+
+
+def test_the_default_branch_is_checked_when_one_of_several_fetch_refspecs_is_the_default_one() -> (
+    None
+):
+    fetch = ("+refs/pull/*/head:refs/remotes/origin/pr/*", DEFAULT_FETCH)
+
+    assert lacking(ConfigFlags(default_branch="main"), "feature", fetch=fetch)

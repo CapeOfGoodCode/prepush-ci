@@ -1363,3 +1363,142 @@ def test_interactive_init_refuses_in_one_line_when_the_record_of_the_previous_di
 
     refused_by_init_with_one_line(result)
     assert path.as_posix() in result.stderr
+
+
+# --- A default branch that origin lacks ---------------------------------------------------------
+
+
+def fetched_origin(repo: Path, git: Git, *branches: str) -> None:
+    """`repo` with one commit and the remote-tracking branches `origin/<branch>` of a bare remote."""
+    (repo / "f").write_text("x")
+    git(repo, "add", "f")
+    git(repo, "commit", "-q", "-m", "init")
+    remote = repo.parent / "remote.git"
+    git(repo.parent, "init", "-q", "--bare", str(remote))
+    git(repo, "remote", "add", "origin", str(remote))
+    for branch in branches:
+        git(repo, "push", "-q", "origin", f"HEAD:refs/heads/{branch}")
+    git(repo, "fetch", "-q", "origin")
+
+
+def init_with_default_branch(
+    repo: Path, branch: str, *more: str
+) -> "subprocess.CompletedProcess[str]":
+    return init(
+        repo,
+        "--non-interactive",
+        "--check",
+        "scripts/ci",
+        "--default-branch",
+        branch,
+        "--hooks",
+        "none",
+        *more,
+    )
+
+
+def test_a_default_branch_the_remote_renamed_away_is_refused_and_writes_nothing(
+    repo: Path, git: Git
+) -> None:
+    fetched_origin(repo, git, "main")
+    before = files(repo)
+
+    result = init_with_default_branch(repo, "master")
+
+    assert result.returncode == 1
+    assert "`default_branch`" in result.stderr
+    assert '"master"' in result.stderr
+    assert "`git fetch origin`" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert files(repo) == before
+
+
+def test_a_stale_default_accepted_interactively_is_refused_and_writes_nothing(
+    repo: Path, git: Git
+) -> None:
+    fetched_origin(repo, git, "main")
+    git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/master")
+    before = files(repo)
+
+    result = init(
+        repo,
+        "--hooks",
+        "none",
+        stdin=answers("scripts/ci", "", "", "", "", "n"),
+    )
+
+    assert result.returncode == 1
+    assert "[master]" in result.stdout
+    assert "`default_branch`" in result.stderr
+    assert '"master"' in result.stderr
+    assert files(repo) == before
+
+
+def test_a_default_branch_origin_has_is_accepted(repo: Path, git: Git) -> None:
+    fetched_origin(repo, git, "main", "trunk")
+
+    result = init_with_default_branch(repo, "trunk")
+
+    assert result.returncode == 0, result.stderr
+    assert config_of(repo).default_branch == "trunk"
+
+
+def test_the_default_branch_is_not_checked_without_remote_tracking_branches_of_origin(
+    repo: Path, git: Git
+) -> None:
+    no_remote = init_with_default_branch(repo, "trunk")
+    (repo / ".prepush-ci.toml").unlink()
+    (repo / "f").write_text("x")
+    git(repo, "add", "f")
+    git(repo, "commit", "-q", "-m", "init")
+    git(repo, "remote", "add", "origin", str(repo.parent / "nowhere.git"))
+    never_fetched = init_with_default_branch(repo, "trunk")
+
+    assert (no_remote.returncode, never_fetched.returncode) == (0, 0)
+    assert config_of(repo).default_branch == "trunk"
+
+
+def test_the_default_branch_is_not_checked_when_the_up_to_date_ref_is_another_one(
+    repo: Path, git: Git
+) -> None:
+    fetched_origin(repo, git, "main")
+
+    result = init_with_default_branch(
+        repo, "trunk", "--require-up-to-date", "upstream/trunk"
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert config_of(repo).default_branch == "trunk"
+
+
+def test_the_default_branch_is_not_checked_in_a_single_branch_clone_of_another_branch(
+    tmp_path: Path, git: Git
+) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    git(seed, "init", "-q", "-b", "main")
+    git(seed, "config", "user.name", "Test")
+    git(seed, "config", "user.email", "test@example.com")
+    git(seed, "config", "commit.gpgsign", "false")
+    (seed / "f").write_text("x")
+    git(seed, "add", "f")
+    git(seed, "commit", "-q", "-m", "init")
+    git(seed, "branch", "feature")
+    git(tmp_path, "clone", "-q", "--bare", str(seed), str(tmp_path / "remote.git"))
+    git(
+        tmp_path,
+        "clone",
+        "-q",
+        "--single-branch",
+        "-b",
+        "feature",
+        str(tmp_path / "remote.git"),
+        str(tmp_path / "work"),
+    )
+    work = tmp_path / "work"
+    assert git(work, "branch", "-r").stdout.split() == ["origin/feature"]
+
+    result = init_with_default_branch(work, "main")
+
+    assert result.returncode == 0, result.stderr
+    assert config_of(work).default_branch == "main"

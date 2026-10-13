@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TextIO
 
 from prepush_ci import install_command
-from prepush_ci.core.config import ConfigError
+from prepush_ci.core.config import REMOTE, ConfigError
 from prepush_ci.core.config_source import (
     PREPUSH_CI_FILE,
     PYPROJECT_FILE,
@@ -30,6 +30,7 @@ from prepush_ci.core.init import (
     SETTINGS_FILE,
     ConfigFlags,
     SettingsError,
+    branch_origin_lacks,
     closing,
     config_text,
     default_branch_of,
@@ -153,9 +154,12 @@ def _plan(options: Options, cwd: Path, root: Path, stdin: TextIO) -> _Plan:
         except ValueError as error:  # a value that was not valid UTF-8
             raise _Stop(f"prepush-ci init: {error}") from error
         try:
-            validate(text)
+            written = validate(text)
         except ConfigError as error:
             raise _Stop(problems_message(error)) from error
+        lacking = branch_origin_lacks(written, _origin_refs(root), _origin_fetch(root))
+        if lacking is not None:
+            raise _Stop(lacking)
     settings_old = settings_new = None
     if session_hook:
         settings_old = _read(root / SETTINGS_FILE)
@@ -305,6 +309,18 @@ def _source(root: Path) -> str:
     if (root / PREPUSH_CI_FILE).exists():
         return PREPUSH_CI_FILE
     return f"{PYPROJECT_FILE} {PYPROJECT_TABLE}"
+
+
+def _origin_refs(root: Path) -> list[str]:
+    """The full names of the remote-tracking refs of `origin` the repository holds."""
+    listed = git(root, "for-each-ref", "--format=%(refname)", f"refs/remotes/{REMOTE}/")
+    return listed.stdout.splitlines()
+
+
+def _origin_fetch(root: Path) -> list[str]:
+    """The values of `remote.origin.fetch`: none when the key is not set."""
+    values = git(root, "config", "--get-all", f"remote.{REMOTE}.fetch")
+    return values.stdout.splitlines()
 
 
 def _worktree_root(cwd: Path) -> Path | None:
