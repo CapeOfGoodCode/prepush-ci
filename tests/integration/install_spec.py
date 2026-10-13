@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -633,12 +634,19 @@ def test_the_warning_comes_back_when_install_runs_again(repo: Path) -> None:
     assert "temporary" in second.stderr
 
 
-def test_a_relative_uv_cache_dir_is_relative_to_the_working_directory(
-    repo: Path,
-) -> None:
-    relative = os.path.relpath(own_cache(), repo)
+def test_a_relative_uv_cache_dir_is_relative_to_the_working_directory(git: Git) -> None:
+    # No relative path crosses drives on Windows, and the temporary directory may sit on another
+    # drive than the interpreter (#81): the repository goes into the interpreter's environment.
+    base = Path(tempfile.mkdtemp(dir=Path(own_cache()).parent))
+    try:
+        repo = base / "work"
+        repo.mkdir()
+        git(repo, "init", "-q")
+        relative = os.path.relpath(own_cache(), repo)
 
-    result = install(repo, env={"UV_CACHE_DIR": relative})
+        result = install(repo, env={"UV_CACHE_DIR": relative})
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
 
     assert "temporary" in result.stderr
 
