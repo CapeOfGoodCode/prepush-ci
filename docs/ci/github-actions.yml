@@ -11,6 +11,10 @@
 # types and making the jobs below also run on that event whatever the gate says.
 name: CI
 
+# Read access is all the jobs below need; give a job more only where it does.
+permissions:
+  contents: read
+
 on:
   pull_request:
   push:
@@ -22,16 +26,20 @@ jobs:
     outputs:
       verified: ${{ steps.gate.outputs.verified }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
       - id: gate
-        uses: CapeOfGoodCode/prepush-ci@main   # pin a release tag or a commit sha
+        # zizmor: ignore[unpinned-uses] -- there is no release to pin yet; pin a tag or a commit sha
+        uses: CapeOfGoodCode/prepush-ci@main
 
   check:
     needs: gate
     if: ${{ !cancelled() && needs.gate.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: sh scripts/ci   # your full check
