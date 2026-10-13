@@ -15,4 +15,4 @@
 
 ## 4. The README reference
 
-- [ ] 4.1 Add the entry for `skill` to the command reference of `README.md`, with its synopsis (`prepush-ci skill [--write]`) and one example, and make `test_the_reference_lists_the_eight_commands` name the nine commands; verify with the `readme` check on the repository and the scenario of a reference without an entry for `skill`
+- [x] 4.1 Add the entry for `skill` to the command reference of `README.md`, with its synopsis (`prepush-ci skill [--write]`) and one example, and make `test_the_reference_lists_the_eight_commands` name the nine commands; verify with the `readme` check on the repository and the scenario of a reference without an entry for `skill`
