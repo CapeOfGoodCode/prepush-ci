@@ -652,6 +652,56 @@ def test_a_husky_install_refuses_before_writing_when_a_hook_path_is_a_directory(
     assert not (husky_repo / ".husky" / "commit-msg").exists()
 
 
+def read_only_pre_push(husky_repo: Path) -> Path:
+    """A `.husky/pre-push` the operating system refuses to write (the read-only attribute on
+    Windows); it is the second file `install` writes, after `.husky/commit-msg`."""
+    path = husky_hook(husky_repo, "pre-push", "echo mine\n")
+    path.chmod(0o444)
+    return path
+
+
+def test_a_refused_husky_write_names_the_file_and_the_reason_and_puts_the_first_file_back(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    first = husky_hook(husky_repo, "commit-msg", "echo hi")
+    read_only_pre_push(husky_repo)
+
+    result = install(husky_repo, env, "--hooks", "husky")
+
+    assert result.returncode == 1
+    assert ".husky/pre-push" in result.stderr
+    assert "Permission denied" in result.stderr
+    assert len(result.stderr.strip().splitlines()) == 1  # nothing was left unrestored
+    assert "Traceback" not in result.stdout + result.stderr
+    assert first.read_bytes() == b"echo hi"
+
+
+def test_a_refused_husky_write_removes_the_file_the_run_created(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    read_only_pre_push(husky_repo)
+
+    result = install(husky_repo, env, "--hooks", "husky")
+
+    assert result.returncode == 1
+    assert not (husky_repo / ".husky" / "commit-msg").exists()
+
+
+def test_a_husky_install_after_a_refused_write_goes_through_once_the_file_is_writable(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    refused = read_only_pre_push(husky_repo)
+    assert install(husky_repo, env, "--hooks", "husky").returncode == 1
+    refused.chmod(0o644)
+
+    result = install(husky_repo, env, "--hooks", "husky")
+
+    assert result.returncode == 0, result.stderr
+    assert "installed" in result.stdout
+    for name in ("commit-msg", "pre-push"):
+        assert "prepush-ci" in (husky_repo / ".husky" / name).read_text()
+
+
 def test_a_husky_install_creates_no_native_files(
     husky_repo: Path, env: dict[str, str]
 ) -> None:
