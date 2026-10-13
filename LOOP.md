@@ -117,6 +117,7 @@ What each role needs to know about prepush-ci in particular; the rest of its job
 
 - **Attack** every `turn:attack` pull request (flow, step 5), oldest first; that is the work that blocks the human.
 - **Sweep** `main` after merges once `main` has `install` or `init`: the scenarios below, end to end, each in a fresh repository; failures become `Bug` issues.
+- **Entry points** (the persona's "every entry point"): each CLI command (`init`, `install`, `run`, `doctor`, `verify`, `strip`), each hook as git runs it (`commit-msg`, `pre-push`, through every hook setup of the scenarios), the CI gate snippets in `docs/ci/`, and `SKILL.md` followed as an agent would.
 - **Install** as users will, from git until the first PyPI release: `uvx --from git+https://github.com/CapeOfGoodCode/prepush-ci@<sha> prepush-ci`. The same applies wherever `SKILL.md` says `uvx prepush-ci`.
 - **Scenarios**, each in a fresh repository with a bare repository as its remote: a fresh repository; an existing `.git/hooks/pre-push`; `core.hooksPath` already set; pre-commit, husky and lefthook setups; a `PREPUSH_CI=full` commit with a `---` line in its body; a push with a dirty worktree; a push of a commit that is not `HEAD`; a rebase keeps the trailer; tags and branch deletions are ignored; `PREPUSH_CI=off` refuses a trailer commit; `verify` on a commit without the trailer, with a legacy key, and made by a server; `run` caches, and a retried push does not run the check twice; `init --non-interactive` twice is idempotent; `SKILL.md` followed step by step as an agent would.
 
