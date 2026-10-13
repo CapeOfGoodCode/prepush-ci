@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: [main]
     types: [opened, edited, synchronize, reopened, ready_for_review]
-  merge_group:   # the queue needs the required check; the proof was checked on the pull request
 
 permissions: {}
 
@@ -16,14 +15,10 @@ concurrency:
 
 jobs:
   proof:
-    if: ${{ github.event_name == 'merge_group' || !github.event.pull_request.draft }}
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     steps:
-      - name: checked on the pull request
-        if: github.event_name == 'merge_group'
-        run: echo "The proof was checked on the pull request; the merge queue only needs this check to report."
       - name: the pull request carries a proof
-        if: github.event_name == 'pull_request'
         env:
           BODY: ${{ github.event.pull_request.body }}
         run: |

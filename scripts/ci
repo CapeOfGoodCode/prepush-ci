@@ -1,8 +1,8 @@
 #!/bin/sh
 # The full check, the one entry point CI runs. `--fast` runs everything but the tests, in seconds:
-# the pre-push hook runs that, and GitHub runs the full check on every ready pull request and in
-# the merge queue, so the suite runs once per commit. Keep it free of CI-only setup (checkout,
-# caching). Order: cheapest first, fail fast.
+# the pre-push hook runs that, and GitHub runs the full check on every ready pull request and on
+# main after each merge. Keep it free of CI-only setup (checkout, caching). Order: cheapest first,
+# fail fast.
 set -eu
 cd "$(dirname "$0")/.."
 
