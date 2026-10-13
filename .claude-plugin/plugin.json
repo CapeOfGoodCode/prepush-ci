@@ -1,0 +1,10 @@
+{
+  "name": "prepush-ci",
+  "description": "Skill that sets up prepush-ci in a repository: the full CI check runs in the pre-push hook of cloud sessions and pull request CI skips commits that passed it.",
+  "author": {
+    "name": "CapeOfGoodCode"
+  },
+  "homepage": "https://github.com/CapeOfGoodCode/prepush-ci",
+  "repository": "https://github.com/CapeOfGoodCode/prepush-ci",
+  "license": "MIT"
+}
