@@ -438,3 +438,38 @@ def test_the_default_branch_step_says_the_command_fails_without_origin_head_and_
     assert "fails when `origin/HEAD` is unset" in step
     assert "ask the user for the default branch" in step
     assert "do not guess" in step
+
+
+# --- What the README promises about the setup --------------------------------------------------
+
+
+def test_the_check_is_confirmed_before_init_and_the_skill_does_not_go_on_without_it() -> (
+    None
+):
+    assert position("Find the full check") < position("Run init")
+    step = flat(section("Find the full check"))
+    assert "Ask the user** to confirm the command and the list of steps" in step
+    assert "Do not continue without a confirmed check" in step
+
+
+def test_the_skill_works_on_a_branch_and_opens_a_pull_request() -> None:
+    opening = flat(shipped().split("## 0.")[0])
+    assert "Work on a branch and open a pull request with the result" in opening
+    assert "do not push to the default branch" in opening
+
+
+def test_the_first_step_reads_the_ci_definitions_and_finds_or_writes_one_command() -> (
+    None
+):
+    step = flat(section("Find the full check"))
+    assert "Read every CI definition" in step
+    assert "write `scripts/ci`" in step
+    assert "runs the steps in CI's order" in step
+
+
+def test_a_missing_service_fails_the_check_and_the_tests_are_never_skipped_for_it() -> (
+    None
+):
+    step = flat(section("Services and preflight"))
+    assert "A missing service must fail the full check, never skip tests" in step
+    assert "--require-env" in step and "--preflight" in step
