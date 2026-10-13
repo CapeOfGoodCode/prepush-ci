@@ -8,9 +8,9 @@
 
 ## 2. The asset and the README
 
-- [ ] 2.1 Record `docs/assets/demo.svg` and pace it at about 45 seconds, typing and the pause after each output slower than the first recording, and keep it between 40 and 60 seconds; verify with the duration check on the file and on crafted assets (61 seconds, 39 seconds, a step past the end)
+- [x] 2.1 Record `docs/assets/demo.svg` and pace it at about 45 seconds, typing and the pause after each output slower than the first recording, and keep it between 40 and 60 seconds; verify with the duration check on the file and on crafted assets (61 seconds, 39 seconds, a step past the end)
 - [x] 2.2 Embed it in `README.md` before the first `##` heading with the absolute address and a text alternative; verify with the embed specs, and show the animation playing on the branch (raw URL at the head commit) in the pull request
 
 ## 3. Close
 
-- [ ] 3.1 Archive the change
+- [x] 3.1 Archive the change
