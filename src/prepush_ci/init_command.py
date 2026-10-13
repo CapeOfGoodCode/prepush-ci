@@ -201,7 +201,7 @@ def _ask_config(flags: ConfigFlags, root: Path, stdin: TextIO) -> ConfigFlags:
         bin_ci=(root / "bin" / "ci").is_file(),
         makefile=_read(root / "Makefile"),
     )
-    head = git(root, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+    head = git(root, "symbolic-ref", "refs/remotes/origin/HEAD")
     branch = default_branch_of(head.stdout.strip() if head.returncode == 0 else None)
     labels = dict(QUESTIONS)
     answers: dict[str, str] = {}

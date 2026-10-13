@@ -316,9 +316,10 @@ def test_there_is_no_check_default_without_a_script_or_a_ci_target() -> None:
 
 
 def test_the_branch_default_is_the_branch_origin_head_names_else_main() -> None:
-    assert default_branch_of("origin/trunk") == "trunk"
-    assert default_branch_of("origin/") == "main"
-    assert default_branch_of("upstream/x") == "main"
+    assert default_branch_of("refs/remotes/origin/trunk") == "trunk"
+    assert default_branch_of("refs/remotes/origin/") == "main"
+    assert default_branch_of("refs/remotes/upstream/x") == "main"
+    assert default_branch_of("remotes/origin/trunk") == "main"
     assert default_branch_of(None) == "main"
 
 
