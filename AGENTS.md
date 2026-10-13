@@ -38,6 +38,7 @@ The rulebook for everyone who changes this repository, human or agent. `README.m
 - **Type is the primary intent.** A feature's tests and docs ride in its `feat:` commit. OpenSpec artifacts are `docs:` commits of their own.
 - **Atomic**: one logical change per commit. If the subject needs "and", split it.
 - **Fold review rounds before they land.** Rebase merge puts every branch commit on `main`, so "address review" commits must not survive. Fix a commit with `git commit --fixup=<sha>`; before handing the branch back for review, fold them in with `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash origin/main` and update with `--force-with-lease`. Fold down to logical commits, not to one. A reviewer sees what changed since the last round with `git range-diff`.
+- **Every commit passes on its own.** Rebase merge puts each commit on `main`, and `git bisect` needs each one to pass the tests it has. A fix folds into the first commit whose tests need it, never an earlier one. The archive commit only moves the change (`openspec archive`) and ticks its last task; a spec amendment goes into the change's own `docs:` commit, through spec review (`LOOP.md`, step 5).
 - **Agent commits end with trailers** naming the model and, for a loop, the loop:
 
   ```
