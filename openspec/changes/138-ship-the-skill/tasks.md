@@ -7,7 +7,7 @@
 
 ## 2. The wheel
 
-- [ ] 2.1 Add `[tool.uv.build-backend.data] data = "skills"` to `pyproject.toml`; verify with an integration spec that runs `uv build`, installs the wheel into a new virtual environment and compares what the installed `prepush-ci skill` prints with `skills/prepush-ci-setup/SKILL.md`, and that the sdist carries the file
+- [x] 2.1 Add `[tool.uv.build-backend.data] data = "skills"` to `pyproject.toml`; verify with an integration spec that runs `uv build`, installs the wheel into a new virtual environment and compares what the installed `prepush-ci skill` prints with `skills/prepush-ci-setup/SKILL.md`, and that the sdist carries the file
 
 ## 3. The plugin
 
