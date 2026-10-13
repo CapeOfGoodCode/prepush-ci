@@ -316,28 +316,38 @@ def default_branch_step() -> str:
     raise AssertionError("SKILL.md has no `<default branch>` bullet in the init step")
 
 
-def hint_command() -> list[str]:
-    """The command the `<default branch>` step gives, as the words git is run with."""
-    for span in re.findall(r"`([^`]+)`", default_branch_step()):
-        if span.startswith("git "):
-            return shlex.split(span)[1:]
-    raise AssertionError("the `<default branch>` step names no git command")
+def hint_commands() -> list[list[str]]:
+    """The git commands the `<default branch>` step gives, in order, as the words git is run with."""
+    found = [
+        shlex.split(span)[1:]
+        for span in re.findall(r"`([^`]+)`", default_branch_step())
+        if span.startswith("git ")
+    ]
+    assert found, "the `<default branch>` step names no git command"
+    return found
 
 
-def repo_with_origin_head(repo: Path, git: Git, branch: str | None) -> Path:
-    """`repo` with one commit, and `origin/HEAD` naming `origin/<branch>` unless `branch` is None."""
+def clone_of_remote(repo: Path, git: Git, branch: str) -> Path:
+    """`repo` with one commit, fetched from a bare remote `origin` whose default branch is
+    `branch`; `origin/HEAD` is not set, as in a repository that was not made by `git clone`."""
     (repo / "f").write_text("x")
     git(repo, "add", "f")
     git(repo, "commit", "-q", "-m", "init")
-    if branch is not None:
-        git(repo, "update-ref", f"refs/remotes/origin/{branch}", "HEAD")
-        git(
-            repo,
-            "symbolic-ref",
-            "refs/remotes/origin/HEAD",
-            f"refs/remotes/origin/{branch}",
-        )
+    remote = repo.parent / "remote.git"
+    git(repo.parent, "init", "-q", "--bare", f"--initial-branch={branch}", str(remote))
+    git(repo, "remote", "add", "origin", str(remote))
+    git(repo, "push", "-q", "origin", f"HEAD:refs/heads/{branch}")
+    git(repo, "fetch", "-q", "origin")
     return repo
+
+
+def rename_remote_default_branch(repo: Path, git: Git, old: str, new: str) -> None:
+    """The remote renames its default branch from `old` to `new`; `repo` fetches and prunes."""
+    remote = repo.parent / "remote.git"
+    git(repo, "push", "-q", "origin", f"HEAD:refs/heads/{new}")
+    git(remote, "symbolic-ref", "HEAD", f"refs/heads/{new}")
+    git(remote, "branch", "-q", "-D", old)
+    git(repo, "fetch", "-q", "--prune", "origin")
 
 
 def init_default_branch(
@@ -367,8 +377,11 @@ def loaded_default_branch(repo: Path) -> str:
 
 
 def follow_the_hint(repo: Path, git: Git) -> str:
-    """What an agent does with the step: run its command, remove the leading prefix."""
-    output = git(repo, *hint_command()).stdout.strip()
+    """What an agent does with the step: run its commands in order, remove the leading prefix
+    from the last output."""
+    output = ""
+    for command in hint_commands():
+        output = git(repo, *command).stdout.strip()
     assert output.startswith(ORIGIN_PREFIX), output
     return output[len(ORIGIN_PREFIX) :]
 
@@ -380,7 +393,7 @@ def hint_gives_the_name_init_accepts(
     origin_head: str,
     local_branch: str | None = None,
 ) -> None:
-    repo_with_origin_head(repo, git, origin_head)
+    clone_of_remote(repo, git, origin_head)
     if local_branch:
         git(repo, "branch", local_branch)
 
@@ -410,34 +423,88 @@ def test_a_local_branch_named_like_the_remote_branch_does_not_change_the_hint(
     )
 
 
-def test_the_default_branch_step_names_the_command_and_says_to_remove_the_prefix() -> (
+def test_a_record_older_than_a_rename_is_refreshed_by_the_hint(
+    repo: Path, git: Git, invocations: Any
+) -> None:
+    clone_of_remote(repo, git, "master")
+    git(repo, "remote", "set-head", "origin", "--auto")
+    rename_remote_default_branch(repo, git, "master", "main")
+    stale = git(repo, "symbolic-ref", "refs/remotes/origin/HEAD").stdout.strip()
+
+    result = init_default_branch(repo, follow_the_hint(repo, git), invocations)
+
+    assert stale == f"{ORIGIN_PREFIX}master"
+    assert result.returncode == 0, result.stderr
+    assert loaded_default_branch(repo) == "main"
+
+
+def test_the_default_branch_step_names_both_commands_in_order_and_says_to_remove_the_prefix() -> (
     None
 ):
     step = default_branch_step()
-    assert "`git symbolic-ref refs/remotes/origin/HEAD`" in step
+    refresh = step.index("`git remote set-head origin --auto`")
+    read = step.index("`git symbolic-ref refs/remotes/origin/HEAD`")
+    assert refresh < read
+    assert "refreshes the local record from the remote" in step
     assert "remove the leading `refs/remotes/origin/`" in step
 
 
-def test_without_origin_head_the_hint_fails_and_init_takes_the_name_the_user_gave(
-    repo: Path, git: Git, invocations: Any
+def test_without_a_remote_the_first_hint_command_fails(repo: Path, git: Git) -> None:
+    (repo / "f").write_text("x")
+    git(repo, "add", "f")
+    git(repo, "commit", "-q", "-m", "init")
+
+    first = git(repo, *hint_commands()[0], check=False)
+
+    assert first.returncode != 0
+
+
+def test_with_a_remote_that_cannot_be_reached_the_first_hint_command_fails(
+    repo: Path, git: Git
 ) -> None:
-    repo_with_origin_head(repo, git, None)
+    clone_of_remote(repo, git, "master")
+    git(repo, "remote", "set-head", "origin", "--auto")
+    git(repo, "remote", "set-url", "origin", str(repo.parent / "nothing"))
 
-    hint = git(repo, *hint_command(), check=False)
-    result = init_default_branch(repo, "trunk", invocations)
+    first = git(repo, *hint_commands()[0], check=False)
+    stale = git(repo, "symbolic-ref", "refs/remotes/origin/HEAD").stdout.strip()
 
-    assert hint.returncode != 0
-    assert result.returncode == 0, result.stderr
-    assert loaded_default_branch(repo) == "trunk"
+    assert first.returncode != 0
+    assert stale == f"{ORIGIN_PREFIX}master"
 
 
-def test_the_default_branch_step_says_the_command_fails_without_origin_head_and_to_ask() -> (
+def test_in_a_single_branch_clone_the_first_hint_command_fails(
+    repo: Path, git: Git
+) -> None:
+    clone_of_remote(repo, git, "main")
+    git(repo, "push", "-q", "origin", "HEAD:refs/heads/feature")
+    clone = repo.parent / "single-branch-clone"
+    git(
+        repo.parent,
+        "clone",
+        "-q",
+        "--single-branch",
+        "-b",
+        "feature",
+        str(repo.parent / "remote.git"),
+        str(clone),
+    )
+
+    first = git(clone, *hint_commands()[0], check=False)
+
+    assert first.returncode != 0
+
+
+def test_the_default_branch_step_says_the_commands_fail_without_a_reachable_origin_and_to_ask() -> (
     None
 ):
     step = default_branch_step()
-    assert "fails when `origin/HEAD` is unset" in step
+    assert "fail when `origin` does not exist, cannot be reached" in step
+    assert "has no default branch" in step
+    assert "(a single-branch clone of another branch)" in step
     assert "ask the user for the default branch" in step
     assert "do not guess" in step
+    assert "do not use the output of the second when the first failed" in step
 
 
 # --- What the README promises about the setup --------------------------------------------------
