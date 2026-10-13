@@ -14,4 +14,4 @@
 
 ## 3. Finish
 
-- [ ] 3.1 Run `sh scripts/ci` and verify it passes on both platforms
+- [x] 3.1 Run `sh scripts/ci` and verify it passes on both platforms
