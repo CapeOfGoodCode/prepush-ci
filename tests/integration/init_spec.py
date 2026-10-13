@@ -1204,3 +1204,57 @@ def test_an_interactive_answer_with_an_equals_sign_is_refused_and_writes_nothing
     assert "`require_env`" in result.stderr
     assert "'A=1'" in result.stderr
     assert files(repo) == set()
+
+
+@pytest.mark.parametrize("value", ["refs/remotes/origin/trunk", "origin/trunk"])
+def test_a_default_branch_flag_that_is_not_a_branch_name_is_refused_and_writes_nothing(
+    repo: Path, value: str
+) -> None:
+    result = init(
+        repo,
+        "--non-interactive",
+        "--check",
+        "scripts/ci",
+        "--default-branch",
+        value,
+        "--hooks",
+        "none",
+    )
+
+    assert result.returncode == 1
+    assert "`default_branch`" in result.stderr
+    assert 'use "trunk"' in result.stderr
+    assert "Traceback" not in result.stderr
+    assert files(repo) == set()
+
+
+def test_a_default_branch_answer_that_is_not_a_branch_name_is_refused_and_writes_nothing(
+    repo: Path,
+) -> None:
+    result = init(
+        repo,
+        "--hooks",
+        "none",
+        stdin=answers("scripts/ci", "", "", "refs/remotes/origin/trunk", "", "n"),
+    )
+
+    assert result.returncode == 1
+    assert "`default_branch`" in result.stderr
+    assert 'use "trunk"' in result.stderr
+    assert files(repo) == set()
+
+
+def test_the_default_branch_name_is_accepted_by_init(repo: Path) -> None:
+    result = init(
+        repo,
+        "--non-interactive",
+        "--check",
+        "scripts/ci",
+        "--default-branch",
+        "main",
+        "--hooks",
+        "none",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert config_of(repo).default_branch == "main"
