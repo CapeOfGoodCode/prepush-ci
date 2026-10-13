@@ -14,7 +14,7 @@ SCRIPT = ROOT / "scripts" / "check-wheel"
 
 @pytest.fixture
 def source(tmp_path: Path) -> Path:
-    """A copy of what the wheel is built from: the project file, the readme and the package."""
+    """A copy of what the wheel is built from: the project file, the readme, the package and the skill."""
     copy = tmp_path / "source"
     copy.mkdir()
     for name in ("pyproject.toml", "README.md", "LICENSE"):
@@ -22,6 +22,7 @@ def source(tmp_path: Path) -> Path:
     shutil.copytree(
         ROOT / "src", copy / "src", ignore=shutil.ignore_patterns("__pycache__")
     )
+    shutil.copytree(ROOT / "skills", copy / "skills")
     return copy
 
 

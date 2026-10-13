@@ -31,6 +31,9 @@ prepush-ci = "prepush_ci.cli:main"
 requires = ["uv_build>=0.8,<0.13"]
 build-backend = "uv_build"
 
+[tool.uv.build-backend.data]
+data = "skills"   # skills/prepush-ci-setup/SKILL.md goes into the wheel for `prepush-ci skill`
+
 [dependency-groups]
 dev = [
     "actionlint-py>=1.7.12.25",
