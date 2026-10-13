@@ -10,128 +10,12 @@ import shlex
 import subprocess
 import sys
 from collections.abc import Callable
-from functools import cache
 from pathlib import Path
+from typing import Any
 
 SKILL = Path(__file__).resolve().parents[2] / "skills" / "prepush-ci-setup" / "SKILL.md"
 
 Git = Callable[..., "subprocess.CompletedProcess[str]"]
-
-NAME = re.compile(r"(?<![\w/.@-])prepush-ci(?![\w/.@:-])")
-OPERATORS = {"|", "||", "&&", ";", "&", ">", ">>", "<", ")"}
-
-
-def cli(*args: str) -> "subprocess.CompletedProcess[str]":
-    return subprocess.run(
-        [sys.executable, "-m", "prepush_ci", *args],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-
-@cache
-def help_of(words: tuple[str, ...]) -> tuple[int, str]:
-    """Exit status and text of `prepush-ci <words> --help`."""
-    result = cli(*words, "--help")
-    return result.returncode, result.stdout
-
-
-def choices(help_text: str) -> set[str]:
-    """The sub-command names an argparse help lists as `{a,b}`."""
-    found = re.search(r"\{([\w,-]+)\}", help_text)
-    return set(found.group(1).split(",")) if found else set()
-
-
-def top_level_lists_verify() -> bool:
-    return re.search(r"^also: verify\b", help_of(())[1], re.MULTILINE) is not None
-
-
-def code_lines(text: str) -> list[str]:
-    """The lines of fenced code blocks (continuations joined) and the inline code spans."""
-    lines: list[str] = []
-    fenced = False
-    pending = ""
-    for raw in text.splitlines():
-        if raw.lstrip().startswith("```"):
-            fenced = not fenced
-            continue
-        if fenced:
-            pending += raw.strip()
-            if pending.endswith("\\"):
-                pending = pending[:-1] + " "
-                continue
-            lines.append(pending)
-            pending = ""
-        else:
-            lines.extend(re.findall(r"`([^`\n]+)`", raw))
-    return lines
-
-
-def words_after_the_name(line: str) -> list[list[str]]:
-    """For each `prepush-ci` in `line`, the words that follow up to a shell operator."""
-    found: list[list[str]] = []
-    for match in NAME.finditer(line):
-        rest = line[match.end() :]
-        try:
-            words = shlex.split(rest)
-        except ValueError:
-            words = rest.split()
-        taken: list[str] = []
-        for word in words:
-            if word in OPERATORS:
-                break
-            taken.append(word)
-        found.append(taken)
-    return found
-
-
-def problems(text: str) -> list[str]:
-    """What is wrong with the `prepush-ci` invocations of `text`, in order; empty when none."""
-    found: list[str] = []
-    for line in code_lines(text):
-        for words in words_after_the_name(line):
-            found.extend(check_invocation(words))
-    return found
-
-
-def check_invocation(words: list[str]) -> list[str]:
-    command: list[str] = []
-    rest = list(words)
-    while rest and not rest[0].startswith("-"):
-        listed = choices(help_of(tuple(command))[1])
-        if not command and rest[0] == "verify" and top_level_lists_verify():
-            return check_verify(rest[1:])
-        if rest[0] not in listed:
-            break
-        command.append(rest.pop(0))
-    if not command and rest and not rest[0].startswith("-"):
-        return [f"unknown command {rest[0]}"]
-    status, text = help_of(tuple(command))
-    if status != 0:
-        return [f"unknown command {' '.join(command)}"]
-    if choices(text) and not rest:
-        return []
-    unknown: list[str] = []
-    for word in rest:
-        option = word.split("=", 1)[0]
-        if option.startswith("-") and not re.search(
-            rf"(?<![\w-]){re.escape(option)}(?![\w-])", text
-        ):
-            unknown.append(
-                f"unknown option {option} for {' '.join(command) or 'prepush-ci'}"
-            )
-    return unknown
-
-
-def check_verify(rest: list[str]) -> list[str]:
-    options = [
-        f"unknown option {word} for verify" for word in rest if word.startswith("-")
-    ]
-    arguments = [word for word in rest if not word.startswith("-")]
-    if len(arguments) != 1:
-        options.append("verify takes exactly one sha")
-    return options
 
 
 def shipped() -> str:
@@ -141,48 +25,56 @@ def shipped() -> str:
 # --- Every command in the skill exists -------------------------------------------------------
 
 
-def test_the_shipped_skill_passes() -> None:
-    assert problems(shipped()) == []
+def test_the_shipped_skill_passes(invocations: Any) -> None:
+    assert invocations.problems(shipped()) == []
 
 
-def test_an_option_the_cli_lacks_is_reported_as_unknown_to_its_command() -> None:
-    assert problems("Run `prepush-ci strip --force` now.") == [
+def test_an_option_the_cli_lacks_is_reported_as_unknown_to_its_command(
+    invocations: Any,
+) -> None:
+    assert invocations.problems("Run `prepush-ci strip --force` now.") == [
         "unknown option --force for strip"
     ]
 
 
-def test_a_command_the_cli_lacks_is_reported_as_unknown() -> None:
-    assert problems("Run `prepush-ci sync` now.") == ["unknown command sync"]
+def test_a_command_the_cli_lacks_is_reported_as_unknown(invocations: Any) -> None:
+    assert invocations.problems("Run `prepush-ci sync` now.") == [
+        "unknown command sync"
+    ]
 
 
-def test_a_nested_command_is_accepted() -> None:
-    assert problems("Run `prepush-ci hook pre-push`.") == []
+def test_a_nested_command_is_accepted(invocations: Any) -> None:
+    assert invocations.problems("Run `prepush-ci hook pre-push`.") == []
 
 
-def test_a_command_with_its_options_in_a_fenced_block_is_accepted() -> None:
+def test_a_command_with_its_options_in_a_fenced_block_is_accepted(
+    invocations: Any,
+) -> None:
     block = "```sh\nprepush-ci init --non-interactive \\\n  --check true --hooks none\n```\n"
-    assert problems(block) == []
+    assert invocations.problems(block) == []
 
 
-def test_text_outside_code_is_not_an_invocation() -> None:
-    assert problems("prepush-ci sync is mentioned in prose.") == []
+def test_text_outside_code_is_not_an_invocation(invocations: Any) -> None:
+    assert invocations.problems("prepush-ci sync is mentioned in prose.") == []
 
 
 # --- The verify command is checked by its shape ----------------------------------------------
 
 
-def test_verify_with_a_sha_is_accepted() -> None:
-    assert problems('Run `prepush-ci verify "$SHA"`.') == []
+def test_verify_with_a_sha_is_accepted(invocations: Any) -> None:
+    assert invocations.problems('Run `prepush-ci verify "$SHA"`.') == []
 
 
-def test_verify_with_an_option_reports_the_option_as_unknown() -> None:
-    assert problems('Run `prepush-ci verify --strict "$SHA"`.') == [
+def test_verify_with_an_option_reports_the_option_as_unknown(invocations: Any) -> None:
+    assert invocations.problems('Run `prepush-ci verify --strict "$SHA"`.') == [
         "unknown option --strict for verify"
     ]
 
 
-def test_verify_without_a_sha_is_reported() -> None:
-    assert problems("Run `prepush-ci verify`.") == ["verify takes exactly one sha"]
+def test_verify_without_a_sha_is_reported(invocations: Any) -> None:
+    assert invocations.problems("Run `prepush-ci verify`.") == [
+        "verify takes exactly one sha"
+    ]
 
 
 # --- The init invocation runs -----------------------------------------------------------------
@@ -194,9 +86,9 @@ PLACEHOLDER_VALUES = {
 }
 
 
-def init_invocation() -> list[str]:
-    for line in code_lines(shipped()):
-        for words in words_after_the_name(line):
+def init_invocation(invocations: Any) -> list[str]:
+    for line in invocations.code_lines(shipped()):
+        for words in invocations.words_after_the_name(line):
             if words[:2] == ["init", "--non-interactive"]:
                 return words
     raise AssertionError(
@@ -216,10 +108,10 @@ def filled(words: list[str]) -> list[str]:
 
 
 def test_the_init_invocation_works_with_its_placeholders_filled(
-    tmp_path: Path, git: Git
+    tmp_path: Path, git: Git, invocations: Any
 ) -> None:
     git(tmp_path, "init", "-q")
-    words = filled(init_invocation())
+    words = filled(init_invocation(invocations))
     result = subprocess.run(
         [sys.executable, "-m", "prepush_ci", *words],
         cwd=tmp_path,
@@ -448,9 +340,14 @@ def repo_with_origin_head(repo: Path, git: Git, branch: str | None) -> Path:
     return repo
 
 
-def init_default_branch(repo: Path, branch: str) -> "subprocess.CompletedProcess[str]":
+def init_default_branch(
+    repo: Path, branch: str, invocations: Any
+) -> "subprocess.CompletedProcess[str]":
     """Run the skill's `init` invocation in `repo` with `branch` as the default branch."""
-    words = [word.replace("<default branch>", branch) for word in init_invocation()]
+    words = [
+        word.replace("<default branch>", branch)
+        for word in init_invocation(invocations)
+    ]
     return subprocess.run(
         [sys.executable, "-m", "prepush_ci", *filled(words)],
         cwd=repo,
@@ -477,34 +374,40 @@ def follow_the_hint(repo: Path, git: Git) -> str:
 
 
 def hint_gives_the_name_init_accepts(
-    repo: Path, git: Git, origin_head: str, local_branch: str | None = None
+    repo: Path,
+    git: Git,
+    invocations: Any,
+    origin_head: str,
+    local_branch: str | None = None,
 ) -> None:
     repo_with_origin_head(repo, git, origin_head)
     if local_branch:
         git(repo, "branch", local_branch)
 
-    result = init_default_branch(repo, follow_the_hint(repo, git))
+    result = init_default_branch(repo, follow_the_hint(repo, git), invocations)
 
     assert result.returncode == 0, result.stderr
     assert loaded_default_branch(repo) == origin_head
 
 
 def test_a_repository_with_origin_head_gets_its_default_branch_from_the_hint(
-    repo: Path, git: Git
+    repo: Path, git: Git, invocations: Any
 ) -> None:
-    hint_gives_the_name_init_accepts(repo, git, "trunk")
+    hint_gives_the_name_init_accepts(repo, git, invocations, "trunk")
 
 
 def test_a_default_branch_name_with_a_slash_survives_the_hint(
-    repo: Path, git: Git
+    repo: Path, git: Git, invocations: Any
 ) -> None:
-    hint_gives_the_name_init_accepts(repo, git, "release/1")
+    hint_gives_the_name_init_accepts(repo, git, invocations, "release/1")
 
 
 def test_a_local_branch_named_like_the_remote_branch_does_not_change_the_hint(
-    repo: Path, git: Git
+    repo: Path, git: Git, invocations: Any
 ) -> None:
-    hint_gives_the_name_init_accepts(repo, git, "trunk", local_branch="origin/trunk")
+    hint_gives_the_name_init_accepts(
+        repo, git, invocations, "trunk", local_branch="origin/trunk"
+    )
 
 
 def test_the_default_branch_step_names_the_command_and_says_to_remove_the_prefix() -> (
@@ -516,12 +419,12 @@ def test_the_default_branch_step_names_the_command_and_says_to_remove_the_prefix
 
 
 def test_without_origin_head_the_hint_fails_and_init_takes_the_name_the_user_gave(
-    repo: Path, git: Git
+    repo: Path, git: Git, invocations: Any
 ) -> None:
     repo_with_origin_head(repo, git, None)
 
     hint = git(repo, *hint_command(), check=False)
-    result = init_default_branch(repo, "trunk")
+    result = init_default_branch(repo, "trunk", invocations)
 
     assert hint.returncode != 0
     assert result.returncode == 0, result.stderr
