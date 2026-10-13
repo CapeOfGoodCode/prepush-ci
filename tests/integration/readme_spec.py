@@ -609,7 +609,10 @@ def test_the_agent_step_says_what_the_agent_asks_only_sometimes() -> None:
     text = flat(agent_step()).lower()
 
     assert "which hook manager" in text and "two" in text
-    assert "default branch" in text and "origin/head" in text
+    assert "default branch when `origin` is missing, cannot be reached" in text
+    assert "has no default branch" in text
+    assert "(a single-branch clone of another branch)" in text
+    assert "origin/head" not in text
     assert "a yes before" in text and "removes a hook" in text
     assert "only" in text
 
