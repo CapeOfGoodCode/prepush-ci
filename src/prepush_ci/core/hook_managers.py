@@ -55,6 +55,14 @@ def place_block(
     return [*lines[: span[0]], *block, *lines[span[1] + 1 :]]
 
 
+# What an entry does when the tool is not on PATH (spec `install`): `commit-msg` warns and lets
+# the commit go on, `pre-push` refuses, as the native hooks do. The entries are the only code
+# that runs then, so the guard is written into each of them (`command -v` is POSIX sh).
+_NOT_FOUND = "prepush-ci is not on PATH, so"
+_WARNING = f"{_NOT_FOUND} no trailer is written - install it"
+_REFUSAL = f"{_NOT_FOUND} this push cannot be checked - install it"
+_FOUND = "if command -v prepush-ci >/dev/null 2>&1; then"
+
 PRE_COMMIT_FILE = ".pre-commit-config.yaml"
 _TYPES_KEY = "default_install_hook_types"
 _STAGES_KEY = "default_stages"
@@ -81,11 +89,22 @@ def _bare(items: Sequence[str]) -> list[str]:
     return [item.strip("'\"") for item in items]
 
 
+def _pre_commit_entry(hook: str) -> str:
+    """The `entry:` of `hook`: `sh -c` with the guard; pre-commit appends the message file, which
+    `sh` hands to the script as `$1`."""
+    if hook == "commit-msg":
+        script = f'{_FOUND} exec prepush-ci hook commit-msg "$1"; else echo "{_WARNING}" >&2; fi'
+    else:
+        script = f'{_FOUND} exec prepush-ci hook pre-push; else echo "{_REFUSAL}" >&2; exit 1; fi'
+    return f"sh -c '{script}' prepush-ci"
+
+
 def pre_commit_block(indent: str) -> list[str]:
     """The `local` repo with the two hooks, its list item at `indent`."""
     lines = [BEGIN, "- repo: local", "  hooks:"]
     for hook, extra in (
-        ("commit-msg", ["stages: [commit-msg]"]),
+        # pre-commit hides the output of a hook that passes, and with it the warning
+        ("commit-msg", ["stages: [commit-msg]", "verbose: true"]),
         (
             "pre-push",
             ["stages: [pre-push]", "pass_filenames: false", "always_run: true"],
@@ -94,7 +113,7 @@ def pre_commit_block(indent: str) -> list[str]:
         lines += [
             f"    - id: prepush-ci-{hook}",
             f"      name: prepush-ci {hook}",
-            f"      entry: prepush-ci hook {hook}",
+            f"      entry: {_pre_commit_entry(hook)}",
             "      language: system",
             *(f"      {line}" for line in extra),
         ]
@@ -189,11 +208,24 @@ _HUSKY_SHEBANG = "#!/usr/bin/env sh"
 # The pre-push block reads git's standard input once, hands it to the tool, ends the hook with
 # its status when it fails, and gives the same input to the lines after it.
 _HUSKY_BLOCKS = {
-    "commit-msg": [BEGIN, 'prepush-ci hook commit-msg "$1" || exit $?', END],
+    "commit-msg": [
+        BEGIN,
+        _FOUND,
+        '  prepush-ci hook commit-msg "$1" || exit $?',
+        "else",
+        f'  echo "{_WARNING}" >&2',
+        "fi",
+        END,
+    ],
     "pre-push": [
         BEGIN,
         "refs=$(cat)",
-        'printf \'%s\\n\' "$refs" | prepush-ci hook pre-push "$@" || exit $?',
+        _FOUND,
+        '  printf \'%s\\n\' "$refs" | prepush-ci hook pre-push "$@" || exit $?',
+        "else",
+        f'  echo "{_REFUSAL}" >&2',
+        "  exit 1",
+        "fi",
         "exec <<PREPUSH_CI_REFS",
         "$refs",
         "PREPUSH_CI_REFS",
@@ -203,8 +235,13 @@ _HUSKY_BLOCKS = {
 
 LEFTHOOK_FILES = ("lefthook.yml", "lefthook.yaml", ".lefthook.yml", ".lefthook.yaml")
 _LEFTHOOK_RUN = {
-    "commit-msg": ["run: prepush-ci hook commit-msg {1}"],
-    "pre-push": ["run: prepush-ci hook pre-push", "use_stdin: true"],
+    "commit-msg": [
+        f'run: {_FOUND} prepush-ci hook commit-msg {{1}}; else echo "{_WARNING}" >&2; fi'
+    ],
+    "pre-push": [
+        f'run: {_FOUND} prepush-ci hook pre-push; else echo "{_REFUSAL}" >&2; exit 1; fi',
+        "use_stdin: true",
+    ],
 }
 _COMMANDS = re.compile(r"(\s*)commands:\s*(#.*)?")
 

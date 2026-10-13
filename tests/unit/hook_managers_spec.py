@@ -117,9 +117,9 @@ def test_the_pre_commit_block_takes_the_indentation_of_the_other_repos() -> None
 def test_the_pre_commit_hooks_name_their_stages_and_call_the_tool_from_path() -> None:
     block = edit_pre_commit(TWO_REPOS)
 
-    assert "entry: prepush-ci hook commit-msg\n" in block
+    assert "prepush-ci hook commit-msg" in block
     assert "stages: [commit-msg]" in block
-    assert "entry: prepush-ci hook pre-push\n" in block
+    assert "prepush-ci hook pre-push" in block
     assert (
         "stages: [pre-push]\n        pass_filenames: false\n        always_run" in block
     )
@@ -332,9 +332,9 @@ def test_the_report_of_a_manager_without_an_activation_step_names_none() -> None
 def test_a_new_husky_file_starts_with_a_shebang_and_holds_the_block() -> None:
     text = edit_husky("commit-msg", None)
 
-    assert text == (
-        f'#!/usr/bin/env sh\n{BEGIN}\nprepush-ci hook commit-msg "$1" || exit $?\n{END}\n'
-    )
+    assert text.startswith(f"#!/usr/bin/env sh\n{BEGIN}\n")
+    assert text.endswith(f"{END}\n")
+    assert 'prepush-ci hook commit-msg "$1" || exit $?' in text
 
 
 def test_the_husky_block_goes_after_the_shebang_and_before_every_other_line() -> None:
@@ -403,12 +403,16 @@ def test_a_lefthook_file_without_the_hooks_gets_both_sections_at_its_end() -> No
     assert text.startswith(
         "pre-commit:\n  commands:\n    lint:\n      run: make lint\n"
     )
-    assert text.endswith(
-        f"commit-msg:\n  commands:\n    {BEGIN}\n    prepush-ci:\n"
-        f"      run: prepush-ci hook commit-msg {{1}}\n    {END}\n"
-        f"pre-push:\n  commands:\n    {BEGIN}\n    prepush-ci:\n"
-        f"      run: prepush-ci hook pre-push\n      use_stdin: true\n    {END}\n"
+    commit_msg, pre_push = text.split("pre-push:\n")
+    assert commit_msg.endswith(f"    {END}\n")
+    assert pre_push.endswith(f"      use_stdin: true\n    {END}\n")
+    assert (
+        f"commit-msg:\n  commands:\n    {BEGIN}\n    prepush-ci:\n      run: "
+        in commit_msg
     )
+    assert "prepush-ci hook commit-msg {1}" in commit_msg
+    assert f"  commands:\n    {BEGIN}\n    prepush-ci:\n      run: " in pre_push
+    assert "prepush-ci hook pre-push" in pre_push
 
 
 def test_an_empty_lefthook_file_gets_both_sections() -> None:
@@ -423,9 +427,8 @@ def test_the_lefthook_command_is_the_first_entry_with_the_indentation_of_the_oth
 ):
     text = edit_lefthook(LEFTHOOK)
 
+    assert f"pre-push:\n  commands:\n    {BEGIN}\n    prepush-ci:\n      run: " in text
     assert (
-        "pre-push:\n  commands:\n"
-        f"    {BEGIN}\n    prepush-ci:\n      run: prepush-ci hook pre-push\n"
         f"      use_stdin: true\n    {END}\n    test:\n      run: make test\npre-commit:"
     ) in text
 
@@ -518,3 +521,14 @@ def test_the_lefthook_report_names_its_activation_step() -> None:
     assert "`lefthook install`" in manager_report(
         "installed", "lefthook", ["lefthook.yml"]
     )
+
+
+def test_every_manager_entry_contains_the_command_of_the_tool() -> None:
+    pre_commit = edit_pre_commit(TWO_REPOS)
+    husky = {hook: edit_husky(hook, None) for hook in ("commit-msg", "pre-push")}
+    lefthook = edit_lefthook("")
+
+    for hook in ("commit-msg", "pre-push"):
+        assert f"prepush-ci hook {hook}" in pre_commit
+        assert f"prepush-ci hook {hook}" in husky[hook]
+        assert f"prepush-ci hook {hook}" in lefthook
