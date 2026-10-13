@@ -151,12 +151,27 @@ def _install_manager(cwd: Path, root: Path | None, manager: str) -> int:
         except (Refusal, OSError, UnicodeDecodeError) as problem:
             print(f"prepush-ci install: {name}: {problem}", file=sys.stderr)
             return 1
+    attempted: list[tuple[str, str | None]] = []
     for name, (old, new) in plan.items():
         if old != new:
             path = root / name
-            path.write_text(new, encoding="utf-8", newline="")
-            if old is None:
-                path.chmod(0o755)  # a hook file git runs
+            attempted.append(
+                (name, old)
+            )  # a refused write may still have cut the file short
+            try:
+                path.write_text(new, encoding="utf-8", newline="")
+                if old is None:
+                    path.chmod(0o755)  # a hook file git runs
+            except OSError as problem:
+                stuck = _put_back(root, attempted)
+                reason = problem.strerror or str(problem)
+                print(f"prepush-ci install: {name}: {reason}", file=sys.stderr)
+                for left in stuck:  # pragma: no cover (no scenario: see design.md)
+                    print(
+                        f"prepush-ci install: could not put back {left}",
+                        file=sys.stderr,
+                    )
+                return 1
     was_installed = any(
         old is not None and holds_block(old) for old, _ in plan.values()
     )
@@ -167,6 +182,28 @@ def _install_manager(cwd: Path, root: Path | None, manager: str) -> int:
         )
     )
     return 0
+
+
+def _put_back(root: Path, attempted: list[tuple[str, str | None]]) -> list[str]:
+    """Undo the writes tried so far: restore the previous contents, remove a file the run created.
+    A file that already holds what it held before is left alone (a refused write changes
+    nothing). Best effort; returns the names of the files that could not be put back."""
+    stuck: list[str] = []
+    for name, old in reversed(attempted):
+        path = root / name
+        try:
+            if _read(path) == old:
+                continue
+            if old is None:
+                path.unlink()
+            else:
+                path.write_text(old, encoding="utf-8", newline="")
+        except (
+            OSError,
+            UnicodeDecodeError,
+        ):  # pragma: no cover (no scenario: see design.md)
+            stuck.append(name)
+    return stuck
 
 
 def _native_directory(cwd: Path) -> Path:
