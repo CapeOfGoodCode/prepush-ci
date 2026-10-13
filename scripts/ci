@@ -18,7 +18,13 @@ echo "==> unit tests: 100% branch coverage of core"
 COVERAGE_FILE=.coverage-unit uv run coverage run -m pytest -q tests/unit
 COVERAGE_FILE=.coverage-unit uv run coverage report --include='*/core/*' --fail-under=100
 echo "==> all tests: 95% branch coverage overall"
-uv run coverage run -m pytest -q
+# In parallel on CI only: GitHub's runners have the cores, and the integration specs spend their
+# time in git processes. Locally the count of cores can lie (a container limited to 2 CPUs sees all
+# of the host's), and too many workers stall the machine. The unit tests stay serial: they take a
+# second, less than starting the workers.
+if [ -n "${CI:-}" ]; then workers="-n auto"; else workers=""; fi
+# shellcheck disable=SC2086  # $workers is empty or two words
+uv run coverage run -m pytest -q $workers
 uv run coverage report --fail-under=95 --skip-covered
 echo "==> openspec validate";   npx --no-install openspec validate --all --strict --no-interactive
 echo "==> full check passed"
