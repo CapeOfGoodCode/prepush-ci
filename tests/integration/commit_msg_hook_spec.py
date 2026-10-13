@@ -74,6 +74,28 @@ def test_configured_trailer_is_written_in_full_mode(
     assert last_message(hooked_repo, git).endswith("\nFull-Check: yes\n")
 
 
+def test_a_non_ascii_trailer_value_is_written_as_utf8_without_a_traceback(
+    hooked_repo: Path, git: Git
+) -> None:
+    (hooked_repo / ".prepush-ci.toml").write_text(
+        'check = "true"\ntrailer = { key = "Full-Check", value = "jä" }\n'
+    )
+
+    done = git(
+        hooked_repo,
+        "commit",
+        "--allow-empty",
+        "-m",
+        "add x",
+        env={"PREPUSH_CI": "full"},
+        check=False,
+    )
+
+    assert done.returncode == 0, done.stderr
+    assert "Traceback" not in done.stderr
+    assert last_message(hooked_repo, git).endswith("\nFull-Check: jä\n")
+
+
 def test_existing_trailers_are_kept_when_the_trailer_is_added(
     hooked_repo: Path, git: Git
 ) -> None:
