@@ -1,12 +1,19 @@
 #!/bin/sh
-# The full check: the one entry point CI and the pre-push hook both run, so the two cannot drift.
-# Keep it free of CI-only setup (checkout, caching). Order: cheapest first, fail fast.
+# The full check, the one entry point CI runs. `--fast` runs everything but the tests, in seconds:
+# the pre-push hook runs that, and GitHub runs the full check on every ready pull request and in
+# the merge queue, so the suite runs once per commit. Keep it free of CI-only setup (checkout,
+# caching). Order: cheapest first, fail fast.
 set -eu
 cd "$(dirname "$0")/.."
 
 echo "==> ruff check";          uv run ruff check .
 echo "==> ruff format --check"; uv run ruff format --check .
 echo "==> mypy (strict)";       uv run mypy
+if [ "${1:-}" = "--fast" ]; then
+  echo "==> openspec validate"; npx --no-install openspec validate --all --strict --no-interactive
+  echo "==> fast check passed (no tests: CI runs them)"
+  exit 0
+fi
 echo "==> unit tests: 100% branch coverage of core"
 COVERAGE_FILE=.coverage-unit uv run coverage run -m pytest -q tests/unit
 COVERAGE_FILE=.coverage-unit uv run coverage report --include='*/core/*' --fail-under=100

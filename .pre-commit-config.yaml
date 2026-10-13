@@ -25,10 +25,10 @@ repos:
         types_or: [python, pyi]
         require_serial: true
 
-      # The full check, exactly as CI runs it.
-      - id: full-check
-        name: scripts/ci (full check)
-        entry: sh scripts/ci   # via sh: Windows has no /bin/sh for the shebang
+      # The fast check: everything but the tests, which CI runs on the pull request.
+      - id: fast-check
+        name: scripts/ci --fast
+        entry: sh scripts/ci --fast   # via sh: Windows has no /bin/sh for the shebang
         language: system
         pass_filenames: false
         always_run: true

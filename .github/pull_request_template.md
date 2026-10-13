@@ -20,7 +20,7 @@ Closes #
 $ …
 ```
 
-**Check**: `scripts/ci` on <head sha>: <n> passed, coverage <x>%, specs valid.
+**Check**: CI on <head sha>: <n> passed, coverage <x>%, specs valid (<link to the run>).
 
 <details><summary>Details for the reviewer</summary>
 

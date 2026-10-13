@@ -29,7 +29,7 @@ This repository is also an example of agentic engineering:
 - [`AGENTS.md`](https://github.com/CapeOfGoodCode/prepush-ci/blob/main/AGENTS.md) is the rulebook for every contributor, human or agent (`CLAUDE.md` imports it).
 - [`LOOP.md`](https://github.com/CapeOfGoodCode/prepush-ci/blob/main/LOOP.md) describes the loops that build the tool: their roles, the label state machine they share, what each may touch, and where a human decides.
 - [`openspec/`](https://github.com/CapeOfGoodCode/prepush-ci/tree/main/openspec/) holds the specifications. Every feature starts as an OpenSpec change.
-- [`scripts/ci`](https://github.com/CapeOfGoodCode/prepush-ci/blob/main/scripts/ci) is the one entry point for the full check; CI and the pre-push hook run the same script.
+- [`scripts/ci`](https://github.com/CapeOfGoodCode/prepush-ci/blob/main/scripts/ci) is the one entry point for the full check CI runs; the pre-push hook runs its `--fast` part, everything but the tests.
 - [`docs/agentic-engineering.md`](https://github.com/CapeOfGoodCode/prepush-ci/blob/main/docs/agentic-engineering.md) maps the practices from [loop-engineering](https://github.com/cobusgreyling/loop-engineering) this repository adopts, and where it deviates.
 
 ## Development
@@ -37,7 +37,7 @@ This repository is also an example of agentic engineering:
 ```sh
 uv sync && npm ci          # Python tooling, OpenSpec CLI
 uv run pre-commit install  # commit-msg, pre-commit and pre-push hooks
-sh scripts/ci              # the full check, exactly as CI runs it
+sh scripts/ci              # the full check, exactly as CI runs it (--fast: without the tests)
 ```
 
 ## License
