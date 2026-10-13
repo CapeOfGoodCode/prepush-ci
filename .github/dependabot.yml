@@ -1,0 +1,33 @@
+# Keeps the pinned actions, the OpenSpec CLI and the dev tools current: once a month, one pull
+# request per ecosystem, for releases at least a week old. The tool itself has no runtime dependencies.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7   # let a fresh release prove itself (or be yanked) first
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7   # let a fresh release prove itself (or be yanked) first
+    groups:
+      npm:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7   # let a fresh release prove itself (or be yanked) first
+    groups:
+      dev-tools:
+        patterns: ["*"]
