@@ -32,6 +32,19 @@ from prepush_ci.core.install import (
 from prepush_ci.core.uv_cache import TEMPORARY_WARNING, is_temporary
 from prepush_ci.git import git
 
+
+class Unreadable(Exception):
+    """A file or directory `install` has to read cannot be read; the message names it and why."""
+
+    def __init__(self, path: Path, error: Exception) -> None:
+        reason = str(error)
+        if isinstance(error, UnicodeDecodeError):
+            reason = "it is not valid UTF-8"
+        elif isinstance(error, OSError) and error.strerror:
+            reason = error.strerror
+        super().__init__(f"cannot read {path.as_posix()}: {reason}")
+
+
 HOOKS_PATH_REFUSERS = ("pre-commit", "lefthook")  # husky sets core.hooksPath itself
 
 
@@ -55,8 +68,12 @@ def run(cwd: Path, hooks: str | None = None) -> int:
     common = _resolve(cwd, common_dir.stdout.strip())
     directory = common.joinpath(*HOOKS_DIRECTORY)
     ours = _hooks_path(cwd) == directory
-    previous = _previous(cwd, common, directory)
-    entries = sorted(e for e in _files(previous))
+    try:
+        previous = _previous(cwd, common, directory)
+        entries = _listing(previous)
+    except Unreadable as unreadable:
+        print(f"prepush-ci install: {unreadable}", file=sys.stderr)
+        return 1
     forwarded = [name for name in entries if forwardable(name)]
     interpreter = Path(sys.executable).as_posix()
     desired = desired_files(interpreter, previous.as_posix(), forwarded)
@@ -278,6 +295,14 @@ def _files(directory: Path) -> list[str]:
     return [entry.name for entry in directory.iterdir() if entry.is_file()]
 
 
+def _listing(directory: Path) -> list[str]:
+    """The sorted names of the regular files of `directory`; unreadable is an error."""
+    try:
+        return sorted(_files(directory))
+    except OSError as error:
+        raise Unreadable(directory, error) from error
+
+
 def _executable(path: Path) -> bool:
     return os.access(
         path, os.X_OK
@@ -305,6 +330,9 @@ def _previous(cwd: Path, common: Path, ours: Path) -> Path:
     if path != ours:
         return path
     recorded = ours / PREVIOUS_FILE
-    if recorded.is_file():
-        return Path(recorded.read_text(encoding="utf-8").strip())
+    try:
+        if recorded.exists():  # a directory fails to be read: the record is unreadable
+            return Path(recorded.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError) as error:  # UnicodeDecodeError is a ValueError
+        raise Unreadable(recorded, error) from error
     return common / "hooks"
