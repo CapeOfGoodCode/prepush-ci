@@ -65,7 +65,7 @@ uvx prepush-ci init --non-interactive \
 ```
 
 - `<hooks>` is `pre-commit`, `husky`, `lefthook` or `native` for answers 1 and 3, `none` for answer 2;
-- `<default branch>` comes from `git symbolic-ref refs/remotes/origin/HEAD`;
+- `<default branch>` comes from `git symbolic-ref refs/remotes/origin/HEAD`: remove the leading `refs/remotes/origin/` from its output (`refs/remotes/origin/release/1` gives `release/1`). The command fails when `origin/HEAD` is unset; then ask the user for the default branch and do not guess it;
 - add `--preflight "<command>"` or `--require-env <NAME>` from step 2; `--require-up-to-date` stays at its default unless the user objects; `--ci github|gitlab|generic|none` picks the gate snippet it prints (default: detected).
 
 `init` writes `.prepush-ci.toml`, installs the hooks, writes the SessionStart script and registers it, and prints the CI gate snippet; do not write those files by hand. If the repository already has legacy trailers from a hand-made version of this setup, add them to `legacy_keys` in `.prepush-ci.toml`. For pre-commit, check that no `args:` duplicate the check command (the config file is the single source of truth).
