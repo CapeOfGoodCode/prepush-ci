@@ -7,6 +7,7 @@ the `--help` of the real CLI, the keys from the config's own `unknown key` messa
 what the config loads: no second list in the tests to drift.
 """
 
+import json
 import re
 import subprocess
 import sys
@@ -520,7 +521,6 @@ def test_the_step_after_the_gate_names_run_doctor_and_strip_with_one_sentence_ea
 # --- The agent step ------------------------------------------------------------------------
 
 SKILL_FILE = "skills/prepush-ci-setup/SKILL.md"
-BLOB = "https://github.com/CapeOfGoodCode/prepush-ci/blob/main/"
 
 
 def agent_step() -> str:
@@ -537,33 +537,85 @@ def agent_prompt() -> str:
     return flat(blocks[0])
 
 
-def test_the_agent_step_is_the_first_of_the_usage_section() -> None:
+def test_the_agent_step_comes_first() -> None:
     assert "agent" in list(steps(shipped()))[0]
     assert "Install" in list(steps(shipped()))[1]
 
 
-def test_the_link_to_the_skill_is_absolute_and_names_a_file_of_the_repository() -> None:
-    links = re.findall(r"https://\S*skills/prepush-ci-setup/SKILL\.md", agent_step())
-
-    assert links
-    for link in links:
-        assert link == BLOB + SKILL_FILE
-    assert (README.parent / SKILL_FILE).is_file()
-
-
-def test_the_agent_step_has_a_prompt_with_the_link_that_asks_for_the_setup() -> None:
+def test_the_prompt_to_hand_over_runs_the_skill_command_and_asks_for_the_setup() -> (
+    None
+):
     prompt = agent_prompt()
 
-    assert BLOB + SKILL_FILE in prompt
+    assert "uvx prepush-ci skill" in prompt
+    assert re.search(r"\bfollow\b", prompt, re.IGNORECASE)
     assert re.search(r"set this repository up with prepush-ci", prompt, re.IGNORECASE)
 
 
-def test_the_agent_step_names_the_skill_folder_and_where_a_project_keeps_skills() -> (
-    None
-):
+def test_the_agent_step_has_no_link_to_the_skill_on_github() -> None:
+    links = re.findall(r"https://\S+", agent_step())
+
+    assert not [link for link in links if SKILL_FILE in link]
+    assert (README.parent / SKILL_FILE).is_file()
+
+
+def test_the_prompts_command_exists(invocations: Any) -> None:
+    prompt = agent_prompt()
+
+    assert (
+        invocations.problems(f"```\n{prompt}\n```") == []
+    )  # the prompt as the code it is
+    assert ["skill"] in [
+        words[:1] for words in invocations.words_after_the_name(prompt)
+    ]
+
+
+PRE_RELEASE = (
+    "uvx --from git+https://github.com/CapeOfGoodCode/prepush-ci prepush-ci skill"
+)
+
+
+def spans(text: str) -> list[str]:
+    return re.findall(r"`([^`\n]+)`", text)
+
+
+def test_the_agent_step_has_a_form_that_runs_before_the_first_release(
+    invocations: Any,
+) -> None:
+    step = agent_step()
+
+    assert PRE_RELEASE in spans(step)
+    assert "until the first release is on pypi" in flat(step).lower()
+    assert invocations.problems(f"`{PRE_RELEASE}`") == []
+    assert ["skill"] in [
+        words[:1] for words in invocations.words_after_the_name(PRE_RELEASE)
+    ]
+
+
+def test_the_agent_step_names_the_claude_code_plugin() -> None:
+    found = spans(agent_step())
+
+    assert "/plugin marketplace add CapeOfGoodCode/prepush-ci" in found
+    assert "/plugin install prepush-ci@prepush-ci" in found
+
+
+def test_the_plugin_commands_match_the_manifests() -> None:
+    install = next(
+        span for span in spans(agent_step()) if span.startswith("/plugin install ")
+    )
+    plugin, marketplace = install.removeprefix("/plugin install ").split("@")
+    manifest = json.loads(
+        (README.parent / ".claude-plugin" / "marketplace.json").read_text("utf-8")
+    )
+
+    assert marketplace == manifest["name"]
+    assert plugin in [entry["name"] for entry in manifest["plugins"]]
+
+
+def test_the_agent_step_names_the_project_skill_command_and_where_it_writes() -> None:
     text = flat(agent_step())
 
-    assert "skills/prepush-ci-setup/" in text
+    assert "`prepush-ci skill --write`" in text
     assert ".claude/skills/" in text
 
 

@@ -30,13 +30,15 @@ When `PREPUSH_CI=full` is set, a `commit-msg` hook writes the trailer `Prepush-C
 
 ### 1. Let an agent set it up
 
-The quickest way is to hand the job to a coding agent such as Claude Code, with the skill this repository ships. Give it this prompt:
+The quickest way is to hand the job to a coding agent such as Claude Code, with the skill this package ships. Give it this prompt:
 
 ```text
-Follow the skill at https://github.com/CapeOfGoodCode/prepush-ci/blob/main/skills/prepush-ci-setup/SKILL.md to set this repository up with prepush-ci.
+Run uvx prepush-ci skill and follow what it prints to set this repository up with prepush-ci.
 ```
 
-To keep the skill with a project, copy the folder `skills/prepush-ci-setup/` into `.claude/skills/` of the repository; the agent then finds it by itself.
+Until the first release is on PyPI, run the command from the repository instead: `uvx --from git+https://github.com/CapeOfGoodCode/prepush-ci prepush-ci skill`. In Claude Code you can add the skill as a plugin instead: `/plugin marketplace add CapeOfGoodCode/prepush-ci`, then `/plugin install prepush-ci@prepush-ci`.
+
+To keep the skill with a project, run `prepush-ci skill --write`; it writes the skill to `.claude/skills/prepush-ci-setup/SKILL.md` of the repository, where the agent finds it by itself.
 
 The agent needs a git repository with a remote it can push branches to, and a package index it can reach to install `prepush-ci`. It works on a branch and opens a pull request with the result; it does not push to the default branch.
 
