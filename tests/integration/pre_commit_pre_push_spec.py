@@ -15,9 +15,13 @@ TRAILER = "\n\nPrepush-CI: full"
 
 
 @pytest.fixture
-def pre_commit_env(tmp_path: Path) -> dict[str, str]:
-    """Keeps pre-commit's cache out of the developer's home."""
-    return {"PRE_COMMIT_HOME": str(tmp_path / "pre-commit-home")}
+def pre_commit_env(
+    tmp_path: Path, pre_commit_locale: Callable[..., dict[str, str]]
+) -> dict[str, str]:
+    """Keeps pre-commit's cache out of the developer's home, and gives its processes the three
+    variables of a hostile variant as they were before it: pre-commit itself does not run under an
+    ASCII locale in a non-ASCII directory. The tool its hook starts is held by the other specs."""
+    return pre_commit_locale({"PRE_COMMIT_HOME": str(tmp_path / "pre-commit-home")})
 
 
 @pytest.fixture

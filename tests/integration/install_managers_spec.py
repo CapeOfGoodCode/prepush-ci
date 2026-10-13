@@ -14,6 +14,7 @@ Git = Callable[..., "subprocess.CompletedProcess[str]"]
 
 TRAILER = "Prepush-CI: full"
 PRE_COMMIT_CONFIG = ".pre-commit-config.yaml"
+Locale = Callable[..., dict[str, str]]  # `pre_commit_locale`: pre-commit's environment
 
 
 @pytest.fixture
@@ -94,11 +95,13 @@ def install(
     )
 
 
-def pre_commit_install(repo: Path, env: dict[str, str]) -> None:
+def pre_commit_install(
+    repo: Path, env: dict[str, str], pre_commit_locale: Locale
+) -> None:
     subprocess.run(
         [sys.executable, "-m", "pre_commit", "install"],
         cwd=repo,
-        env=env,
+        env=pre_commit_locale(env),
         capture_output=True,
         text=True,
         check=True,
@@ -153,14 +156,18 @@ def lines(path: Path) -> list[str]:
 
 
 def test_a_commit_through_pre_commit_gets_the_trailer_and_the_other_hook_runs(
-    pushing: Path, tmp_path: Path, git: Git, env: dict[str, str]
+    pushing: Path,
+    tmp_path: Path,
+    git: Git,
+    env: dict[str, str],
+    pre_commit_locale: Locale,
 ) -> None:
     log = tmp_path / "lint.log"
     (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n" + log_hook(tmp_path, log))
 
     result = install(pushing, env)
-    pre_commit_install(pushing, env)
-    committed = commit(pushing, git, env)
+    pre_commit_install(pushing, env, pre_commit_locale)
+    committed = commit(pushing, git, pre_commit_locale(env))
 
     assert result.returncode == 0, result.stderr
     assert committed.returncode == 0, committed.stderr
@@ -169,16 +176,22 @@ def test_a_commit_through_pre_commit_gets_the_trailer_and_the_other_hook_runs(
 
 
 def test_a_push_through_pre_commit_runs_the_check_and_reaches_the_remote(
-    pushing: Path, git: Git, env: dict[str, str], ran: Path
+    pushing: Path,
+    git: Git,
+    env: dict[str, str],
+    ran: Path,
+    pre_commit_locale: Locale,
 ) -> None:
     (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
     install(pushing, env)
-    pre_commit_install(pushing, env)
+    pre_commit_install(pushing, env, pre_commit_locale)
     git(pushing, "add", PRE_COMMIT_CONFIG)
-    commit(pushing, git, env)
+    commit(pushing, git, pre_commit_locale(env))
     sha = git(pushing, "rev-parse", "HEAD").stdout.strip()
 
-    pushed = git(pushing, "push", "origin", "main", env=env, check=False)
+    pushed = git(
+        pushing, "push", "origin", "main", env=pre_commit_locale(env), check=False
+    )
 
     assert pushed.returncode == 0, pushed.stderr
     assert lines(ran) == ["ran"]
@@ -186,31 +199,40 @@ def test_a_push_through_pre_commit_runs_the_check_and_reaches_the_remote(
 
 
 def test_a_failing_check_refuses_a_push_through_pre_commit(
-    pushing: Path, git: Git, env: dict[str, str]
+    pushing: Path,
+    git: Git,
+    env: dict[str, str],
+    pre_commit_locale: Locale,
 ) -> None:
     (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
     (pushing / ".prepush-ci.toml").write_text(
         'check = "exit 1"\nrequire_up_to_date = false\n'
     )
     install(pushing, env)
-    pre_commit_install(pushing, env)
+    pre_commit_install(pushing, env, pre_commit_locale)
     git(pushing, "add", PRE_COMMIT_CONFIG, ".prepush-ci.toml")
-    commit(pushing, git, env)
+    commit(pushing, git, pre_commit_locale(env))
 
-    pushed = git(pushing, "push", "origin", "main", env=env, check=False)
+    pushed = git(
+        pushing, "push", "origin", "main", env=pre_commit_locale(env), check=False
+    )
 
     assert pushed.returncode != 0
     assert git(pushing, "ls-remote", "origin").stdout == ""
 
 
 def test_a_commit_through_pre_commit_goes_on_without_the_tool_and_says_so(
-    pushing: Path, git: Git, env: dict[str, str], without_tool: dict[str, str]
+    pushing: Path,
+    git: Git,
+    env: dict[str, str],
+    without_tool: dict[str, str],
+    pre_commit_locale: Locale,
 ) -> None:
     (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
     install(pushing, env)
-    pre_commit_install(pushing, env)
+    pre_commit_install(pushing, env, pre_commit_locale)
 
-    committed = commit(pushing, git, without_tool)
+    committed = commit(pushing, git, pre_commit_locale(without_tool))
 
     assert committed.returncode == 0, committed.stderr
     assert "not on PATH" in committed.stdout + committed.stderr
@@ -218,15 +240,26 @@ def test_a_commit_through_pre_commit_goes_on_without_the_tool_and_says_so(
 
 
 def test_a_push_through_pre_commit_is_refused_without_the_tool_and_says_so(
-    pushing: Path, git: Git, env: dict[str, str], without_tool: dict[str, str]
+    pushing: Path,
+    git: Git,
+    env: dict[str, str],
+    without_tool: dict[str, str],
+    pre_commit_locale: Locale,
 ) -> None:
     (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
     install(pushing, env)
-    pre_commit_install(pushing, env)
+    pre_commit_install(pushing, env, pre_commit_locale)
     git(pushing, "add", PRE_COMMIT_CONFIG)
-    commit(pushing, git, without_tool)
+    commit(pushing, git, pre_commit_locale(without_tool))
 
-    pushed = git(pushing, "push", "origin", "main", env=without_tool, check=False)
+    pushed = git(
+        pushing,
+        "push",
+        "origin",
+        "main",
+        env=pre_commit_locale(without_tool),
+        check=False,
+    )
 
     output = pushed.stdout + pushed.stderr
     assert pushed.returncode != 0
@@ -252,24 +285,32 @@ def test_pre_commit_shows_the_output_of_the_commit_msg_hook_and_of_no_other(
 
 
 def test_an_existing_pre_commit_hook_runs_on_commit_and_never_on_push(
-    pushing: Path, tmp_path: Path, git: Git, env: dict[str, str]
+    pushing: Path,
+    tmp_path: Path,
+    git: Git,
+    env: dict[str, str],
+    pre_commit_locale: Locale,
 ) -> None:
     log = tmp_path / "lint.log"
     (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n" + log_hook(tmp_path, log))
     install(pushing, env)
-    pre_commit_install(pushing, env)
+    pre_commit_install(pushing, env, pre_commit_locale)
     git(pushing, "add", PRE_COMMIT_CONFIG)
-    commit(pushing, git, env)
+    commit(pushing, git, pre_commit_locale(env))
     after_commit = lines(log)
 
-    git(pushing, "push", "origin", "main", env=env)
+    git(pushing, "push", "origin", "main", env=pre_commit_locale(env))
 
     assert after_commit == ["lint"]
     assert lines(log) == ["lint"]
 
 
 def test_hook_types_the_team_already_used_keep_their_stages(
-    pushing: Path, tmp_path: Path, git: Git, env: dict[str, str]
+    pushing: Path,
+    tmp_path: Path,
+    git: Git,
+    env: dict[str, str],
+    pre_commit_locale: Locale,
 ) -> None:
     log = tmp_path / "lint.log"
     (pushing / PRE_COMMIT_CONFIG).write_text(
@@ -277,10 +318,10 @@ def test_hook_types_the_team_already_used_keep_their_stages(
         "repos:\n" + log_hook(tmp_path, log)
     )
     install(pushing, env)
-    pre_commit_install(pushing, env)
+    pre_commit_install(pushing, env, pre_commit_locale)
     git(pushing, "add", PRE_COMMIT_CONFIG)
-    commit(pushing, git, env)
-    git(pushing, "push", "origin", "main", env=env)
+    commit(pushing, git, pre_commit_locale(env))
+    git(pushing, "push", "origin", "main", env=pre_commit_locale(env))
 
     text = (pushing / PRE_COMMIT_CONFIG).read_text()
     assert "default_stages: [pre-commit, pre-push]\n" in text
@@ -288,12 +329,15 @@ def test_hook_types_the_team_already_used_keep_their_stages(
 
 
 def test_a_pre_commit_config_without_hook_types_gets_all_three_installed(
-    pushing: Path, git: Git, env: dict[str, str]
+    pushing: Path,
+    git: Git,
+    env: dict[str, str],
+    pre_commit_locale: Locale,
 ) -> None:
     (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
 
     install(pushing, env)
-    pre_commit_install(pushing, env)
+    pre_commit_install(pushing, env, pre_commit_locale)
 
     text = (pushing / PRE_COMMIT_CONFIG).read_text()
     assert "default_install_hook_types: [pre-commit, commit-msg, pre-push]\n" in text

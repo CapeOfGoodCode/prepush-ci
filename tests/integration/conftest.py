@@ -4,14 +4,153 @@ import shlex
 import stat
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 Git = Callable[..., "subprocess.CompletedProcess[str]"]
+
+# --- The two variants every integration spec runs in ----------------------------------------------
+# `utf8` is the environment the specs always ran in. `ascii` is hostile: the temporary directory has
+# a non-ASCII name and every process the spec starts has an ASCII locale, with no UTF-8 mode and no
+# locale coercion, on every platform (on Windows the variables change nothing, the path still does).
+
+VARIANTS = ("utf8", "ascii")
+ASCII_ENVIRONMENT = {"LC_ALL": "C", "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0"}
+NON_ASCII_DIRECTORY = "dé"
+# What the three variables were before the variant set them; empty is as good as unset. pre-commit
+# 4.6 cannot run under `LC_ALL=C` in a directory whose name is not ASCII, so its own processes (and
+# only they) get these back; `pre_commit_locale` is the one way to hand them out.
+OUTER_LOCALE = {key: os.environ.get(key, "") for key in ASCII_ENVIRONMENT}
+# A spec starts the CLI as `python -m prepush_ci` (found in its source) or another way it declares
+# with the marker `starts_the_cli` (the installed `prepush-ci` script, the demo's recording script);
+# `variants_spec.py` fails on a module that does the second without the marker.
+STARTS_THE_CLI = re.compile(r'"-m",\s*"prepush_ci"|-m prepush_ci')
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers", "starts_the_cli: the spec starts the CLI; it runs in both variants"
+    )
+
+
+@pytest.fixture(autouse=True, scope="session")
+def text_files_are_utf8() -> Iterator[None]:
+    """The specs write and read their files as UTF-8, as the tool does: the default encoding of a
+    platform (cp1252 on Windows) must not decide what a path with a non-ASCII character becomes."""
+    write, read = Path.write_text, Path.read_text
+
+    def write_text(
+        self: Path,
+        data: str,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> int:
+        return write(self, data, encoding or "utf-8", errors, newline)
+
+    def read_text(
+        self: Path, encoding: str | None = None, errors: str | None = None
+    ) -> str:
+        return read(self, encoding or "utf-8", errors)
+
+    patch = pytest.MonkeyPatch()
+    patch.setattr(Path, "write_text", write_text)
+    patch.setattr(Path, "read_text", read_text)
+    yield
+    patch.undo()
+
+
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    """Run each spec that uses a repository or starts the CLI once per variant."""
+    source = Path(str(metafunc.module.__file__)).read_text(encoding="utf-8")
+    marked = metafunc.definition.get_closest_marker("starts_the_cli") is not None
+    if "repo" in metafunc.fixturenames or marked or STARTS_THE_CLI.search(source):
+        if "variant" not in metafunc.fixturenames:
+            metafunc.fixturenames.append("variant")
+        metafunc.parametrize("variant", VARIANTS, indirect=True)
+
+
+def keep_the_locales_apart(monkeypatch: pytest.MonkeyPatch) -> None:
+    """In `ascii` a process of the spec that runs the CLI must get the three hostile variables and
+    one that runs pre-commit the outer ones: whatever the spec, a process started the other way
+    round fails the spec, so the exception cannot reach the tool."""
+    started = subprocess.Popen.__init__
+
+    def guarded(
+        self: "subprocess.Popen[Any]", args: Any, *rest: Any, **kwargs: Any
+    ) -> None:
+        words = [str(word) for word in args] if isinstance(args, (list, tuple)) else []
+        module = words[words.index("-m") + 1 :][:1] if "-m" in words else []
+        environment = kwargs.get("env")
+        seen = {
+            key: (os.environ if environment is None else environment).get(key, "")
+            for key in ASCII_ENVIRONMENT
+        }
+        if module == ["prepush_ci"]:
+            assert seen == ASCII_ENVIRONMENT, (
+                f"the CLI must keep the hostile locale in the ascii variant, got {seen}"
+            )
+        if module == ["pre_commit"]:
+            assert seen == OUTER_LOCALE, (
+                f"pre-commit must get the outer locale in the ascii variant, got {seen}"
+            )
+        started(self, args, *rest, **kwargs)
+
+    monkeypatch.setattr(subprocess.Popen, "__init__", guarded)
+
+
+@pytest.fixture
+def variant(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> str:
+    """`utf8` or `ascii`; in `ascii` every process the spec starts gets an ASCII locale."""
+    name = str(getattr(request, "param", "utf8"))
+    if name == "ascii":
+        for key, value in ASCII_ENVIRONMENT.items():
+            monkeypatch.setenv(key, value)
+        keep_the_locales_apart(monkeypatch)
+    return name
+
+
+@pytest.fixture
+def pre_commit_locale() -> Callable[[Mapping[str, str] | None], dict[str, str]]:
+    """The one helper that gives pre-commit's processes the locale the variant replaced: the
+    environment of a pre-commit command, or of a commit or push that runs its hooks. Never the CLI's."""
+
+    def environment(env: Mapping[str, str] | None = None) -> dict[str, str]:
+        base = (
+            {k: v for k, v in os.environ.items() if not k.startswith("PRE_COMMIT_")}
+            if env is None
+            else env
+        )
+        return {**base, **OUTER_LOCALE}
+
+    return environment
+
+
+@pytest.fixture
+def tmp_path(tmp_path: Path, variant: str) -> Path:
+    """The temporary directory of the spec; in `ascii` its name has a non-ASCII character."""
+    if variant != "ascii":
+        return tmp_path
+    hostile = tmp_path / NON_ASCII_DIRECTORY
+    hostile.mkdir()
+    return hostile
+
+
+@pytest.fixture
+def printed(variant: str) -> Callable[[str], str]:
+    """What the CLI prints of a text: in `ascii` a character its output cannot encode is `?`."""
+
+    def show(text: str) -> str:
+        if variant == "ascii" and sys.platform != "win32":
+            return text.encode("ascii", "replace").decode("ascii")
+        return text
+
+    return show
 
 
 @pytest.fixture
@@ -38,7 +177,8 @@ def git() -> Git:
             ["git", *args],
             cwd=repo,
             capture_output=True,
-            text=True,
+            encoding="utf-8",  # git writes UTF-8 on every platform, whatever the locale
+            errors="replace",
             check=check,
             env={**inherited, **(env or {})},
         )

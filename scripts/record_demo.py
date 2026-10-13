@@ -157,6 +157,7 @@ def step_environment(base: Path) -> dict[str, str]:
         "GIT_CONFIG_GLOBAL": os.devnull,
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_TERMINAL_PROMPT": "0",
+        "PYTHONIOENCODING": "utf-8",  # the output of a step is UTF-8 whatever the locale
         **{f"GIT_AUTHOR_{k}": v for k, v in identity.items()},
         **{f"GIT_COMMITTER_{k}": v for k, v in identity.items()},
     }
@@ -220,16 +221,22 @@ def run_step(scratch: Scratch, step: Step) -> Recorded:
 # --- What the output may show ------------------------------------------------------------------
 
 
+def as_output(path: str) -> str:
+    """A path as the output of a step shows it: the steps print UTF-8, whatever the locale of this
+    process decodes a path with."""
+    return os.fsencode(path).decode("utf-8", "surrogateescape")
+
+
 def private_paths() -> list[str]:
     """The paths that must not reach the asset: the home directory, the interpreter."""
     paths = {str(Path.home()), sys.executable, str(Path(sys.executable).resolve())}
-    return sorted(path for path in paths if path not in ("", "/", os.sep))
+    return sorted(as_output(path) for path in paths if path not in ("", "/", os.sep))
 
 
 def without_scratch(line: str, scratch: Scratch) -> str:
     """The scratch repository is `.`; git prints the remote as `../remote.git` by itself."""
     for form in {str(scratch.repo), str(scratch.repo.resolve())}:
-        line = line.replace(form, ".")
+        line = line.replace(as_output(form), ".")
     return line
 
 
