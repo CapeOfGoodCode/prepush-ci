@@ -2,8 +2,8 @@
 
 ## 1. The module
 
-- [ ] 1.1 Rebase on `main` after PR #142 (#134) and PR #147 (#144) have landed, or on whichever has; add `src/prepush_ci/text_io.py` with the pure part (`decode`, `encode`, `from_os`, `to_os`); verify with unit specs for the scenarios "Bytes survive the round trip" and "Tool text survives the operating system's strings"
-- [ ] 1.2 Add `read_text`, `read_utf8` (raises a `NotUtf8` naming the path), `write_text`, the subprocess `run`, `run_shell` for the user's commands, `stdin_text` and `configure_streams`; verify with unit specs for each (a Latin-1 byte, a non-ASCII path, an ASCII stream)
+- [x] 1.1 Rebase on `main` after PR #142 (#134) and PR #147 (#144) have landed, or on whichever has; add `src/prepush_ci/text_io.py` with the pure part (`decode`, `encode`, `from_os`, `to_os`); verify with unit specs for the scenarios "Bytes survive the round trip" and "Tool text survives the operating system's strings"
+- [x] 1.2 Add `read_text`, `read_utf8` (raises a `NotUtf8` naming the path), `write_text`, the subprocess `run`, `run_shell` for the user's commands, `stdin_text` and `configure_streams`; verify with unit specs for each (a Latin-1 byte, a non-ASCII path, an ASCII stream)
 - [ ] 1.3 Move `git.py`, `commit_msg_hook.py`, `repo_config.py`, `install_command.py`, `init_command.py`, `doctor_command.py`, `strip_command.py`, `pass_cache.py`, `pre_push_hook.py`, `preflight.py`, `checking.py` and `cli.py` onto the module, with no change to what they print or exit with; add the scan spec; verify with the scan scenarios and the integration specs unchanged
 
 ## 2. The variant
