@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="821" height="296" viewBox="0 0 821 296" role="img" data-duration="45.25">
+<title>prepush-ci in a terminal</title>
+<desc>Setting up a repository with prepush-ci init, a push refused because the full check fails, and a push that goes through once it passes.</desc>
+<style>.t{font:14px ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace;fill:#e6edf3;white-space:pre}.plain{fill:#e6edf3}.good{fill:#3fb950}.bad{fill:#ff7b72}.p{fill:#3fb950}.c{fill:#0d1117}.k{fill:#e6edf3}.a{animation-duration:45.25s;animation-iteration-count:infinite;animation-timing-function:step-end}@keyframes act0{0%{opacity:0}0%{opacity:1}19.337%{opacity:0}}@keyframes s0_0p{0%{opacity:0}0.884%{opacity:1}}@keyframes s0_0t{0%{transform:translateX(0)}0.884%{transform:translateX(0);animation-timing-function:steps(26,start)}3.7569%{transform:translateX(218.4px)}100%{transform:translateX(218.4px)}}@keyframes s0_1p{0%{opacity:0}6.8508%{opacity:1}}@keyframes s0_1t{0%{transform:translateX(0)}6.8508%{transform:translateX(0);animation-timing-function:steps(55,start)}12.9282%{transform:translateX(462.0px)}100%{transform:translateX(462.0px)}}@keyframes s0_1o0{0%{opacity:0}13.8122%{opacity:1}}@keyframes s0_1o1{0%{opacity:0}14.0331%{opacity:1}}@keyframes s0_1o2{0%{opacity:0}14.2541%{opacity:1}}@keyframes s0_1o3{0%{opacity:0}14.4751%{opacity:1}}@keyframes s0_1o4{0%{opacity:0}14.6961%{opacity:1}}@keyframes s0_1o5{0%{opacity:0}14.9171%{opacity:1}}@keyframes s0_1o6{0%{opacity:0}15.1381%{opacity:1}}@keyframes act1{0%{opacity:0}19.337%{opacity:1}46.0773%{opacity:0}}@keyframes s1_0p{0%{opacity:0}20.221%{opacity:1}}@keyframes s1_0t{0%{transform:translateX(0)}20.221%{transform:translateX(0);animation-timing-function:steps(32,start)}23.7569%{transform:translateX(268.8px)}100%{transform:translateX(268.8px)}}@keyframes s1_1p{0%{opacity:0}26.8508%{opacity:1}}@keyframes s1_1t{0%{transform:translateX(0)}26.8508%{transform:translateX(0);animation-timing-function:steps(56,start)}33.0387%{transform:translateX(470.4px)}100%{transform:translateX(470.4px)}}@keyframes s1_1o0{0%{opacity:0}33.9227%{opacity:1}}@keyframes s1_1o1{0%{opacity:0}34.1436%{opacity:1}}@keyframes s1_1o2{0%{opacity:0}34.3646%{opacity:1}}@keyframes s1_1o3{0%{opacity:0}34.5856%{opacity:1}}@keyframes s1_1o4{0%{opacity:0}34.8066%{opacity:1}}@keyframes s1_7p{0%{opacity:0}38.1215%{opacity:1}}@keyframes s1_7t{0%{transform:translateX(0)}38.1215%{transform:translateX(0);animation-timing-function:steps(22,start)}40.5525%{transform:translateX(184.8px)}100%{transform:translateX(184.8px)}}@keyframes s1_7o0{0%{opacity:0}41.4365%{opacity:1}}@keyframes s1_7o1{0%{opacity:0}41.6575%{opacity:1}}@keyframes s1_7o2{0%{opacity:0}41.8785%{opacity:1}}@keyframes act2{0%{opacity:0}46.0773%{opacity:1}60.1105%{opacity:0}}@keyframes s2_0p{0%{opacity:0}46.9613%{opacity:1}}@keyframes s2_0t{0%{transform:translateX(0)}46.9613%{transform:translateX(0);animation-timing-function:steps(29,start)}50.1657%{transform:translateX(243.6px)}100%{transform:translateX(243.6px)}}@keyframes s2_0o0{0%{opacity:0}51.0497%{opacity:1}}@keyframes s2_0o1{0%{opacity:0}51.2707%{opacity:1}}@keyframes s2_0o2{0%{opacity:0}51.4917%{opacity:1}}@keyframes act3{0%{opacity:0}60.1105%{opacity:1}98.453%{opacity:0}}@keyframes s3_0p{0%{opacity:0}60.9945%{opacity:1}}@keyframes s3_0t{0%{transform:translateX(0)}60.9945%{transform:translateX(0);animation-timing-function:steps(71,start)}68.8398%{transform:translateX(596.4px)}100%{transform:translateX(596.4px)}}@keyframes s3_1p{0%{opacity:0}71.9337%{opacity:1}}@keyframes s3_1t{0%{transform:translateX(0)}71.9337%{transform:translateX(0);animation-timing-function:steps(61,start)}78.674%{transform:translateX(512.4px)}100%{transform:translateX(512.4px)}}@keyframes s3_1o0{0%{opacity:0}79.558%{opacity:1}}@keyframes s3_1o1{0%{opacity:0}79.779%{opacity:1}}@keyframes s3_4p{0%{opacity:0}83.0939%{opacity:1}}@keyframes s3_4t{0%{transform:translateX(0)}83.0939%{transform:translateX(0);animation-timing-function:steps(29,start)}86.2983%{transform:translateX(243.6px)}100%{transform:translateX(243.6px)}}@keyframes s3_4o0{0%{opacity:0}87.1823%{opacity:1}}@keyframes s3_4o1{0%{opacity:0}87.4033%{opacity:1}}@keyframes s3_4o2{0%{opacity:0}87.6243%{opacity:1}}@keyframes s3_8p{0%{opacity:0}90.9392%{opacity:1}}@keyframes s3_8t{0%{transform:translateX(0)}90.9392%{transform:translateX(0);animation-timing-function:steps(22,start)}93.3702%{transform:translateX(184.8px)}100%{transform:translateX(184.8px)}}@keyframes s3_8o0{0%{opacity:0}94.2541%{opacity:1}}</style>
+<rect width="821" height="296" rx="10" fill="#0d1117"/>
+<circle cx="24" cy="22" r="6" fill="#ff5f56"/><circle cx="44" cy="22" r="6" fill="#ffbd2e"/><circle cx="64" cy="22" r="6" fill="#27c93f"/>
+<g class="a" style="animation-name:act0">
+<g class="step" id="s0_0" data-command="uv tool install prepush-ci" data-chars="26" data-run="false" data-start="0.40" data-typed="1.70" data-end="1.70">
+<text class="t p a" style="animation-name:s0_0p" x="24" y="44">$</text>
+<text class="t plain" x="40.8" y="44" textLength="218.4" xml:space="preserve">uv tool install prepush-ci</text>
+<rect class="c a" style="animation-name:s0_0t" x="40.8" y="30" width="218.4" height="20"/>
+</g>
+<g class="step" id="s0_1" data-command='prepush-ci init --non-interactive --check "sh check.sh"' data-chars="55" data-run="true" data-exit="0" data-start="3.10" data-typed="5.85" data-end="6.95">
+<text class="t p a" style="animation-name:s0_1p" x="24" y="64">$</text>
+<text class="t plain" x="40.8" y="64" textLength="462.0" xml:space="preserve">prepush-ci init --non-interactive --check "sh check.sh"</text>
+<rect class="c a" style="animation-name:s0_1t" x="40.8" y="50" width="462.0" height="20"/>
+<text class="t plain line a" style="animation-name:s0_1o0" data-start="6.25" x="24" y="84" textLength="210.0" xml:space="preserve">written: .prepush-ci.toml</text>
+<text class="t plain line a" style="animation-name:s0_1o1" data-start="6.35" x="24" y="104" textLength="285.6" xml:space="preserve">installed: ./.git/prepush-ci/hooks</text>
+<text class="t plain line a" style="animation-name:s0_1o2" data-start="6.45" x="24" y="124" textLength="327.6" xml:space="preserve">written: .claude/hooks/session-start.sh</text>
+<text class="t plain line a" style="animation-name:s0_1o3" data-start="6.55" x="24" y="144" textLength="252.0" xml:space="preserve">written: .claude/settings.json</text>
+<text class="t plain line a" style="animation-name:s0_1o4" data-start="6.65" x="24" y="164" textLength="319.2" xml:space="preserve">CI gate (generic): add this to your CI</text>
+<text class="t plain line a" style="animation-name:s0_1o5" data-start="6.75" x="24" y="184" textLength="75.6" xml:space="preserve">#!/bin/sh</text>
+<text class="t plain line a" style="animation-name:s0_1o6" data-start="6.85" x="24" y="204" textLength="8.4" xml:space="preserve">…</text>
+</g>
+</g>
+<g class="a" style="animation-name:act1">
+<g class="step" id="s1_0" data-command="git add .claude .prepush-ci.toml" data-chars="32" data-run="true" data-exit="0" data-start="9.15" data-typed="10.75" data-end="10.75">
+<text class="t p a" style="animation-name:s1_0p" x="24" y="44">$</text>
+<text class="t plain" x="40.8" y="44" textLength="268.8" xml:space="preserve">git add .claude .prepush-ci.toml</text>
+<rect class="c a" style="animation-name:s1_0t" x="40.8" y="30" width="268.8" height="20"/>
+</g>
+<g class="step" id="s1_1" data-command='PREPUSH_CI=full git commit -m "chore: set up prepush-ci"' data-chars="56" data-run="true" data-exit="0" data-start="12.15" data-typed="14.95" data-end="15.85">
+<text class="t p a" style="animation-name:s1_1p" x="24" y="64">$</text>
+<text class="t plain" x="40.8" y="64" textLength="470.4" xml:space="preserve">PREPUSH_CI=full git commit -m "chore: set up prepush-ci"</text>
+<rect class="c a" style="animation-name:s1_1t" x="40.8" y="50" width="470.4" height="20"/>
+<text class="t plain line a" style="animation-name:s1_1o0" data-start="15.35" x="24" y="84" textLength="403.2" xml:space="preserve">[feat/greeting 699dbdf] chore: set up prepush-ci</text>
+<text class="t plain line a" style="animation-name:s1_1o1" data-start="15.45" x="24" y="104" textLength="285.6" xml:space="preserve"> 3 files changed, 42 insertions(+)</text>
+<text class="t plain line a" style="animation-name:s1_1o2" data-start="15.55" x="24" y="124" textLength="420.0" xml:space="preserve"> create mode 100755 .claude/hooks/session-start.sh</text>
+<text class="t plain line a" style="animation-name:s1_1o3" data-start="15.65" x="24" y="144" textLength="344.4" xml:space="preserve"> create mode 100644 .claude/settings.json</text>
+<text class="t plain line a" style="animation-name:s1_1o4" data-start="15.75" x="24" y="164" textLength="302.4" xml:space="preserve"> create mode 100644 .prepush-ci.toml</text>
+</g>
+<g class="step" id="s1_7" data-command="git log -1 --format=%B" data-chars="22" data-run="true" data-exit="0" data-start="17.25" data-typed="18.35" data-end="19.05">
+<text class="t p a" style="animation-name:s1_7p" x="24" y="184">$</text>
+<text class="t plain" x="40.8" y="184" textLength="184.8" xml:space="preserve">git log -1 --format=%B</text>
+<rect class="c a" style="animation-name:s1_7t" x="40.8" y="170" width="184.8" height="20"/>
+<text class="t plain line a" style="animation-name:s1_7o0" data-start="18.75" x="24" y="204" textLength="201.6" xml:space="preserve">chore: set up prepush-ci</text>
+<text class="t plain line a" style="animation-name:s1_7o1" data-start="18.85" x="24" y="224" textLength="0.0" xml:space="preserve"> </text>
+<text class="t plain line a" style="animation-name:s1_7o2" data-start="18.95" x="24" y="244" textLength="134.4" xml:space="preserve">Prepush-CI: full</text>
+</g>
+</g>
+<g class="a" style="animation-name:act2">
+<g class="step" id="s2_0" data-command="git push origin feat/greeting" data-chars="29" data-run="true" data-exit="1" data-start="21.25" data-typed="22.70" data-end="23.40">
+<text class="t p a" style="animation-name:s2_0p" x="24" y="44">$</text>
+<text class="t plain" x="40.8" y="44" textLength="243.6" xml:space="preserve">git push origin feat/greeting</text>
+<rect class="c a" style="animation-name:s2_0t" x="40.8" y="30" width="243.6" height="20"/>
+<text class="t bad line a" style="animation-name:s2_0o0" data-start="23.10" x="24" y="64" textLength="243.6" xml:space="preserve">FAIL: greet() must end with !</text>
+<text class="t bad line a" style="animation-name:s2_0o1" data-start="23.20" x="24" y="84" textLength="420.0" xml:space="preserve">prepush-ci: the check failed (exit 1): sh check.sh</text>
+<text class="t bad line a" style="animation-name:s2_0o2" data-start="23.30" x="24" y="104" textLength="420.0" xml:space="preserve">error: failed to push some refs to '../remote.git'</text>
+</g>
+</g>
+<g class="a" style="animation-name:act3">
+<g class="step" id="s3_0" data-command="printf 'def greet(name):\n    return &quot;Hello, &quot; + name + &quot;!&quot;\n' &gt; app.py" data-chars="71" data-run="true" data-exit="0" data-start="27.60" data-typed="31.15" data-end="31.15">
+<text class="t p a" style="animation-name:s3_0p" x="24" y="44">$</text>
+<text class="t plain" x="40.8" y="44" textLength="596.4" xml:space="preserve">printf 'def greet(name):\n    return "Hello, " + name + "!"\n' &gt; app.py</text>
+<rect class="c a" style="animation-name:s3_0t" x="40.8" y="30" width="596.4" height="20"/>
+</g>
+<g class="step" id="s3_1" data-command='PREPUSH_CI=full git commit -am "fix: end the greeting with !"' data-chars="61" data-run="true" data-exit="0" data-start="32.55" data-typed="35.60" data-end="36.20">
+<text class="t p a" style="animation-name:s3_1p" x="24" y="64">$</text>
+<text class="t plain" x="40.8" y="64" textLength="512.4" xml:space="preserve">PREPUSH_CI=full git commit -am "fix: end the greeting with !"</text>
+<rect class="c a" style="animation-name:s3_1t" x="40.8" y="50" width="512.4" height="20"/>
+<text class="t plain line a" style="animation-name:s3_1o0" data-start="36.00" x="24" y="84" textLength="436.8" xml:space="preserve">[feat/greeting 8ad41c3] fix: end the greeting with !</text>
+<text class="t plain line a" style="animation-name:s3_1o1" data-start="36.10" x="24" y="104" textLength="386.4" xml:space="preserve"> 1 file changed, 1 insertion(+), 1 deletion(-)</text>
+</g>
+<g class="step" id="s3_4" data-command="git push origin feat/greeting" data-chars="29" data-run="true" data-exit="0" data-start="37.60" data-typed="39.05" data-end="39.75">
+<text class="t p a" style="animation-name:s3_4p" x="24" y="124">$</text>
+<text class="t plain" x="40.8" y="124" textLength="243.6" xml:space="preserve">git push origin feat/greeting</text>
+<rect class="c a" style="animation-name:s3_4t" x="40.8" y="110" width="243.6" height="20"/>
+<text class="t good line a" style="animation-name:s3_4o0" data-start="39.45" x="24" y="144" textLength="193.2" xml:space="preserve">ok: greet() ends with !</text>
+<text class="t plain line a" style="animation-name:s3_4o1" data-start="39.55" x="24" y="164" textLength="134.4" xml:space="preserve">To ../remote.git</text>
+<text class="t plain line a" style="animation-name:s3_4o2" data-start="39.65" x="24" y="184" textLength="428.4" xml:space="preserve"> * [new branch]      feat/greeting -&gt; feat/greeting</text>
+</g>
+<g class="step" id="s3_8" data-command="prepush-ci verify HEAD" data-chars="22" data-run="true" data-exit="0" data-start="41.15" data-typed="42.25" data-end="42.75">
+<text class="t p a" style="animation-name:s3_8p" x="24" y="204">$</text>
+<text class="t plain" x="40.8" y="204" textLength="184.8" xml:space="preserve">prepush-ci verify HEAD</text>
+<rect class="c a" style="animation-name:s3_8t" x="40.8" y="190" width="184.8" height="20"/>
+<text class="t good line a" style="animation-name:s3_8o0" data-start="42.65" x="24" y="224" textLength="747.6" xml:space="preserve">verified: 8ad41c3dc84b0b319321972bbff849c53de61019 carries the trailer `Prepush-CI: full`</text>
+</g>
+</g>
+</svg>

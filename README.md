@@ -18,6 +18,10 @@ The full check can run on any machine that opts in, for example on the VM of a [
 
 > **Status: under construction.** The tool is being built by a small fleet of AI coding loops from the intent in [issue #1](https://github.com/CapeOfGoodCode/prepush-ci/issues/1). Nothing here is released yet.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/CapeOfGoodCode/prepush-ci/main/docs/assets/demo.svg" alt="Terminal recording: a repository is set up with prepush-ci init, a push is refused because the full check fails, and a passing push goes through once the check passes" width="720">
+</p>
+
 ## How it works (in one paragraph)
 
 When `PREPUSH_CI=full` is set, a `commit-msg` hook writes the trailer `Prepush-CI: full` into each commit. The `pre-push` hook refuses to push a tip commit that carries the trailer unless the full check passes on it. A small gate in pull request CI reads the trailer of the head commit and skips the remaining jobs. The default branch ignores the trailer and runs CI in full. See [issue #1](https://github.com/CapeOfGoodCode/prepush-ci/issues/1) for the full design.

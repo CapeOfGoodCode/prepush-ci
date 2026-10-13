@@ -15,4 +15,12 @@ lint zizmor --offline "$root" "$root"/docs/ci/github-actions.yml
 echo "==> actionlint"
 lint actionlint "$root"/.github/workflows/*.yml "$root"/docs/ci/github-actions.yml
 echo "==> shellcheck"
-lint shellcheck "$root"/docs/ci/gate.sh "$root"/scripts/*
+# The scripts directory also holds Python (the demo recorder) and the caches of its tests.
+set -- "$root"/docs/ci/gate.sh
+for file in "$root"/scripts/*; do
+    case $file in
+        *.py) ;;
+        *) [ ! -f "$file" ] || set -- "$@" "$file" ;;
+    esac
+done
+lint shellcheck "$@"
