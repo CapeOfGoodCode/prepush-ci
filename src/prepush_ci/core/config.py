@@ -64,6 +64,21 @@ def is_env_name(text: str) -> bool:
     return _ENV_NAME.fullmatch(text) is not None
 
 
+_BRANCH_PREFIXES = ("refs/remotes/origin/", "refs/heads/", "origin/")
+
+
+def default_branch_problem(value: str) -> str | None:
+    """Why `value` is not the name of a branch of `origin`, with the name to write when the rest of
+    the value is one; None when it may be a branch name."""
+    if not value.startswith(("refs/", "origin/")):
+        return None
+    problem = f"`default_branch` is {value!r}, which is not a branch name"
+    for prefix in _BRANCH_PREFIXES:
+        if value.startswith(prefix) and len(value) > len(prefix):
+            return f'{problem}; use "{value[len(prefix) :]}"'
+    return f"{problem} (a branch name is expected, such as `main`)"
+
+
 def is_trailer_value(text: str) -> bool:
     return bool(text) and text == text.strip() and "\n" not in text and "\r" not in text
 
@@ -103,6 +118,8 @@ def parse_config(table: Mapping[str, Any]) -> Config:
     default_branch = string(
         "default_branch", table.get("default_branch"), default=DEFAULT_BRANCH
     )
+    if default_branch is not None and (why := default_branch_problem(default_branch)):
+        problems.append(why)
     require_env = strings("require_env", table.get("require_env"))
     problems.extend(
         f"`require_env` contains {name!r}, which is not a valid environment variable "

@@ -298,3 +298,56 @@ def test_a_variable_name_is_valid_only_in_the_portable_form(
     name: str, valid: bool
 ) -> None:
     assert is_env_name(name) is valid
+
+
+def default_branch_problems(value: str, **more: Any) -> list[str]:
+    return problems_of({"check": "x", "default_branch": value, **more})
+
+
+def test_a_default_branch_name_with_a_slash_loads_with_its_up_to_date_ref() -> None:
+    config = parse_config({"check": "x", "default_branch": "release/1"})
+
+    assert config.default_branch == "release/1"
+    assert config.require_up_to_date == "origin/release/1"
+
+
+def test_a_default_branch_that_is_a_ref_is_reported_together_with_the_other_problems() -> (
+    None
+):
+    problems = default_branch_problems("refs/heads/main", foo=1)
+
+    assert len(problems) == 2
+    assert any("`foo`" in problem for problem in problems)
+    assert any("`default_branch`" in problem for problem in problems)
+
+
+@pytest.mark.parametrize(
+    ("value", "branch"),
+    [
+        ("refs/remotes/origin/trunk", "trunk"),
+        ("refs/heads/release/1", "release/1"),
+        ("origin/trunk", "trunk"),
+    ],
+)
+def test_a_default_branch_that_is_not_a_branch_name_is_reported_with_the_name_to_write(
+    value: str, branch: str
+) -> None:
+    problems = default_branch_problems(value)
+
+    assert len(problems) == 1
+    assert "`default_branch`" in problems[0]
+    assert f'use "{branch}"' in problems[0]
+
+
+@pytest.mark.parametrize(
+    "value", ["refs/tags/v1", "refs/remotes/upstream/x", "origin/"]
+)
+def test_a_default_branch_that_is_not_a_branch_name_gets_no_name_to_write_when_none_fits(
+    value: str,
+) -> None:
+    problems = default_branch_problems(value)
+
+    assert len(problems) == 1
+    assert "`default_branch`" in problems[0]
+    assert "branch name is expected" in problems[0]
+    assert 'use "' not in problems[0]
