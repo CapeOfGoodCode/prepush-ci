@@ -1,6 +1,7 @@
 """Command-line entry point."""
 
 import argparse
+import io
 import os
 import sys
 from importlib.metadata import version
@@ -21,7 +22,18 @@ from prepush_ci.core.hook_managers import CHOICES
 from prepush_ci.core.init import CI_CHOICES, ConfigFlags
 
 
+def _never_fail_to_print() -> None:
+    """Make a character the terminal cannot encode come out as `?`, not as a traceback.
+
+    Only standard output is strict (standard error already escapes what it cannot show), and a
+    report that quotes user text is the only way to learn what is wrong.
+    """
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(errors="replace")
+
+
 def main(argv: list[str] | None = None) -> int:
+    _never_fail_to_print()
     args_in = sys.argv[1:] if argv is None else argv
     if args_in[:1] == ["--"]:
         args_in = args_in[
