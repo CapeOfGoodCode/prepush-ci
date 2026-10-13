@@ -1,13 +1,16 @@
 name: ci
 
-# Pull requests run only once they are ready for review: drafts are work in progress, and the loop
-# that reviews them runs scripts/ci itself. main always runs in full; it is the backstop.
+# Pull requests run only once they are ready for review: drafts are work in progress. The merge
+# queue runs everything again on the exact state that will land, so main is never tested after the
+# fact; a push to main runs only the Linux check, for the coverage badge.
 # Description edits do not trigger this workflow (proof.yml checks those), so an edit can never
 # cancel a running check and leave a skipped, "passing" one behind.
+# The ruleset requires ci-passed (and proof): a job added here is required without touching it.
 on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
   push:
     branches: [main]
 
@@ -19,7 +22,7 @@ concurrency:
 
 jobs:
   check:
-    if: github.event_name == 'push' || !github.event.pull_request.draft
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -47,7 +50,7 @@ jobs:
   # The loops and CI run Linux, contributors also Windows: specs that hand paths to git or a shell
   # broke there twice (#26, #36) and only the human's pre-push hook noticed.
   check-windows:
-    if: github.event_name == 'push' || !github.event.pull_request.draft
+    if: github.event_name == 'merge_group' || (github.event_name == 'pull_request' && !github.event.pull_request.draft)
     runs-on: windows-latest
     permissions:
       contents: read
@@ -72,7 +75,7 @@ jobs:
   # Write permissions live here, away from the job that runs the tests.
   coverage:
     needs: check
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       contents: write        # the badge goes to the action's data branch (main only)
@@ -85,3 +88,17 @@ jobs:
       - uses: py-cov-action/python-coverage-comment-action@v4.5
         with:
           GITHUB_TOKEN: ${{ github.token }}
+
+  # The one required check. Fails unless every job it needs succeeded: a failed, cancelled or
+  # skipped dependency fails it, so it can never pass by default.
+  ci-passed:
+    needs: [check, check-windows]
+    if: always() && github.event_name != 'push' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do [ "$r" = success ] || { echo "::error::a required job did not succeed: $RESULTS"; exit 1; }; done
