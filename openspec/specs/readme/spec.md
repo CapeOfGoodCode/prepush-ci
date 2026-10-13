@@ -99,27 +99,12 @@ Each default the README lists SHALL equal what the config loads when only `check
 - **WHEN** the check reads a README text that gives `cache` the default `false`
 - **THEN** it reports that the default of `cache` is `true`
 
-### Requirement: The usage section starts with the agent setup
-The usage section SHALL open with a step before the install step that sets a repository up through an agent with the skill. The step SHALL give, in a code block, the prompt to hand the agent; the prompt SHALL name the skill with an absolute link to `skills/prepush-ci-setup/SKILL.md` on the default branch of the repository and SHALL ask the agent to set prepush-ci up in the repository.
-
-#### Scenario: The agent step comes first
-- **WHEN** the headings of the usage section are read in order
-- **THEN** the agent setup step is the first, before the install step
-
-#### Scenario: The link names a file of the repository
-- **WHEN** the check takes the link to the skill from the agent step and resolves its path against the repository
-- **THEN** the link is absolute and the path names an existing file, `skills/prepush-ci-setup/SKILL.md`
-
-#### Scenario: A prompt to hand over
-- **WHEN** a reader looks at the code block of the agent step
-- **THEN** it contains the link to the skill and asks the agent to set prepush-ci up in the repository
-
 ### Requirement: The agent step names the other way and the manual path
-The agent step SHALL name the other way to give an agent the skill: copy the folder `skills/prepush-ci-setup/` into `.claude/skills/` of the repository. It SHALL say that the steps after it are the manual core and name what the skill does on top: it finds or writes the command that runs the full check, sets up the services and the preflight so that a missing service fails the check, extends the SessionStart script with dependencies and services, and proves the setup with `doctor`.
+The agent step SHALL name the way to keep the skill with a project: `prepush-ci skill --write`, which writes it to `.claude/skills/` of the repository. It SHALL say that the steps after it are the manual core and name what the skill does on top: it finds or writes the command that runs the full check, sets up the services and the preflight so that a missing service fails the check, extends the SessionStart script with dependencies and services, and proves the setup with `doctor`.
 
 #### Scenario: The skill as a project skill
 - **WHEN** a reader looks at the agent step
-- **THEN** it names `skills/prepush-ci-setup/` and `.claude/skills/` as the way to install the skill in a repository
+- **THEN** it names `prepush-ci skill --write` and `.claude/skills/` as the way to keep the skill in a repository
 
 #### Scenario: The manual steps are the core
 - **WHEN** a reader looks at the end of the agent step
@@ -148,7 +133,7 @@ The agent step SHALL say that the agent always stops to ask the user to confirm 
 - **THEN** it says the agent also asks which hook manager to use when there are two, for the default branch when `origin` is missing, cannot be reached, has no default branch, or the clone does not fetch it (a single-branch clone of another branch), and for a yes before it removes a hook, and not otherwise
 
 ### Requirement: The usage section walks from install to a push
-The README SHALL have a usage section. After the agent setup step (previous requirement) its steps, in this order, are: install the package; set a repository up with `init`; opt in with `PREPUSH_CI=full`; what a commit does (writes the trailer) and what a push does (refuses a tip with the trailer unless the check passes on it); and the CI gate that skips on the trailer, with a pointer to `docs/ci/` or `init --ci`.
+The README SHALL have a usage section. After the agent setup step its steps, in this order, are: install the package; set a repository up with `init`; opt in with `PREPUSH_CI=full`; what a commit does (writes the trailer) and what a push does (refuses a tip with the trailer unless the check passes on it); and the CI gate that skips on the trailer, with a pointer to `docs/ci/` or `init --ci`.
 
 #### Scenario: The steps in order
 - **WHEN** the headings and code blocks of the usage section are read in order
@@ -168,3 +153,40 @@ After the CI gate step the usage section SHALL say what to do when the full chec
 #### Scenario: A refused push
 - **WHEN** a reader looks at the step after the CI gate step
 - **THEN** it names `prepush-ci run`, `prepush-ci doctor` and `prepush-ci strip` with one sentence each
+
+### Requirement: The agent step hands the agent the skill command
+The usage section SHALL open with a step before the install step that sets a repository up through an agent with the skill. The step SHALL give, in a code block, the prompt to hand the agent; the prompt SHALL ask the agent to run `uvx prepush-ci skill`, follow what it prints, and set prepush-ci up in the repository. The step SHALL NOT link to `skills/prepush-ci-setup/SKILL.md` on GitHub.
+
+#### Scenario: The agent step comes first
+- **WHEN** the headings of the usage section are read in order
+- **THEN** the agent setup step is the first, before the install step
+
+#### Scenario: A prompt to hand over
+- **WHEN** a reader looks at the code block of the agent step
+- **THEN** it contains `uvx prepush-ci skill` and asks the agent to follow it and to set prepush-ci up in the repository
+
+#### Scenario: No link to the skill on GitHub
+- **WHEN** the check takes the links of the agent step
+- **THEN** none of them is a link to `skills/prepush-ci-setup/SKILL.md` on the default branch
+
+#### Scenario: The prompt's command exists
+- **WHEN** the check reads the code block of the agent step
+- **THEN** it finds the invocation `prepush-ci skill` and reports no unknown command or option
+
+### Requirement: The agent step has a form that runs before the first release
+Because the first release is not on PyPI yet, the agent step SHALL also give, in a code span, the form that runs from the repository, `uvx --from git+https://github.com/CapeOfGoodCode/prepush-ci prepush-ci skill`, with the words "until the first release is on PyPI" as the install step has them.
+
+#### Scenario: Before the first release
+- **WHEN** a reader looks at the agent step
+- **THEN** it has the code span `uvx --from git+https://github.com/CapeOfGoodCode/prepush-ci prepush-ci skill` next to the words "until the first release is on PyPI", and the check finds `prepush-ci skill` in it with no unknown command or option
+
+### Requirement: The agent step names the Claude Code plugin
+The agent step SHALL name the Claude Code plugin as the other way to give the agent the skill, with the commands `/plugin marketplace add CapeOfGoodCode/prepush-ci` and `/plugin install prepush-ci@prepush-ci`, in code spans.
+
+#### Scenario: The plugin way
+- **WHEN** a reader looks at the agent step
+- **THEN** it has the code spans `/plugin marketplace add CapeOfGoodCode/prepush-ci` and `/plugin install prepush-ci@prepush-ci`
+
+#### Scenario: The plugin commands match the manifests
+- **WHEN** the check compares the `<plugin>@<marketplace>` of the install command with the plugin name and the marketplace name in `.claude-plugin/marketplace.json`
+- **THEN** they are equal
