@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_1775bdf95c0e59b5_install_command_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-13 16:51 +0000
+            created at 2026-10-13 17:44 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -226,7 +226,7 @@
     <p class="run"><span class="n"><a id="t142" href="#t142">142</a></span><span class="t">                <span class="nam">hooks</span> <span class="op">=</span> <span class="nam">_ask_hooks</span><span class="op">(</span><span class="nam">root</span><span class="op">,</span> <span class="nam">cwd</span><span class="op">,</span> <span class="nam">stdin</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="par run show_par"><span class="n"><a id="t143" href="#t143">143</a></span><span class="t">            <span class="key">if</span> <span class="nam">session_hook</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">143&#x202F;&#x219B;&#x202F;147</span><span class="annotate long">line 143 didn't jump to line 147 because the condition on line 143 was always true</span></span></p>
     <p class="run"><span class="n"><a id="t144" href="#t144">144</a></span><span class="t">                <span class="nam">session_hook</span> <span class="op">=</span> <span class="nam">parse_yes_no</span><span class="op">(</span><span class="nam">_ask</span><span class="op">(</span><span class="nam">stdin</span><span class="op">,</span> <span class="nam">SESSION_QUESTION</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t145" href="#t145">145</a></span><span class="t">        <span class="key">except</span> <span class="nam">Refusal</span> <span class="key">as</span> <span class="nam">refusal</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t145" href="#t145">145</a></span><span class="t">        <span class="key">except</span> <span class="op">(</span><span class="nam">Refusal</span><span class="op">,</span> <span class="nam">install_command</span><span class="op">.</span><span class="nam">Unreadable</span><span class="op">)</span> <span class="key">as</span> <span class="nam">refusal</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t146" href="#t146">146</a></span><span class="t">            <span class="key">raise</span> <span class="nam">_Stop</span><span class="op">(</span><span class="fst">f&quot;</span><span class="fst">prepush-ci init: </span><span class="op">{</span><span class="nam">refusal</span><span class="op">}</span><span class="fst">&quot;</span><span class="op">)</span> <span class="key">from</span> <span class="nam">refusal</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t147" href="#t147">147</a></span><span class="t">    <span class="nam">text</span> <span class="op">=</span> <span class="key">None</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t148" href="#t148">148</a></span><span class="t">    <span class="key">if</span> <span class="nam">config</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -410,7 +410,7 @@
             <a class="nav" href="z_1775bdf95c0e59b5_install_command_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-13 16:51 +0000
+            created at 2026-10-13 17:44 +0000
         </p>
     </div>
 </footer>
