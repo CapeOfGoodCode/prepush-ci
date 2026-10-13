@@ -21,8 +21,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Both ends of requires-python: a user on 3.11 must not be the first to run code that needs 3.12.
   check:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.14"]
+    name: check (${{ matrix.python }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -37,11 +43,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: uv sync --frozen
+      - run: uv sync --frozen --python ${{ matrix.python }}
       - run: npm ci
-      # The same entry point the pre-push hook runs.
+      # The full check; the pre-push hook runs its --fast part.
       - run: sh scripts/ci
-      - uses: actions/upload-artifact@v7
+      - if: matrix.python == '3.14'   # one coverage report: the newest Python
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: .coverage
