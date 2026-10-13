@@ -16,7 +16,7 @@
 | src/prepush\_ci/core/doctor.py         |       92 |        0 |       34 |        0 |    100% |           |
 | src/prepush\_ci/core/doctor\_hooks.py  |       86 |        0 |       34 |        0 |    100% |           |
 | src/prepush\_ci/core/hook\_managers.py |      194 |        0 |       74 |        0 |    100% |           |
-| src/prepush\_ci/core/init.py           |      178 |        0 |       68 |        0 |    100% |           |
+| src/prepush\_ci/core/init.py           |      187 |        0 |       70 |        0 |    100% |           |
 | src/prepush\_ci/core/install.py        |       54 |        0 |        8 |        0 |    100% |           |
 | src/prepush\_ci/core/pre\_push.py      |       87 |        0 |       30 |        0 |    100% |           |
 | src/prepush\_ci/core/preflight.py      |       25 |        0 |        2 |        0 |    100% |           |
@@ -26,7 +26,7 @@
 | src/prepush\_ci/core/verify.py         |       45 |        0 |       16 |        0 |    100% |           |
 | src/prepush\_ci/doctor\_command.py     |      125 |        5 |       22 |        0 |     97% |37-39, 192-193 |
 | src/prepush\_ci/git.py                 |       47 |        3 |       12 |        2 |     92% | 46-47, 81 |
-| src/prepush\_ci/init\_command.py       |      189 |        2 |       52 |        1 |     99% |143-\>147, 224-225 |
+| src/prepush\_ci/init\_command.py       |      198 |        2 |       54 |        1 |     99% |144-\>148, 228-229 |
 | src/prepush\_ci/install\_command.py    |      204 |        1 |       62 |        1 |     99% |        42 |
 | src/prepush\_ci/pass\_cache.py         |       34 |        1 |        8 |        1 |     95% |        61 |
 | src/prepush\_ci/pre\_push\_hook.py     |       77 |        0 |       24 |        0 |    100% |           |
@@ -35,7 +35,7 @@
 | src/prepush\_ci/run\_command.py        |       29 |        0 |        4 |        0 |    100% |           |
 | src/prepush\_ci/strip\_command.py      |      103 |        0 |       38 |        0 |    100% |           |
 | src/prepush\_ci/verify\_command.py     |       49 |        1 |       14 |        1 |     97% |        81 |
-| **TOTAL**                              | **2155** |   **14** |  **684** |    **8** | **99%** |           |
+| **TOTAL**                              | **2173** |   **14** |  **688** |    **8** | **99%** |           |
 
 
 ## Setup coverage badge
