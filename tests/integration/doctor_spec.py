@@ -1230,3 +1230,23 @@ def test_a_config_with_an_empty_required_variable_name_fails_naming_the_key(
     assert status(result, "config") == "fail"
     assert "`require_env`" in line(result, "config")
     assert status(result, "preflight") == "skip"
+
+
+# A terminal that cannot show the characters of the report
+
+
+def test_a_config_message_quoting_a_non_ascii_key_is_reported_when_stdout_is_ascii(
+    repo: Path,
+) -> None:
+    (repo / ".prepush-ci.toml").write_text(
+        'check = "true"\n"unknownÉ" = 1\n', encoding="utf-8"
+    )
+    ascii_only = {"LC_ALL": "C", "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0"}
+
+    result = doctor(repo, env=ascii_only)
+
+    assert "Traceback" not in result.stderr
+    assert status(result, "config") == "fail"
+    # `?` where the terminal cannot show the É (a Windows console may print it)
+    assert any(f"unknown{c}" in line(result, "config") for c in "?É")
+    assert result.returncode == 1
