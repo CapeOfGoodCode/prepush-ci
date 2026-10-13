@@ -27,7 +27,7 @@
 | src/prepush\_ci/doctor\_command.py     |      125 |        5 |       22 |        0 |     97% |37-39, 192-193 |
 | src/prepush\_ci/git.py                 |       46 |        3 |       12 |        2 |     91% | 42-43, 77 |
 | src/prepush\_ci/init\_command.py       |      189 |        2 |       52 |        1 |     99% |143-\>147, 224-225 |
-| src/prepush\_ci/install\_command.py    |      155 |        0 |       50 |        0 |    100% |           |
+| src/prepush\_ci/install\_command.py    |      158 |        0 |       50 |        0 |    100% |           |
 | src/prepush\_ci/pass\_cache.py         |       34 |        1 |        8 |        1 |     95% |        61 |
 | src/prepush\_ci/pre\_push\_hook.py     |       77 |        0 |       24 |        0 |    100% |           |
 | src/prepush\_ci/preflight.py           |       32 |        1 |       18 |        1 |     96% |        73 |
@@ -35,7 +35,7 @@
 | src/prepush\_ci/run\_command.py        |       29 |        0 |        4 |        0 |    100% |           |
 | src/prepush\_ci/strip\_command.py      |      103 |        0 |       38 |        0 |    100% |           |
 | src/prepush\_ci/verify\_command.py     |       49 |        1 |       14 |        1 |     97% |        81 |
-| **TOTAL**                              | **2100** |   **13** |  **670** |    **6** | **99%** |           |
+| **TOTAL**                              | **2103** |   **13** |  **670** |    **6** | **99%** |           |
 
 
 ## Setup coverage badge
