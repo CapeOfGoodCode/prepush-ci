@@ -799,3 +799,49 @@ def test_a_hook_manager_install_never_warns_about_the_interpreter(
 
     assert result.returncode == 0
     assert "temporary" not in result.stderr
+
+
+# A rerun that cannot read what the first run recorded
+
+
+def one_line_naming(result: "subprocess.CompletedProcess[str]", what: Path) -> None:
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
+    assert len(result.stderr.strip().splitlines()) == 1
+    assert what.as_posix() in result.stderr
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="a directory cannot be made unreadable with chmod"
+)
+def test_a_rerun_says_so_without_a_traceback_when_the_previous_directory_cannot_be_read(
+    pushing: Path, git: Git
+) -> None:
+    custom = pushing / "custom-hooks"
+    custom.mkdir()
+    write_hook(custom, "pre-push", "exit 0")
+    git(pushing, "config", "--local", "core.hooksPath", custom.as_posix())
+    install(pushing)
+    custom.chmod(0o000)
+    try:
+        result = install(pushing)
+    finally:
+        custom.chmod(0o755)  # so that the temporary directory can be removed
+
+    one_line_naming(result, custom.resolve())
+    assert "Permission denied" in result.stderr
+
+
+@pytest.mark.parametrize("record", ["bytes", "directory"])
+def test_a_rerun_says_so_without_a_traceback_when_the_record_of_the_previous_directory_is_unreadable(
+    pushing: Path, record: str
+) -> None:
+    install(pushing)
+    path = hooks_dir(pushing) / "previous"
+    path.unlink()
+    if record == "bytes":
+        path.write_bytes(b"\xff\xfe")
+    else:
+        path.mkdir()
+
+    one_line_naming(install(pushing), path)
