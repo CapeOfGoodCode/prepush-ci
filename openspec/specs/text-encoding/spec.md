@@ -35,7 +35,7 @@ The conversion of the tool's text to and from an operating system string (an arg
 - **THEN** it gets `oré`
 
 ### Requirement: Every command handles non-ASCII names the same way
-`doctor`, `init`, `install`, `run` and the hooks SHALL work in a repository whose path, remotes, branches, hooks directory and templates have non-ASCII names, and with non-ASCII arguments and answers, under both locales above; the hooks that pre-commit runs only as far as pre-commit itself runs under the locale.
+`doctor`, `init`, `install`, `run` and the hooks SHALL work in a repository whose path, remotes, branches, hooks directory and templates have non-ASCII names, and with non-ASCII arguments and answers, and with a non-ASCII value in the config that a command hands on to git (the trailer), under both locales above; the hooks that pre-commit runs only as far as pre-commit itself runs under the locale.
 
 #### Scenario: A remote with a non-ASCII name matches the config
 - **WHEN** the remote `oré` has the branch `main`, the config says `require_up_to_date = "oré/main"` and `doctor` runs
@@ -80,6 +80,10 @@ The conversion of the tool's text to and from an operating system string (an arg
 #### Scenario: A commit template in a non-ASCII path is read
 - **WHEN** `commit.template` names a file in a directory called `dé`, an editor saves the template untouched, and the commit-msg hook runs
 - **THEN** the hook writes no trailer, as it does for any untouched template
+
+#### Scenario: A non-ASCII trailer value is written
+- **WHEN** the config says `trailer = { key = "Full-Check", value = "jä" }` and a commit runs with `PREPUSH_CI=full`
+- **THEN** the hook exits 0, prints no traceback, and the commit message holds the line `Full-Check: jä` as UTF-8
 
 ### Requirement: A file the tool parses must be UTF-8, and says so
 A file the tool parses (`.prepush-ci.toml`, `pyproject.toml`, `.claude/settings.json`), whether on disk or committed in a revision, that is not valid UTF-8 SHALL be reported as a problem of that file in one line that names it and says `not valid UTF-8`, through the way the command reports a config or settings problem today (`config`, "invalid TOML"; `init`, "Malformed settings are refused"), and SHALL NOT end in a traceback.

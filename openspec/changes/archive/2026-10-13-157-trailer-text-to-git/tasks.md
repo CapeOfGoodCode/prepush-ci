@@ -7,4 +7,4 @@
 
 ## 2. Close
 
-- [ ] 2.1 Archive the change, after #151 (PR #154) is on `main`
+- [x] 2.1 Archive the change, after #151 (PR #154) is on `main`
