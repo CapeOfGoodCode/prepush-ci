@@ -1152,3 +1152,55 @@ def test_the_session_hook_script_gets_the_hooks_that_were_chosen(repo: Path) -> 
     init(repo, "--check", "x", stdin=answers("", "", "", "", "husky", ""))
 
     assert "prepush-ci install --hooks husky\n" in (repo / SESSION_HOOK).read_text()
+
+
+def test_an_empty_required_variable_is_refused_naming_the_key_and_writes_nothing(
+    repo: Path,
+) -> None:
+    result = init(
+        repo,
+        "--non-interactive",
+        "--check",
+        "true",
+        "--require-env",
+        "",
+        "--hooks",
+        "none",
+    )
+
+    assert result.returncode == 1
+    assert "`require_env`" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert files(repo) == set()
+
+
+def test_a_name_the_hook_would_drop_is_refused_naming_the_key_and_the_entry_and_writes_nothing(
+    repo: Path,
+) -> None:
+    result = init(
+        repo,
+        "--non-interactive",
+        "--check",
+        "true",
+        "--require-env",
+        "DATABASE URL",
+        "--hooks",
+        "none",
+    )
+
+    assert result.returncode == 1
+    assert "`require_env`" in result.stderr
+    assert "'DATABASE URL'" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert files(repo) == set()
+
+
+def test_an_interactive_answer_with_an_equals_sign_is_refused_and_writes_nothing(
+    repo: Path,
+) -> None:
+    result = init(repo, "--hooks", "none", stdin=answers("true", "", "A=1", "", "", ""))
+
+    assert result.returncode == 1
+    assert "`require_env`" in result.stderr
+    assert "'A=1'" in result.stderr
+    assert files(repo) == set()
