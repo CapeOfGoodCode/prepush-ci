@@ -234,3 +234,20 @@ def invocations() -> Invocations:
         choices=choices,
         top_level_lists_verify=top_level_lists_verify,
     )
+
+
+@pytest.fixture(
+    params=[
+        pytest.param("dé", id="utf8"),
+        pytest.param(
+            "d\udce9",  # the byte 0xE9 on its own: a Latin-1 name, not UTF-8
+            id="not-utf8",
+            marks=pytest.mark.skipif(
+                sys.platform == "win32", reason="Windows names are Unicode"
+            ),
+        ),
+    ]
+)
+def non_ascii_name(request: pytest.FixtureRequest) -> str:
+    """The name of a directory with a non-ASCII character in it."""
+    return str(request.param)

@@ -1348,3 +1348,24 @@ def test_the_refusal_comes_without_a_traceback_when_the_record_of_the_previous_d
     (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
 
     refused_with_the_unset_hint(install(pushing, env))
+
+
+def test_the_refusal_names_the_previous_directory_in_a_repository_whose_path_has_a_non_ascii_character_under_an_ascii_locale(
+    tmp_path: Path, git: Git, env: dict[str, str], non_ascii_name: str
+) -> None:
+    where = tmp_path / non_ascii_name
+    where.mkdir()
+    git(where, "init", "-q")
+    ascii_only = {**env, "LC_ALL": "C", "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0"}
+    custom = where / "custom-hooks"
+    custom.mkdir()
+    (custom / "pre-push").write_text("#!/bin/sh\nexit 0\n")
+    git(where, "config", "--local", "core.hooksPath", "custom-hooks")
+    install(where, ascii_only, "--hooks", "native")
+    (where / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+
+    result = install(where, ascii_only)
+
+    assert "Traceback" not in result.stderr
+    assert result.returncode == 1
+    assert "custom-hooks" in result.stderr and "no longer run" in result.stderr

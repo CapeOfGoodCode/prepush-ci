@@ -832,7 +832,7 @@ def test_a_rerun_says_so_without_a_traceback_when_the_previous_directory_cannot_
     assert "Permission denied" in result.stderr
 
 
-@pytest.mark.parametrize("record", ["bytes", "directory"])
+@pytest.mark.parametrize("record", ["bytes", "text", "directory"])
 def test_a_rerun_says_so_without_a_traceback_when_the_record_of_the_previous_directory_is_unreadable(
     pushing: Path, record: str
 ) -> None:
@@ -841,7 +841,28 @@ def test_a_rerun_says_so_without_a_traceback_when_the_record_of_the_previous_dir
     path.unlink()
     if record == "bytes":
         path.write_bytes(b"\xff\xfe")
+    elif record == "text":
+        path.write_text("no directory\n")
     else:
         path.mkdir()
 
     one_line_naming(install(pushing), path)
+
+
+def test_install_writes_and_recognises_its_hooks_in_a_repository_whose_path_has_a_non_ascii_character_under_an_ascii_locale(
+    tmp_path: Path, git: Git, non_ascii_name: str
+) -> None:
+    where = tmp_path / non_ascii_name
+    where.mkdir()
+    git(where, "init", "-q")
+    ascii_only = {"LC_ALL": "C", "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0"}
+
+    first = install(where, env=ascii_only)
+    again = install(where, env=ascii_only)
+
+    assert "Traceback" not in first.stderr
+    assert first.returncode == 0, first.stderr
+    assert os.fsencode(non_ascii_name) in (hooks_dir(where) / "previous").read_bytes()
+    assert "Traceback" not in again.stderr
+    assert again.returncode == 0, again.stderr
+    assert "already installed" in again.stdout

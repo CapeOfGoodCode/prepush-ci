@@ -79,7 +79,7 @@ def run(cwd: Path, hooks: str | None = None) -> int:
     desired = desired_files(interpreter, previous.as_posix(), forwarded)
     existing = {
         name: Existing(
-            (directory / name).read_text(encoding="utf-8"),
+            _recorded_text(directory / name),
             _executable(directory / name),
         )
         for name in _files(directory)
@@ -88,7 +88,7 @@ def run(cwd: Path, hooks: str | None = None) -> int:
     directory.mkdir(parents=True, exist_ok=True)
     for name in difference.write:
         path = directory / name
-        path.write_text(desired[name], encoding="utf-8", newline="\n")
+        path.write_bytes(os.fsencode(desired[name]))
         path.chmod(0o755)
     for name in difference.remove:
         (directory / name).unlink()
@@ -249,7 +249,7 @@ def _lost_hooks(cwd: Path, root: Path) -> str | None:
     try:
         if not recorded.is_file():
             return None
-        previous = Path(recorded.read_text(encoding="utf-8").strip()).resolve()
+        previous = _recorded_directory(recorded).resolve()
         if not any(not name.endswith(".sample") for name in _files(previous)):
             return None
     except (OSError, ValueError):  # UnicodeDecodeError is a ValueError
@@ -273,6 +273,22 @@ def _hooks_without_local(cwd: Path, root: Path) -> Path:
         _resolve(cwd, git(cwd, "rev-parse", "--git-common-dir").stdout.strip())
         / "hooks"
     )
+
+
+def _recorded_text(path: Path) -> str:
+    """The text of a file this command wrote, which names the repository: decoded as `os.fsdecode`
+    decodes a path (the file holds the bytes `os.fsencode` gives back), so that a path the locale
+    cannot encode, or one that is not UTF-8, survives a rerun."""
+    return os.fsdecode(path.read_bytes())
+
+
+def _recorded_directory(path: Path) -> Path:
+    """The directory the record `path` names; what `install` writes there is absolute, so anything
+    else (bytes that are no path) is a corrupt record, a `ValueError`."""
+    directory = Path(_recorded_text(path).strip())
+    if not directory.is_absolute():
+        raise ValueError("it does not name a directory")
+    return directory
 
 
 def _read(path: Path) -> str | None:
@@ -333,7 +349,7 @@ def _previous(cwd: Path, common: Path, ours: Path) -> Path:
     recorded = ours / PREVIOUS_FILE
     try:
         if recorded.exists():  # a directory fails to be read: the record is unreadable
-            return Path(recorded.read_text(encoding="utf-8").strip())
+            return _recorded_directory(recorded)
     except (OSError, ValueError) as error:  # UnicodeDecodeError is a ValueError
         raise Unreadable(recorded, error) from error
     return common / "hooks"
