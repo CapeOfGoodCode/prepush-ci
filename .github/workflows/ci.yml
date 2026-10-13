@@ -21,9 +21,48 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # What the change can affect. Prose only (Markdown outside src/, skills/ and openspec/, except the
+  # README; the issue templates): no checks. Specs but no code (openspec/): the fast check, which validates them.
+  # Anything else, or a file list that cannot be read: everything.
+  changes:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+      specs: ${{ steps.diff.outputs.specs }}
+    steps:
+      - id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          code=true specs=false
+          # The compare API lists at most 300 files; a longer list is treated as code.
+          if [ "$EVENT" != push ] \
+            && files=$(gh api "repos/$REPO/compare/$BASE...$HEAD" --jq '.files[].filename') \
+            && [ -n "$files" ] && [ "$(wc -l <<< "$files")" -lt 300 ]; then
+            code=false
+            while IFS= read -r f; do
+              case "$f" in
+                openspec/*) specs=true ;;
+                src/*|skills/*|README.md) code=true ;;   # README.md is the PyPI page; a spec checks its links
+                *.md|.github/ISSUE_TEMPLATE/*) ;;
+                *) code=true ;;
+              esac
+            done <<< "$files"
+          fi
+          echo "changed files decide: code=$code specs=$specs"
+          { echo "code=$code"; echo "specs=$specs"; } >> "$GITHUB_OUTPUT"
+
   # Both ends of requires-python: a user on 3.11 must not be the first to run code that needs 3.12.
   check:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -54,10 +93,33 @@ jobs:
           path: .coverage
           include-hidden-files: true
 
+  # A change to specs and prose only: lint, types and the OpenSpec validation, no tests.
+  specs:
+    needs: changes
+    if: needs.changes.outputs.code == 'false' && needs.changes.outputs.specs == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: uv sync --frozen
+      - run: npm ci
+      - run: sh scripts/ci --fast
+
   # The loops and CI run Linux, contributors also Windows: specs that hand paths to git or a shell
   # broke there twice (#26, #36) and only the human's pre-push hook noticed.
   check-windows:
-    if: github.event_name == 'merge_group' || (github.event_name == 'pull_request' && !github.event.pull_request.draft)
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && github.event_name != 'push'
     runs-on: windows-latest
     permissions:
       contents: read
@@ -98,16 +160,25 @@ jobs:
         with:
           GITHUB_TOKEN: ${{ github.token }}
 
-  # The one required check. Fails unless every job it needs succeeded: a failed, cancelled or
-  # skipped dependency fails it, so it can never pass by default.
+  # The one required check. Passes only when every job the change needs succeeded: a failed,
+  # cancelled or skipped job the change needed fails it, so it can never pass by default.
   ci-passed:
-    needs: [check, check-windows]
+    needs: [changes, specs, check, check-windows]
     if: always() && github.event_name != 'push' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     permissions: {}
     steps:
       - env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
+          CHANGES: ${{ needs.changes.result }}
+          CODE: ${{ needs.changes.outputs.code }}
+          SPECS: ${{ needs.changes.outputs.specs }}
+          SPECS_RESULT: ${{ needs.specs.result }}
+          RESULTS: ${{ needs.check.result }} ${{ needs.check-windows.result }}
         run: |
-          echo "results: $RESULTS"
+          echo "changes: $CHANGES, code: $CODE, tests: $RESULTS"
+          [ "$CHANGES" = success ] || { echo "::error::could not tell what changed"; exit 1; }
+          if [ "$CODE" = false ]; then
+            if [ "$SPECS" = true ] && [ "$SPECS_RESULT" != success ]; then echo "::error::the specs check did not succeed"; exit 1; fi
+            echo "no code changed: the test jobs were not needed"; exit 0
+          fi
           for r in $RESULTS; do [ "$r" = success ] || { echo "::error::a required job did not succeed: $RESULTS"; exit 1; }; done
