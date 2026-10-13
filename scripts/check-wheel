@@ -1,0 +1,24 @@
+#!/bin/sh
+# Builds the wheel, starts it in an empty environment and reads its data files: the tests import the
+# package from the source tree, users run the built one (`uvx prepush-ci`, `pipx run prepush-ci`, the
+# GitHub Action), and a module, an entry point or a data file that the wheel lacks passes every test.
+# Usage: scripts/check-wheel [source]   (default: this repository)
+set -eu
+source=${1:-"$(dirname "$0")/.."}
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+uv build --wheel --quiet --out-dir "$work/dist" "$source"
+# Nothing but the wheel goes into this environment, and the command is taken from it by path, not
+# from PATH, where the development environment may hold the tool as well.
+uv venv --quiet "$work/venv"
+uv pip install --quiet --python "$work/venv" "$work"/dist/*.whl
+if [ -d "$work/venv/Scripts" ]; then bin=$work/venv/Scripts; else bin=$work/venv/bin; fi
+"$bin/prepush-ci" --version
+# The data files the package ships (the CI gates `init` prints) are read from the installed wheel:
+# a data file that the wheel lacks passes `--version` and breaks `init` for the user.
+git init --quiet "$work/repo"
+for ci in github gitlab generic; do
+    (cd "$work/repo" && "$bin/prepush-ci" init --non-interactive --check "sh scripts/ci" \
+        --ci "$ci" --hooks none --no-session-hook --require-up-to-date false >/dev/null)
+done
