@@ -1,6 +1,7 @@
 """`prepush-ci install` for hook managers: the manager's own files, run by the real manager and git."""
 
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
@@ -45,6 +46,18 @@ def env(shim: Path, tmp_path: Path) -> dict[str, str]:
         "PATH": os.pathsep.join([str(shim), os.environ["PATH"]]),
         "PRE_COMMIT_HOME": str(tmp_path / "pre-commit-home"),
     }
+
+
+@pytest.fixture
+def without_tool(env: dict[str, str]) -> dict[str, str]:
+    """`env` with every `PATH` directory that holds a `prepush-ci` command taken out, so the
+    entries of a manager find no tool, as for a contributor who did not install it."""
+    kept = [
+        directory
+        for directory in env["PATH"].split(os.pathsep)
+        if shutil.which("prepush-ci", path=directory) is None
+    ]
+    return {**env, "PATH": os.pathsep.join(kept)}
 
 
 @pytest.fixture
@@ -188,6 +201,54 @@ def test_a_failing_check_refuses_a_push_through_pre_commit(
 
     assert pushed.returncode != 0
     assert git(pushing, "ls-remote", "origin").stdout == ""
+
+
+def test_a_commit_through_pre_commit_goes_on_without_the_tool_and_says_so(
+    pushing: Path, git: Git, env: dict[str, str], without_tool: dict[str, str]
+) -> None:
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+    install(pushing, env)
+    pre_commit_install(pushing, env)
+
+    committed = commit(pushing, git, without_tool)
+
+    assert committed.returncode == 0, committed.stderr
+    assert "not on PATH" in committed.stdout + committed.stderr
+    assert TRAILER not in body(pushing, git)
+
+
+def test_a_push_through_pre_commit_is_refused_without_the_tool_and_says_so(
+    pushing: Path, git: Git, env: dict[str, str], without_tool: dict[str, str]
+) -> None:
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+    install(pushing, env)
+    pre_commit_install(pushing, env)
+    git(pushing, "add", PRE_COMMIT_CONFIG)
+    commit(pushing, git, without_tool)
+
+    pushed = git(pushing, "push", "origin", "main", env=without_tool, check=False)
+
+    output = pushed.stdout + pushed.stderr
+    assert pushed.returncode != 0
+    assert "not on PATH" in output and "cannot be checked" in output
+    assert git(pushing, "ls-remote", "origin").stdout == ""
+
+
+def test_pre_commit_shows_the_output_of_the_commit_msg_hook_and_of_no_other(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    path = pushing / PRE_COMMIT_CONFIG
+    path.write_text("repos:\n  - repo: local\n    hooks: []\n")
+
+    install(pushing, env, "--hooks", "pre-commit")
+
+    hooks = {
+        hook["id"]: hook
+        for repo_entry in yaml.safe_load(path.read_text())["repos"]
+        for hook in repo_entry["hooks"]
+    }
+    assert hooks["prepush-ci-commit-msg"]["verbose"] is True
+    assert "verbose" not in hooks["prepush-ci-pre-push"]
 
 
 def test_an_existing_pre_commit_hook_runs_on_commit_and_never_on_push(
@@ -423,7 +484,65 @@ def test_the_husky_commit_msg_file_writes_the_trailer(
     )
 
     assert result.returncode == 0, result.stderr
+    assert "not on PATH" not in result.stderr
     assert message.read_text().strip().endswith(TRAILER)
+
+
+def test_the_husky_commit_msg_file_lets_the_commit_go_on_without_the_tool(
+    husky_repo: Path, env: dict[str, str], without_tool: dict[str, str], tmp_path: Path
+) -> None:
+    marker = tmp_path / "later.log"
+    husky_hook(husky_repo, "commit-msg", f"echo later >> {marker.as_posix()}\n")
+    install(husky_repo, env)
+    message = husky_repo / "message.txt"
+    message.write_text("add x\n")
+
+    result = run_hook(
+        husky_repo, {**without_tool, "PREPUSH_CI": "full"}, "commit-msg", str(message)
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "not on PATH" in result.stderr
+    assert message.read_text() == "add x\n"
+    assert lines(marker) == ["later"]
+
+
+def test_the_husky_pre_push_file_refuses_without_the_tool_and_skips_the_later_lines(
+    husky_repo: Path,
+    git: Git,
+    env: dict[str, str],
+    without_tool: dict[str, str],
+    tmp_path: Path,
+) -> None:
+    marker = tmp_path / "later.log"
+    husky_hook(husky_repo, "pre-push", f"echo later >> {marker.as_posix()}\n")
+    install(husky_repo, env)
+    sha = commit_trailer(husky_repo, git, ".husky")
+
+    result = run_hook(
+        husky_repo, without_tool, "pre-push", "origin", "url", stdin=ref_line(sha)
+    )
+
+    assert result.returncode != 0
+    assert "not on PATH" in result.stderr and "cannot be checked" in result.stderr
+    assert not marker.exists()
+
+
+def test_an_old_husky_block_is_replaced_and_reported_updated(
+    husky_repo: Path, env: dict[str, str]
+) -> None:
+    path = husky_hook(
+        husky_repo,
+        "commit-msg",
+        '# prepush-ci: begin\nprepush-ci hook commit-msg "$1" || exit $?\n'
+        "# prepush-ci: end\nnpm test\n",
+    )
+
+    result = install(husky_repo, env, "--hooks", "husky")
+
+    assert "updated" in result.stdout
+    assert "not on PATH" in path.read_text()
+    assert path.read_text().endswith("# prepush-ci: end\nnpm test\n")
 
 
 def test_the_husky_pre_push_file_runs_the_check(
@@ -603,12 +722,88 @@ def test_the_lefthook_commands_pass_the_message_file_and_standard_input(
 
     config = parsed(path)
     assert (
-        config["commit-msg"]["commands"]["prepush-ci"]["run"]
-        == "prepush-ci hook commit-msg {1}"
+        "prepush-ci hook commit-msg {1}"
+        in config["commit-msg"]["commands"]["prepush-ci"]["run"]
     )
     assert config["pre-push"]["commands"]["prepush-ci"]["use_stdin"] is True
     assert set(config["pre-push"]["commands"]) == {"prepush-ci", "test"}
     assert config["pre-commit"] == parsed(path)["pre-commit"]
+
+
+def lefthook_line(path: Path, hook: str) -> str:
+    """The `run:` line `install` wrote for `hook`."""
+    return str(parsed(path)[hook]["commands"]["prepush-ci"]["run"])
+
+
+def run_line(
+    repo: Path, line: str, env: dict[str, str], stdin: str = ""
+) -> "subprocess.CompletedProcess[str]":
+    """Run a lefthook `run:` line through `sh`, as lefthook does."""
+    return subprocess.run(
+        ["sh", "-c", line],
+        cwd=repo,
+        input=stdin,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+
+@pytest.fixture
+def lefthook_repo(pushing: Path, env: dict[str, str]) -> Path:
+    """`pushing` with a lefthook config that `install` has edited."""
+    (pushing / "lefthook.yml").write_text(LEFTHOOK_CONFIG)
+    install(pushing, env, "--hooks", "lefthook")
+    return pushing
+
+
+def test_the_lefthook_commit_msg_line_lets_the_commit_go_on_without_the_tool(
+    lefthook_repo: Path, without_tool: dict[str, str], tmp_path: Path
+) -> None:
+    message = tmp_path / "message.txt"
+    message.write_text("add x\n")
+    line = lefthook_line(lefthook_repo / "lefthook.yml", "commit-msg")
+
+    result = run_line(
+        lefthook_repo,
+        line.replace("{1}", message.as_posix()),
+        {**without_tool, "PREPUSH_CI": "full"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "not on PATH" in result.stderr
+    assert message.read_text() == "add x\n"
+
+
+def test_the_lefthook_commit_msg_line_writes_the_trailer_when_the_tool_is_found(
+    lefthook_repo: Path, env: dict[str, str], tmp_path: Path
+) -> None:
+    message = tmp_path / "message.txt"
+    message.write_text("add x\n")
+    line = lefthook_line(lefthook_repo / "lefthook.yml", "commit-msg")
+
+    result = run_line(
+        lefthook_repo,
+        line.replace("{1}", message.as_posix()),
+        {**env, "PREPUSH_CI": "full"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "not on PATH" not in result.stderr
+    assert message.read_text().strip().endswith(TRAILER)
+
+
+def test_the_lefthook_pre_push_line_refuses_without_the_tool_and_says_so(
+    lefthook_repo: Path, git: Git, without_tool: dict[str, str]
+) -> None:
+    sha = commit_trailer(lefthook_repo, git, "lefthook.yml")
+    line = lefthook_line(lefthook_repo / "lefthook.yml", "pre-push")
+
+    result = run_line(lefthook_repo, line, without_tool, stdin=ref_line(sha))
+
+    assert result.returncode != 0
+    assert "not on PATH" in result.stderr and "cannot be checked" in result.stderr
 
 
 def test_the_lefthook_hook_sections_are_added_at_the_end_and_the_rest_is_unchanged(
