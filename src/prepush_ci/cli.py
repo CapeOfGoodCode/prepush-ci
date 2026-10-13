@@ -1,8 +1,6 @@
 """Command-line entry point."""
 
 import argparse
-import io
-import os
 import sys
 from importlib.metadata import version
 from pathlib import Path
@@ -16,6 +14,7 @@ from prepush_ci import (
     run_command,
     skill_command,
     strip_command,
+    text_io,
     verify_command,
 )
 from prepush_ci.core.doctor import MODES
@@ -23,19 +22,10 @@ from prepush_ci.core.hook_managers import CHOICES
 from prepush_ci.core.init import CI_CHOICES, ConfigFlags
 
 
-def _never_fail_to_print() -> None:
-    """Make a character the terminal cannot encode come out as `?`, not as a traceback.
-
-    Only standard output is strict (standard error already escapes what it cannot show), and a
-    report that quotes user text is the only way to learn what is wrong.
-    """
-    if isinstance(sys.stdout, io.TextIOWrapper):
-        sys.stdout.reconfigure(errors="replace")
-
-
 def main(argv: list[str] | None = None) -> int:
-    _never_fail_to_print()
-    args_in = sys.argv[1:] if argv is None else argv
+    text_io.configure_streams()
+    args_in = text_io.arguments(sys.argv[1:]) if argv is None else argv
+    env = text_io.environment()
     if args_in[:1] == ["--"]:
         args_in = args_in[
             1:
@@ -121,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
         "commit-msg", help="write the trailer when PREPUSH_CI=full"
     )
     commit_msg.add_argument(
-        "file", type=Path, help="the commit message file git passes"
+        "file", type=text_io.to_path, help="the commit message file git passes"
     )
     pre_push = hooks.add_parser(
         "pre-push",
@@ -153,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "strip":
         return strip_command.run(args.base, Path.cwd())
     if args.command == "run":
-        return run_command.run(os.environ, Path.cwd())
+        return run_command.run(env, Path.cwd())
     if args.command == "init":
         flags = ConfigFlags(
             check=args.check,
@@ -174,12 +164,12 @@ def main(argv: list[str] | None = None) -> int:
             Path.cwd(),
         )
     if args.command == "doctor":
-        return doctor_command.run(Path.cwd(), os.environ, args.hooks, args.mode)
+        return doctor_command.run(Path.cwd(), env, args.hooks, args.mode)
     if args.command == "install":
         return install_command.run(Path.cwd(), args.hooks)
     if args.command == "hook" and args.hook == "pre-push":
-        return pre_push_hook.run(sys.stdin, os.environ, Path.cwd())
+        return pre_push_hook.run(text_io.stdin_text, env, Path.cwd())
     if args.command == "hook":
-        return commit_msg_hook.run(args.file, os.environ, Path.cwd())
+        return commit_msg_hook.run(args.file, env, Path.cwd())
     parser.print_help()
     return 0

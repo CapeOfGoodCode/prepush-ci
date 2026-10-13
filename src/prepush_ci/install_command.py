@@ -4,6 +4,7 @@ import os
 import sys
 from pathlib import Path
 
+from prepush_ci import text_io
 from prepush_ci.core.hook_managers import (
     HUSKY_DIRECTORY,
     MANAGERS,
@@ -37,12 +38,12 @@ class Unreadable(Exception):
     """A file or directory `install` has to read cannot be read; the message names it and why."""
 
     def __init__(self, path: Path, error: Exception) -> None:
-        reason = str(error)
-        if isinstance(error, UnicodeDecodeError):
-            reason = "it is not valid UTF-8"
-        elif isinstance(error, OSError) and error.strerror:
-            reason = error.strerror
-        super().__init__(f"cannot read {path.as_posix()}: {reason}")
+        reason = (
+            error.strerror
+            if isinstance(error, OSError) and error.strerror
+            else str(error)
+        )
+        super().__init__(f"cannot read {text_io.text_of(path)}: {reason}")
 
 
 HOOKS_PATH_REFUSERS = ("pre-commit", "lefthook")  # husky sets core.hooksPath itself
@@ -75,34 +76,50 @@ def run(cwd: Path, hooks: str | None = None) -> int:
         print(f"prepush-ci install: {unreadable}", file=sys.stderr)
         return 1
     forwarded = [name for name in entries if forwardable(name)]
-    interpreter = Path(sys.executable).as_posix()
-    desired = desired_files(interpreter, previous.as_posix(), forwarded)
+    interpreter = text_io.text_of(Path(sys.executable))
+    desired = desired_files(interpreter, text_io.text_of(previous), forwarded)
     existing = {
         name: Existing(
-            _recorded_text(directory / name),
-            _executable(directory / name),
+            _recorded_text(_in(directory, name)),
+            _executable(_in(directory, name)),
         )
         for name in _files(directory)
     }
     difference = changes(existing, desired)
     directory.mkdir(parents=True, exist_ok=True)
     for name in difference.write:
-        path = directory / name
-        path.write_bytes(os.fsencode(desired[name]))
+        path = _in(directory, name)
+        text_io.write_text(path, desired[name])
         path.chmod(0o755)
     for name in difference.remove:
-        (directory / name).unlink()
+        _in(directory, name).unlink()
     if not ours:
-        git(cwd, "config", "--local", "core.hooksPath", directory.as_posix())
+        git(cwd, "config", "--local", "core.hooksPath", text_io.text_of(directory))
     word = outcome(
         was_installed=ours or bool(existing), changed=difference.any or not ours
     )
     chained = forwarded or [hook for hook in HOOKS if hook in entries]
-    print(report(word, directory.as_posix(), previous.as_posix() if chained else None))
+    shown = text_io.text_of(previous) if chained else None
+    print(report(word, text_io.text_of(directory), shown))
     windows = sys.platform == "win32"
-    if is_temporary(interpreter, os.environ, os.getcwd(), windows, os.path.realpath):
+    if is_temporary(
+        interpreter,
+        text_io.environment(),
+        text_io.from_os(os.getcwd()),
+        windows,
+        _realpath,
+    ):
         print(TEMPORARY_WARNING, file=sys.stderr)
     return 0
+
+
+def _realpath(text: str) -> str:
+    return text_io.from_os(os.path.realpath(text_io.to_os(text)))
+
+
+def _in(directory: Path, name: str) -> Path:
+    """The file of that name (the tool's text) in the directory."""
+    return directory / text_io.to_os(name)
 
 
 def _worktree_root(cwd: Path) -> Path | None:
@@ -166,7 +183,7 @@ def _install_manager(cwd: Path, root: Path | None, manager: str) -> int:
         try:
             old = _read(path)
             plan[name] = (old, edit_file(manager, name, old))
-        except (Refusal, OSError, UnicodeDecodeError) as problem:
+        except (Refusal, OSError) as problem:
             print(f"prepush-ci install: {name}: {problem}", file=sys.stderr)
             return 1
     attempted: list[tuple[str, str | None]] = []
@@ -177,7 +194,7 @@ def _install_manager(cwd: Path, root: Path | None, manager: str) -> int:
                 (name, old)
             )  # a refused write may still have cut the file short
             try:
-                path.write_text(new, encoding="utf-8", newline="")
+                text_io.write_text(path, new)
                 if old is None:
                     path.chmod(0o755)  # a hook file git runs
             except OSError as problem:
@@ -215,11 +232,8 @@ def _put_back(root: Path, attempted: list[tuple[str, str | None]]) -> list[str]:
             if old is None:
                 path.unlink()
             else:
-                path.write_text(old, encoding="utf-8", newline="")
-        except (
-            OSError,
-            UnicodeDecodeError,
-        ):  # pragma: no cover (no scenario: see design.md)
+                text_io.write_text(path, old)
+        except OSError:  # pragma: no cover (no scenario: see design.md)
             stuck.append(name)
     return stuck
 
@@ -252,9 +266,13 @@ def _lost_hooks(cwd: Path, root: Path) -> str | None:
         previous = _recorded_directory(recorded).resolve()
         if not any(not name.endswith(".sample") for name in _files(previous)):
             return None
-    except (OSError, ValueError):  # UnicodeDecodeError is a ValueError
+    except (OSError, ValueError):  # the record names no directory: ValueError
         return None
-    return None if previous == _hooks_without_local(cwd, root) else previous.as_posix()
+    return (
+        None
+        if previous == _hooks_without_local(cwd, root)
+        else text_io.text_of(previous)
+    )
 
 
 def _hooks_without_local(cwd: Path, root: Path) -> Path:
@@ -276,16 +294,15 @@ def _hooks_without_local(cwd: Path, root: Path) -> Path:
 
 
 def _recorded_text(path: Path) -> str:
-    """The text of a file this command wrote, which names the repository: decoded as `os.fsdecode`
-    decodes a path (the file holds the bytes `os.fsencode` gives back), so that a path the locale
-    cannot encode, or one that is not UTF-8, survives a rerun."""
-    return os.fsdecode(path.read_bytes())
+    """The text of a file this command wrote, which names the repository: the tool's text, so that
+    a path the locale cannot encode, or one that is not UTF-8, survives a rerun."""
+    return text_io.read_text(path, keep_line_ends=True)
 
 
 def _recorded_directory(path: Path) -> Path:
     """The directory the record `path` names; what `install` writes there is absolute, so anything
     else (bytes that are no path) is a corrupt record, a `ValueError`."""
-    directory = Path(_recorded_text(path).strip())
+    directory = text_io.to_path(_recorded_text(path).strip())
     if not directory.is_absolute():
         raise ValueError("it does not name a directory")
     return directory
@@ -295,21 +312,20 @@ def _read(path: Path) -> str | None:
     """The contents of the file, None when it does not exist; a directory is an error."""
     if not path.exists():
         return None
-    with path.open(
-        encoding="utf-8", newline=""
-    ) as file:  # newline="": keep the line ends
-        return file.read()
+    return text_io.read_text(path, keep_line_ends=True)
 
 
 def _resolve(base: Path, text: str) -> Path:
-    return (base / text).resolve()
+    return (base / text_io.to_path(text)).resolve()
 
 
 def _files(directory: Path) -> list[str]:
     """The names of the regular files of `directory`; none when it does not exist."""
     if not directory.is_dir():
         return []
-    return [entry.name for entry in directory.iterdir() if entry.is_file()]
+    return [
+        text_io.from_os(entry.name) for entry in directory.iterdir() if entry.is_file()
+    ]
 
 
 def _listing(directory: Path) -> list[str]:
@@ -350,6 +366,6 @@ def _previous(cwd: Path, common: Path, ours: Path) -> Path:
     try:
         if recorded.exists():  # a directory fails to be read: the record is unreadable
             return _recorded_directory(recorded)
-    except (OSError, ValueError) as error:  # UnicodeDecodeError is a ValueError
+    except (OSError, ValueError) as error:  # ValueError: the record names no directory
         raise Unreadable(recorded, error) from error
     return common / "hooks"

@@ -11,7 +11,7 @@ from prepush_ci.core.doctor_hooks import (
 )
 
 DIRECTORY = "/repo/.git/prepush-ci/hooks"
-GOOD_SCRIPT = Script(exists=True, executable=True, text="#!/bin/sh\n")
+GOOD_SCRIPT = Script(exists=True, executable=True, content="#!/bin/sh\n")
 
 
 def native(**changes: object) -> NativeFacts:
@@ -98,10 +98,10 @@ def manager(name: str = "pre-commit", **changes: object) -> ManagerFacts:
         manager=name,
         detected=True,
         file=".pre-commit-config.yaml",
-        text=BLOCK,
+        content=BLOCK,
         hooks_path=None,
         hooks_directory="/repo/.git/hooks",
-        installed=Script(exists=True, executable=True, text=f"# run {name}\n"),
+        installed=Script(exists=True, executable=True, content=f"# run {name}\n"),
     )
     return replace(facts, **changes)  # type: ignore[arg-type]
 
@@ -112,7 +112,7 @@ def test_a_manager_with_its_block_and_its_activation_passes() -> None:
 
 
 def test_a_missing_manager_file_fails_and_names_it() -> None:
-    check = manager_check("pre-push", manager(text=None))
+    check = manager_check("pre-push", manager(content=None))
 
     assert check.status == "fail"
     assert ".pre-commit-config.yaml" in check.text
@@ -126,14 +126,14 @@ def test_a_file_without_the_block_for_this_hook_fails() -> None:
 
 
 def test_a_block_that_is_never_closed_fails_with_the_reason() -> None:
-    check = manager_check("pre-push", manager(text="# prepush-ci: begin\nx\n"))
+    check = manager_check("pre-push", manager(content="# prepush-ci: begin\nx\n"))
 
     assert check.status == "fail"
     assert "begin" in check.text
 
 
 def test_the_fix_names_install_without_the_option_for_a_detected_manager() -> None:
-    check = manager_check("pre-push", manager(text=None))
+    check = manager_check("pre-push", manager(content=None))
 
     assert check.fix is not None
     assert check.fix.startswith("run `prepush-ci install`;")
@@ -141,7 +141,7 @@ def test_the_fix_names_install_without_the_option_for_a_detected_manager() -> No
 
 
 def test_the_fix_names_the_option_for_a_named_manager_and_no_native_hint() -> None:
-    check = manager_check("pre-push", manager(text=None, detected=False))
+    check = manager_check("pre-push", manager(content=None, detected=False))
 
     assert check.fix == "run `prepush-ci install --hooks pre-commit`"
 
@@ -160,7 +160,7 @@ def test_a_manager_that_is_not_activated_names_the_step() -> None:
 
 def test_a_hook_script_that_is_not_executable_is_not_an_activation() -> None:
     check = manager_check(
-        "pre-push", manager(installed=Script(exists=True, text="pre-commit"))
+        "pre-push", manager(installed=Script(exists=True, content="pre-commit"))
     )
 
     assert check.status == "fail"
@@ -168,7 +168,7 @@ def test_a_hook_script_that_is_not_executable_is_not_an_activation() -> None:
 
 
 def test_a_hook_script_that_does_not_name_the_manager_is_not_an_activation() -> None:
-    script = Script(exists=True, executable=True, text="#!/bin/sh\necho mine\n")
+    script = Script(exists=True, executable=True, content="#!/bin/sh\necho mine\n")
 
     check = manager_check("pre-push", manager(installed=script))
 

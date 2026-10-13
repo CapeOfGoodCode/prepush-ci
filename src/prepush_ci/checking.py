@@ -1,9 +1,9 @@
 """The steps `run` and the pre-push hook share: what must hold before the check, and the check."""
 
-import subprocess
 import sys
 from pathlib import Path
 
+from prepush_ci import text_io
 from prepush_ci.core.config import Config
 from prepush_ci.core.pre_push import message_dirty, message_hidden
 from prepush_ci.git import dirty, git, hidden
@@ -36,16 +36,14 @@ def worktree_root(cwd: Path) -> Path:
         raise Refused(
             "the repository has no worktree, so there is no commit to check here"
         )
-    return Path(result.stdout.strip())
+    return text_io.to_path(result.stdout.strip())
 
 
 def run_check(config: Config, root: Path) -> int:
-    outcome = subprocess.run(
-        config.check, shell=True, cwd=root, stdin=subprocess.DEVNULL, check=False
-    )
-    if outcome.returncode != 0:
+    status = text_io.run_shell(config.check, cwd=root)
+    if status != 0:
         print(
-            f"prepush-ci: the check failed (exit {outcome.returncode}): {config.check}",
+            f"prepush-ci: the check failed (exit {status}): {config.check}",
             file=sys.stderr,
         )
         return 1

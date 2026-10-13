@@ -1,12 +1,11 @@
 """`prepush-ci doctor`: look at what git would run and say what is missing, changing nothing."""
 
 import os
-import subprocess
 import sys
-import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 
+from prepush_ci import text_io
 from prepush_ci.core import doctor, doctor_hooks
 from prepush_ci.core.config import Config, ConfigError
 from prepush_ci.core.config_source import PREPUSH_CI_FILE, PYPROJECT_FILE, ConfigMissing
@@ -44,8 +43,8 @@ def run(
     if top.returncode != 0:
         print(doctor.NO_WORKTREE, file=sys.stderr)
         return 1
-    root = (cwd / top.stdout.strip()).resolve()
-    common = (cwd / common_dir.stdout.strip()).resolve()
+    root = (cwd / text_io.to_path(top.stdout.strip())).resolve()
+    common = (cwd / text_io.to_path(common_dir.stdout.strip())).resolve()
     commit_msg, pre_push = _hook_checks(cwd, root, common, hooks)
     config, config_check = _config(root)
     found = {
@@ -70,7 +69,7 @@ def _config(root: Path) -> tuple[Config | None, doctor.Check]:
         return None, doctor.config_check(None, error.problems, missing=True)
     except ConfigError as error:
         return None, doctor.config_check(source, error.problems, missing=False)
-    except (OSError, UnicodeDecodeError) as error:
+    except OSError as error:
         problem = f"cannot read {source}: {error}"
         return None, doctor.config_check(source, [problem], missing=False)
     return config, doctor.config_check(source, [], missing=False)
@@ -96,19 +95,7 @@ def _run_preflight(command: str, root: Path, env: Mapping[str, str]) -> tuple[in
     The output goes to an unnamed temporary file, not a pipe: a process the command leaves
     running keeps a pipe open and would hold `doctor`, while the hook returns at once.
     """
-    with tempfile.TemporaryFile() as output:
-        outcome = subprocess.run(
-            command,
-            shell=True,
-            cwd=root,
-            env=dict(env),
-            stdin=subprocess.DEVNULL,
-            stdout=output,
-            stderr=subprocess.STDOUT,
-            check=False,
-        )
-        output.seek(0)
-        return outcome.returncode, output.read().decode(errors="replace")
+    return text_io.run_shell_captured(command, cwd=root, env=env)
 
 
 def _up_to_date(
@@ -181,31 +168,32 @@ def _hooks_path(cwd: Path, root: Path) -> tuple[str, Path] | None:
     value = configured.stdout.strip()
     if configured.returncode != 0 or not value:
         return None
-    return value, (root / value).resolve()
+    return value, (root / text_io.to_path(value)).resolve()
 
 
 def _script(path: Path) -> Script:
     if not path.is_file():
         return Script(exists=False)
     try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):  # a binary hook is still a hook git runs
+        text = text_io.read_text(path)
+    except OSError:  # a hook that cannot be read is still a hook git runs
         text = ""
-    return Script(exists=True, executable=os.access(path, os.X_OK), text=text)
+    return Script(exists=True, executable=os.access(path, os.X_OK), content=text)
 
 
 def _native_facts(cwd: Path, root: Path, common: Path) -> NativeFacts:
     directory = common.joinpath(*HOOKS_DIRECTORY)
     configured = _hooks_path(cwd, root)
     interpreter = _script(directory / PYTHON_FILE)
-    recorded = interpreter.text.strip() if interpreter.exists else None
+    recorded = interpreter.content.strip() if interpreter.exists else None
     return NativeFacts(
         configured=configured[0] if configured else None,
         ours=configured is not None and configured[1] == directory,
-        directory=directory.as_posix(),
+        directory=text_io.text_of(directory),
         scripts={hook: _script(directory / hook) for hook in HOOKS},
         interpreter=recorded,
-        interpreter_exists=recorded is not None and os.access(recorded, os.X_OK),
+        interpreter_exists=recorded is not None
+        and os.access(text_io.to_os(recorded), os.X_OK),
     )
 
 
@@ -225,30 +213,30 @@ def _manager_facts(
 ) -> ManagerFacts:
     name = _manager_file(root, manager, hook)
     try:
-        text: str | None = (root / name).read_text(encoding="utf-8")
+        text: str | None = text_io.read_text(root / name)
     except FileNotFoundError:
         text = None
-    except (OSError, UnicodeDecodeError):  # unreadable: it holds no block we could find
+    except OSError:  # unreadable: it holds no block we could find
         text = ""
     configured = _hooks_path(cwd, root)
     if configured is not None:
         directory = configured[1]
         inside = (
-            directory.relative_to(root).as_posix()
+            text_io.text_of(directory.relative_to(root))
             if directory.is_relative_to(root)
             else None
         )
-        shown = inside or configured[1].as_posix()
+        shown = inside or text_io.text_of(configured[1])
     else:
         git_path = git(cwd, "rev-parse", "--git-path", "hooks").stdout.strip()
-        directory = (cwd / git_path).resolve()
+        directory = (cwd / text_io.to_path(git_path)).resolve()
         shown = None
     return ManagerFacts(
         manager=manager,
         detected=detected,
         file=name,
-        text=text,
+        content=text,
         hooks_path=shown,
-        hooks_directory=directory.as_posix(),
+        hooks_directory=text_io.text_of(directory),
         installed=_script(directory / hook),
     )

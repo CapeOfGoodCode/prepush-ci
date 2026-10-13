@@ -49,7 +49,7 @@ def encode(text: str) -> bytes:
 def decode_utf8(data: bytes, name: str) -> str:
     """The text of a file the tool parses; `NotUtf8` naming `name` when it is not UTF-8."""
     try:
-        return data.decode(CODEC)
+        return _universal(data.decode(CODEC))
     except UnicodeDecodeError as error:
         raise NotUtf8(name) from error
 
@@ -111,7 +111,7 @@ def read_text(path: Path, *, keep_line_ends: bool = False) -> str:
 
 def read_utf8(path: Path, name: str) -> str:
     """The text of a file the tool parses; `NotUtf8` naming `name` when it is not UTF-8."""
-    return _universal(decode_utf8(path.read_bytes(), name))
+    return decode_utf8(path.read_bytes(), name)
 
 
 def write_text(path: Path, text: str) -> None:
@@ -165,7 +165,11 @@ def run(
         capture_output=True,
         check=False,
     )
-    return Completed(done.returncode, decode(done.stdout), decode(done.stderr))
+    return Completed(
+        done.returncode,
+        _universal(decode(done.stdout)),
+        _universal(decode(done.stderr)),
+    )
 
 
 def run_shell(command: str, *, cwd: Path, env: Mapping[str, str] | None = None) -> int:

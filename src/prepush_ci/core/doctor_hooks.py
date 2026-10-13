@@ -23,7 +23,7 @@ class Script:
 
     exists: bool
     executable: bool = False
-    text: str = ""
+    content: str = ""
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,7 @@ class ManagerFacts:
     manager: str
     detected: bool  # found from its files, not named with `--hooks`
     file: str  # the file `install` edits for this hook, relative to the worktree root
-    text: str | None  # its contents; None when it does not exist
+    content: str | None  # its contents; None when it does not exist
     hooks_path: (
         str | None
     )  # the effective `core.hooksPath`, relative to the root when inside it
@@ -108,10 +108,10 @@ def _manager_problem(hook: str, facts: ManagerFacts) -> tuple[str, str] | None:
         if facts.detected
         else f"run `prepush-ci install --hooks {manager}`"
     )
-    if facts.text is None:
+    if facts.content is None:
         return f"{facts.file} does not exist", install
     try:
-        block = find_block(split_lines(facts.text)[0], f"prepush-ci hook {hook}")
+        block = find_block(split_lines(facts.content)[0], f"prepush-ci hook {hook}")
     except Refusal as refusal:
         return f"{facts.file}: {refusal}", install
     if block is None:
@@ -143,7 +143,7 @@ def _activation_problem(hook: str, facts: ManagerFacts) -> tuple[str, str] | Non
         reason = "does not exist"
     elif not script.executable:
         reason = "is not executable"
-    elif _NAMED_IN_SCRIPT[manager] not in script.text:
+    elif _NAMED_IN_SCRIPT[manager] not in script.content:
         reason = f"does not run {manager}"
     else:
         return None

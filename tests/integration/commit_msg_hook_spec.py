@@ -916,3 +916,27 @@ def test_an_unchanged_commit_template_that_is_not_utf8_aborts_the_commit_in_full
 
     assert_commit_aborted(hooked_repo, git, result)
     assert "did not edit the message" in result.stderr
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="a directory is made read-only with chmod, which Windows and root ignore",
+)
+def test_a_message_git_cannot_rewrite_stops_the_commit_with_one_line_and_no_traceback(
+    hooked_repo: Path, tmp_path: Path
+) -> None:
+    directory = tmp_path / "locked"
+    directory.mkdir()
+    message_file = directory / "MSG"
+    message_file.write_text("add x\n")
+    directory.chmod(0o555)
+    try:
+        result = run_hook(message_file, mode="full", cwd=hooked_repo)
+    finally:
+        directory.chmod(0o755)  # so that the temporary directory can be removed
+
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
+    assert len(result.stderr.strip().splitlines()) == 1
+    assert result.stderr.startswith("prepush-ci: `git interpret-trailers` failed")
+    assert message_file.read_text() == "add x\n"

@@ -113,7 +113,7 @@ def test_a_config_file_that_is_not_text_fails_instead_of_crashing(repo: Path) ->
     result = doctor(repo)
 
     assert status(result, "config") == "fail"
-    assert "cannot read .prepush-ci.toml" in line(result, "config")
+    assert ".prepush-ci.toml is not valid UTF-8" in line(result, "config")
     assert "Traceback" not in result.stderr
 
 

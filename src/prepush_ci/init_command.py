@@ -4,18 +4,15 @@ import contextlib
 import io
 import sys
 from dataclasses import dataclass
-from importlib import resources
 from pathlib import Path
-from typing import TextIO
 
-from prepush_ci import install_command
+from prepush_ci import install_command, text_io
 from prepush_ci.core.config import REMOTE, ConfigError
 from prepush_ci.core.config_source import (
     PREPUSH_CI_FILE,
     PYPROJECT_FILE,
     PYPROJECT_TABLE,
     ConfigMissing,
-    load_config,
 )
 from prepush_ci.core.hook_managers import Refusal
 from prepush_ci.core.init import (
@@ -51,6 +48,7 @@ from prepush_ci.core.init import (
     validate,
 )
 from prepush_ci.git import git
+from prepush_ci.repo_config import load_repository_config
 
 
 @dataclass(frozen=True)
@@ -85,21 +83,19 @@ class _Plan:
     gate_file: tuple[str, Path] | None
 
 
-def run(options: Options, cwd: Path, stdin: TextIO | None = None) -> int:
+def run(options: Options, cwd: Path) -> int:
     root = _worktree_root(cwd)
     if root is None:
         print(NO_REPOSITORY, file=sys.stderr)
         return 1
     try:
-        plan = _plan(options, cwd, root, sys.stdin if stdin is None else stdin)
+        plan = _plan(options, cwd, root)
     except _Stop as stop:
         print(stop, file=sys.stderr)
         return stop.code
     changed = False
     if plan.config_text is not None:
-        (root / PREPUSH_CI_FILE).write_text(
-            plan.config_text, encoding="utf-8", newline="\n"
-        )
+        text_io.write_text(root / PREPUSH_CI_FILE, plan.config_text)
         print(f"written: {PREPUSH_CI_FILE}")
         changed = True
     else:
@@ -120,12 +116,10 @@ def run(options: Options, cwd: Path, stdin: TextIO | None = None) -> int:
     return 0
 
 
-def _plan(options: Options, cwd: Path, root: Path, stdin: TextIO) -> _Plan:
+def _plan(options: Options, cwd: Path, root: Path) -> _Plan:
     """Read the repository, ask the questions, and refuse whatever cannot work; no write."""
     try:
-        config = load_config(
-            _read(root / PREPUSH_CI_FILE), _read(root / PYPROJECT_FILE)
-        )
+        config = load_repository_config(root)
     except ConfigMissing:
         config = None
     except ConfigError as error:
@@ -138,11 +132,11 @@ def _plan(options: Options, cwd: Path, root: Path, stdin: TextIO) -> _Plan:
     if not options.non_interactive:
         try:
             if config is None:
-                flags = _ask_config(flags, root, stdin)
+                flags = _ask_config(flags, root)
             if hooks is None:
-                hooks = _ask_hooks(root, cwd, stdin)
+                hooks = _ask_hooks(root, cwd)
             if session_hook:
-                session_hook = parse_yes_no(_ask(stdin, SESSION_QUESTION))
+                session_hook = parse_yes_no(_ask(SESSION_QUESTION))
         except (Refusal, install_command.Unreadable) as refusal:
             raise _Stop(f"prepush-ci init: {refusal}") from refusal
     text = None
@@ -162,15 +156,15 @@ def _plan(options: Options, cwd: Path, root: Path, stdin: TextIO) -> _Plan:
             raise _Stop(lacking)
     settings_old = settings_new = None
     if session_hook:
-        settings_old = _read(root / SETTINGS_FILE)
         try:
+            settings_old = _read(root / SETTINGS_FILE, strict=SETTINGS_FILE)
             settings_new = register_session_hook(settings_old)
-        except SettingsError as error:
+        except (SettingsError, text_io.NotUtf8) as error:
             raise _Stop(f"prepush-ci init: {error}") from error
     gate = _gate(options.ci, root)
     gate_file = None
     if gate is not None and options.ci_gate_file is not None:
-        gate_file = (options.ci_gate_file, cwd / options.ci_gate_file)
+        gate_file = (options.ci_gate_file, cwd / text_io.to_path(options.ci_gate_file))
         other = _read(gate_file[1])
         if other is not None and other != gate[1]:
             raise _Stop(
@@ -189,16 +183,16 @@ def _plan(options: Options, cwd: Path, root: Path, stdin: TextIO) -> _Plan:
     )
 
 
-def _ask(stdin: TextIO, prompt: str) -> str:
+def _ask(prompt: str) -> str:
     """Show the question and read one line; the end of the input ends `init`."""
     print(prompt, flush=True)
-    line = stdin.readline()
+    line = text_io.stdin_line()
     if not line:
         raise _Stop(NO_INPUT)
     return line.strip()
 
 
-def _ask_config(flags: ConfigFlags, root: Path, stdin: TextIO) -> ConfigFlags:
+def _ask_config(flags: ConfigFlags, root: Path) -> ConfigFlags:
     """Ask for each config value no flag gave, with the default the repository suggests."""
     check = default_check(
         scripts_ci=(root / "scripts" / "ci").is_file(),
@@ -211,25 +205,23 @@ def _ask_config(flags: ConfigFlags, root: Path, stdin: TextIO) -> ConfigFlags:
     answers: dict[str, str] = {}
     for key in pending(flags):
         default = default_for(key, flags, answers, check, branch)
-        answers[key] = _ask(
-            stdin, f"{labels[key]} [{default}]" if default else labels[key]
-        )
+        answers[key] = _ask(f"{labels[key]} [{default}]" if default else labels[key])
     return flags_from_answers(flags, answers, check, branch)
 
 
-def _ask_hooks(root: Path, cwd: Path, stdin: TextIO) -> str:
+def _ask_hooks(root: Path, cwd: Path) -> str:
     """Ask what to do about hooks, naming what is there already."""
     managers = install_command.found_files(root)
     hook = install_command.previous_pre_push(cwd)
     previous = None
     if hook is not None:
         try:
-            previous = hook.relative_to(root.resolve()).as_posix()
+            previous = text_io.text_of(hook.relative_to(root.resolve()))
         except ValueError:  # a hooks directory outside the worktree
-            previous = hook.as_posix()
+            previous = text_io.text_of(hook)
     default = hooks_default(list(managers))
     prompt = hooks_prompt(list(managers.values()), previous, default)
-    return parse_hooks(_ask(stdin, prompt), default)
+    return parse_hooks(_ask(prompt), default)
 
 
 def _gate(ci: str | None, root: Path) -> tuple[str, str] | None:
@@ -239,11 +231,7 @@ def _gate(ci: str | None, root: Path) -> tuple[str, str] | None:
     )
     if system == "none":
         return None
-    text = (
-        resources.files("prepush_ci")
-        .joinpath("ci_gates", CI_FILES[system])
-        .read_text(encoding="utf-8")
-    )
+    text = text_io.packaged_text("prepush_ci", "ci_gates", CI_FILES[system])
     return system, text if text.endswith("\n") else text + "\n"
 
 
@@ -253,7 +241,7 @@ def _gate_file(name: str, target: Path, text: str) -> bool:
         print(f"kept: {name}")
         return False
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(text, encoding="utf-8", newline="\n")
+    text_io.write_text(target, text)
     print(f"written: {name}")
     return True
 
@@ -273,7 +261,7 @@ def _settings(root: Path, old: str | None, new: str | None) -> bool:
         return False
     path = root / SETTINGS_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(new, encoding="utf-8", newline="\n")
+    text_io.write_text(path, new)
     print(f"{'written' if old is None else 'updated'}: {SETTINGS_FILE}")
     return True
 
@@ -285,7 +273,7 @@ def _session_hook(root: Path, hooks: str | None) -> bool:
         print(f"kept: {SESSION_HOOK_FILE}")
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(session_start_script(hooks), encoding="utf-8", newline="\n")
+    text_io.write_text(path, session_start_script(hooks))
     path.chmod(0o755)
     print(f"written: {SESSION_HOOK_FILE}")
     return True
@@ -325,11 +313,15 @@ def _origin_fetch(root: Path) -> list[str]:
 
 def _worktree_root(cwd: Path) -> Path | None:
     top = git(cwd, "rev-parse", "--show-toplevel")
-    return Path(top.stdout.strip()) if top.returncode == 0 else None
+    return text_io.to_path(top.stdout.strip()) if top.returncode == 0 else None
 
 
-def _read(path: Path) -> str | None:
+def _read(path: Path, *, strict: str | None = None) -> str | None:
+    """The text of a file, None when it does not exist. `strict` is the name of a file the tool
+    parses: it must be UTF-8, else `NotUtf8` names it."""
     try:
-        return path.read_text(encoding="utf-8")
+        if strict is None:
+            return text_io.read_text(path)
+        return text_io.read_utf8(path, strict)
     except FileNotFoundError:
         return None
