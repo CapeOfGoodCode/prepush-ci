@@ -71,8 +71,9 @@ The rulebook for everyone who changes this repository, human or agent. `README.m
 
 ## Quality gates
 
-- **`scripts/ci` is the full check**: ruff, format, `mypy --strict`, pytest, OpenSpec validation. The pre-push hook and CI run the same script, so they cannot drift. Run it before you ask for review.
-- **Hooks**: `uv run pre-commit install` installs commit-msg (commit-check), pre-commit (ruff) and pre-push (`scripts/ci`). Claude Code also runs ruff after every edit and blocks a few dangerous commands (`.claude/hooks/`).
+- **`scripts/ci` is the full check**: ruff, format, `mypy --strict`, pytest, OpenSpec validation. CI runs it, on Linux and Windows, on every ready pull request and again in the merge queue. `scripts/ci --fast` is the same without the tests.
+- **The suite runs once per commit, on GitHub.** Locally, run the specs your change touches while you work (`uv run pytest tests/…`); don't run the full suite before pushing, and never twice on the same commit. A red CI run is the finding: read its log (`gh run view --log-failed`), fix, push.
+- **Hooks**: `uv run pre-commit install` installs commit-msg (commit-check), pre-commit (ruff) and pre-push (`scripts/ci --fast`). Claude Code also runs ruff after every edit and blocks a few dangerous commands (`.claude/hooks/`).
 - **Never bypass hooks** (`--no-verify`).
 
 ## Working in this repository

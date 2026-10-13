@@ -7,7 +7,7 @@ This repository is built by five AI loops and one human. This page lists the pra
 | Practice (loop-engineering) | Here |
 | --- | --- |
 | A `LOOP.md` as the loops' contract | [`LOOP.md`](../LOOP.md): roles, flow, labels, proof, rules, kill switch, budget |
-| An `AGENTS.md` with build and test commands (design checklist §3) | [`AGENTS.md`](../AGENTS.md); [`scripts/ci`](../scripts/ci) is the one full check, run by the pre-push hook and CI alike |
+| An `AGENTS.md` with build and test commands (design checklist §3) | [`AGENTS.md`](../AGENTS.md); [`scripts/ci`](../scripts/ci) is the one full check CI runs; the pre-push hook runs its `--fast` part |
 | Maker and checker are separate; the verifier rejects by default and tests in isolation (anti-pattern 1, checklist §4) | The reviewer loop never commits, defaults to REJECT, reviews a fresh clone, runs the check and reproduces the proof itself, on a stronger setting than the builder |
 | An attempt cap that escalates (anti-pattern 2) | Three strikes: the third REJECT becomes an ESCALATE with `needs-human` |
 | Structured triage output (anti-pattern 3) | Triage sets an issue type and exactly one label, nothing else |
