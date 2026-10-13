@@ -12,7 +12,7 @@
 
 - [x] 3.1 Verify with an integration spec that a block written by the previous version is replaced, `updated` is printed and the lines outside it are kept
 - [x] 3.2 Adjust the unit and integration specs that assert the unguarded entry text (`tests/unit/hook_managers_spec.py`, `tests/integration/install_managers_spec.py`) to the MODIFIED requirements: they check that the entry contains `prepush-ci hook <name>`, and the scenarios with the tool found still run it end to end
-- [ ] 3.3 Run `sh scripts/ci` and verify it passes, with the pre-commit scenarios run for real on `check-windows`, not skipped
+- [x] 3.3 Run `sh scripts/ci` and verify it passes, with the pre-commit scenarios run for real on `check-windows`, not skipped
 
 ## Workflow follow-up
 
