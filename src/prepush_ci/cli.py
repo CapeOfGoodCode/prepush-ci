@@ -14,6 +14,7 @@ from prepush_ci import (
     install_command,
     pre_push_hook,
     run_command,
+    skill_command,
     strip_command,
     verify_command,
 )
@@ -138,7 +139,17 @@ def main(argv: list[str] | None = None) -> int:
         nargs="*",
         help="the commit before yours (default: the merge base with the default branch)",
     )
+    skill = commands.add_parser(
+        "skill", help="print the setup skill of this version for an agent to follow"
+    )
+    skill.add_argument(
+        "--write",
+        action="store_true",
+        help="write it to .claude/skills/prepush-ci-setup/SKILL.md of the repository",
+    )
     args = parser.parse_args(args_in)
+    if args.command == "skill":
+        return skill_command.run(args.write, Path.cwd())
     if args.command == "strip":
         return strip_command.run(args.base, Path.cwd())
     if args.command == "run":

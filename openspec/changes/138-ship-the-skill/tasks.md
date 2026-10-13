@@ -2,8 +2,8 @@
 
 ## 1. The command
 
-- [ ] 1.1 Add `prepush-ci skill`: print the skill as bytes, from the source checkout when it has the file, else from the installed distribution's data file, else exit 1 with the message (the choice of source is pure logic in `core/`, the lookup does the I/O); verify with specs for the output equal to the file, the help listing, the lookup order and the missing file
-- [ ] 1.2 Add `--write`: write `.claude/skills/prepush-ci-setup/SKILL.md` at the root of the working tree, creating the directories, replacing an existing file, refusing outside a git repository; verify with specs for a new file, a replaced one, a subdirectory, a linked worktree, outside a repository and a non-ASCII path under an ASCII locale
+- [x] 1.1 Add `prepush-ci skill`: print the skill as bytes, from the source checkout when it has the file, else from the installed distribution's data file, else exit 1 with the message (the choice of source is pure logic in `core/`, the lookup does the I/O); verify with specs for the output equal to the file, the help listing, the lookup order and the missing file
+- [x] 1.2 Add `--write`: write `.claude/skills/prepush-ci-setup/SKILL.md` at the root of the working tree, creating the directories, replacing an existing file, refusing outside a git repository; verify with specs for a new file, a replaced one, a subdirectory, a linked worktree, outside a repository and a non-ASCII path under an ASCII locale
 
 ## 2. The wheel
 

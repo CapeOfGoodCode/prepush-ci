@@ -155,10 +155,13 @@ def test_the_shipped_reference_is_complete(invocations: Any) -> None:
     assert reference_problems(shipped(), invocations) == []
 
 
-def test_a_command_left_out_of_the_reference_is_reported(invocations: Any) -> None:
-    text = reference(invocations, without="doctor")
+@pytest.mark.parametrize("command", ["doctor", "skill"])
+def test_a_command_left_out_of_the_reference_is_reported(
+    invocations: Any, command: str
+) -> None:
+    text = reference(invocations, without=command)
 
-    assert reference_problems(text, invocations) == ["doctor has no entry"]
+    assert reference_problems(text, invocations) == [f"{command} has no entry"]
 
 
 def test_a_flag_left_out_of_its_entry_is_reported_as_missing_from_the_command(
@@ -177,12 +180,13 @@ def test_an_entry_without_a_synopsis_is_reported(invocations: Any) -> None:
     assert reference_problems(text, invocations) == ["strip has no synopsis"]
 
 
-def test_the_reference_lists_the_eight_commands(invocations: Any) -> None:
+def test_the_reference_lists_the_nine_commands(invocations: Any) -> None:
     assert command_names(invocations) == [
         "doctor",
         "init",
         "install",
         "run",
+        "skill",
         "strip",
         "verify",
         "hook commit-msg",

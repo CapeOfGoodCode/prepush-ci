@@ -195,6 +195,20 @@ prepush-ci doctor --mode full
 
 **Exit status:** 0 means every check passed, 1 means at least one did not.
 
+### `skill`
+
+Prints the setup skill of the installed version, for an agent to follow; with `--write` it saves it as the project skill. Run it to have an agent set a repository up with the skill that matches your version.
+
+```
+prepush-ci skill [--write]
+```
+
+```sh
+prepush-ci skill --write
+```
+
+**Exit status:** 0 means it printed or wrote the skill, 1 means it could not (the skill is not part of this installation, `--write` ran outside a git repository, or the project skill file cannot be written).
+
 ## PREPUSH_CI
 
 The environment variable `PREPUSH_CI` decides what commits get:
