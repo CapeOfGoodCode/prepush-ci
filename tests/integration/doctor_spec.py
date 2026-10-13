@@ -1250,3 +1250,18 @@ def test_a_config_message_quoting_a_non_ascii_key_is_reported_when_stdout_is_asc
     # `?` where the terminal cannot show the É (a Windows console may print it)
     assert any(f"unknown{c}" in line(result, "config") for c in "?É")
     assert result.returncode == 1
+
+
+def test_doctor_reports_a_repository_whose_path_has_a_non_ascii_character_under_an_ascii_locale(
+    tmp_path: Path, git: Git
+) -> None:
+    where = tmp_path / "dé"
+    where.mkdir()
+    git(where, "init", "-q")
+    (where / ".prepush-ci.toml").write_text(CONFIG)
+    ascii_only = {"LC_ALL": "C", "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0"}
+
+    result = doctor(where, "--hooks", "none", env=ascii_only)
+
+    assert "Traceback" not in result.stderr
+    assert status(result, "config") == "ok"

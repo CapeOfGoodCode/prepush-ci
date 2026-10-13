@@ -269,3 +269,22 @@ def test_run_records_the_commit_it_checked_when_the_check_makes_a_commit(
     assert result.returncode == 0, result.stderr
     assert git(repo, "rev-parse", "HEAD").stdout.strip() != checked
     assert [p.read_text().split()[0] for p in records(repo)] == [checked]
+
+
+def test_run_works_in_a_repository_whose_path_has_a_non_ascii_character_under_an_ascii_locale(
+    tmp_path: Path, git: Git, log: Path
+) -> None:
+    where = tmp_path / "dé"
+    where.mkdir()
+    git(where, "init", "-q")
+    git(where, "config", "user.name", "Test")
+    git(where, "config", "user.email", "test@example.com")
+    git(where, "config", "commit.gpgsign", "false")
+    configure(where, git, log)
+    ascii_only = {"LC_ALL": "C", "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0"}
+
+    result = run_cli(where, env=ascii_only)
+
+    assert "Traceback" not in result.stderr
+    assert result.returncode == 0, result.stderr
+    assert ran(log) == ["check"]

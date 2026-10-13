@@ -1,6 +1,7 @@
 """Read a commit through git: the shared I/O of the commands that decide about a commit."""
 
 import subprocess
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -21,14 +22,17 @@ class GitError(Exception):
 def git(
     cwd: Path, *args: str, env: Mapping[str, str] | None = None
 ) -> "subprocess.CompletedProcess[str]":
-    """Run git; `env` replaces the environment (None: inherit it)."""
+    """Run git; `env` replaces the environment (None: inherit it). The output is decoded the way
+    the operating system decodes a path (`os.fsdecode`), so that a path git prints is one the
+    process can open again, whatever the locale is."""
     return subprocess.run(
         ["git", *args],
         cwd=cwd,
         env=env,
         capture_output=True,
         text=True,
-        errors="replace",
+        encoding=sys.getfilesystemencoding(),
+        errors="surrogateescape",
         check=False,
     )
 
