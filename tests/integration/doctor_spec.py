@@ -1218,3 +1218,15 @@ def test_doctor_does_not_fetch(ready: Path, tmp_path: Path, git: Git) -> None:
     doctor(ready, env=FULL)
 
     assert git(ready, "rev-parse", "origin/main").stdout == tracking
+
+
+def test_a_config_with_an_empty_required_variable_name_fails_naming_the_key(
+    repo: Path,
+) -> None:
+    (repo / ".prepush-ci.toml").write_text('check = "true"\nrequire_env = [""]\n')
+
+    result = doctor(repo)
+
+    assert status(result, "config") == "fail"
+    assert "`require_env`" in line(result, "config")
+    assert status(result, "preflight") == "skip"

@@ -3,7 +3,13 @@ from typing import Any
 
 import pytest
 
-from prepush_ci.core.config import Config, ConfigError, Trailer, parse_config
+from prepush_ci.core.config import (
+    Config,
+    ConfigError,
+    Trailer,
+    is_env_name,
+    parse_config,
+)
 
 
 def problems_of(table: Mapping[str, Any]) -> list[str]:
@@ -211,3 +217,84 @@ def test_a_trailer_value_that_is_empty_multi_line_or_padded_is_reported(
 
     assert len(problems) == 1
     assert "`trailer.value`" in problems[0]
+
+
+def reported(name: str) -> str:
+    """The one problem that a config with `require_env = [name]` has."""
+    problems = problems_of({"check": "true", "require_env": [name]})
+
+    assert len(problems) == 1
+    assert "`require_env`" in problems[0]
+    assert repr(name) in problems[0]
+    return problems[0]
+
+
+def test_an_empty_name_in_require_env_is_reported_with_the_key_and_the_entry() -> None:
+    reported("")
+
+
+def test_a_name_with_whitespace_in_require_env_is_reported_with_the_key_and_the_entry() -> (
+    None
+):
+    reported("DATABASE URL")
+
+
+def test_names_with_a_hyphen_or_a_dot_in_require_env_are_reported_with_the_key_and_both() -> (
+    None
+):
+    problems = problems_of({"check": "true", "require_env": ["MY-VAR", "A.B"]})
+
+    assert len(problems) == 2
+    assert all("`require_env`" in problem for problem in problems)
+    assert "'MY-VAR'" in problems[0] and "'A.B'" in problems[1]
+
+
+def test_a_name_starting_with_a_digit_in_require_env_is_reported_with_the_entry() -> (
+    None
+):
+    reported("1A")
+
+
+def test_a_name_with_an_equals_sign_in_require_env_is_reported_with_the_entry() -> None:
+    reported("DATABASE_URL=x")
+
+
+def test_one_bad_name_among_good_ones_is_reported_with_an_unknown_key() -> None:
+    problems = problems_of(
+        {"check": "true", "require_env": ["DATABASE_URL", "", "_TOKEN1"], "foo": 1}
+    )
+
+    assert len(problems) == 2
+    assert any("`foo`" in problem for problem in problems)
+    assert sum("`require_env`" in problem for problem in problems) == 1
+
+
+def test_valid_names_in_require_env_load_exactly_as_given() -> None:
+    config = parse_config(
+        {"check": "true", "require_env": ["DATABASE_URL", "_TOKEN1", "a"]}
+    )
+
+    assert config.require_env == ("DATABASE_URL", "_TOKEN1", "a")
+
+
+@pytest.mark.parametrize(
+    ("name", "valid"),
+    [
+        ("DATABASE_URL", True),
+        ("_X1", True),
+        ("a", True),
+        ("", False),
+        ("A=1", False),
+        ("=A", False),
+        ("A B", False),
+        ("MY-VAR", False),
+        ("A.B", False),
+        ("1A", False),
+        ("A\n", False),
+        ("ÄB", False),
+    ],
+)
+def test_a_variable_name_is_valid_only_in_the_portable_form(
+    name: str, valid: bool
+) -> None:
+    assert is_env_name(name) is valid

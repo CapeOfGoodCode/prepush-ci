@@ -11,6 +11,8 @@ DEFAULT_BRANCH = "main"
 REMOTE = "origin"
 
 _TRAILER_TOKEN = re.compile(r"[A-Za-z0-9-]+")
+# The pre-push hook runs under `sh`, and dash drops a variable whose name is not a shell identifier.
+_ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _KEYS = (
     "check",
     "preflight",
@@ -57,6 +59,11 @@ def is_trailer_token(text: str) -> bool:
     return _TRAILER_TOKEN.fullmatch(text) is not None
 
 
+def is_env_name(text: str) -> bool:
+    """A name that the hook, `doctor` and `run` all see the same way: a shell identifier."""
+    return _ENV_NAME.fullmatch(text) is not None
+
+
 def is_trailer_value(text: str) -> bool:
     return bool(text) and text == text.strip() and "\n" not in text and "\r" not in text
 
@@ -97,6 +104,12 @@ def parse_config(table: Mapping[str, Any]) -> Config:
         "default_branch", table.get("default_branch"), default=DEFAULT_BRANCH
     )
     require_env = strings("require_env", table.get("require_env"))
+    problems.extend(
+        f"`require_env` contains {name!r}, which is not a valid environment variable "
+        "name (it must start with a letter or `_` and hold only letters, digits and `_`)"
+        for name in require_env
+        if not is_env_name(name)
+    )
     legacy_keys = strings("legacy_keys", table.get("legacy_keys"))
     problems.extend(
         f"`legacy_keys` contains {key!r}, which is not a valid trailer key "
