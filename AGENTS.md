@@ -28,6 +28,7 @@ The rulebook for everyone who changes this repository, human or agent. `README.m
 
 - **Behavior is specified before it is built.** A feature or a behavior-changing bug fix is an OpenSpec change named `<issue>-<name>` (e.g. `openspec new change 4-pre-push-hook`); `proposal.md` starts with `Issue: #<n>`. Use the `/opsx:*` commands or the `openspec-*` skills.
 - **Specs use SHALL and scenarios** (`#### Scenario:` with WHEN/THEN). Every scenario is covered by at least one test whose name says the same thing.
+- **Docs say only what is pinned or run.** A sentence in `README.md`, `SKILL.md` or `docs/` that says what prepush-ci does, prints or exits with names, in the change's `design.md`, the requirement in `openspec/specs/` that pins it; one that no requirement pins is run against the head before review, with the command and its output. A sentence neither backs is cut. This holds for the spec that asks for the text and for the text the builder writes.
 - **Archive before merge.** The implementation pull request ends with archiving its change (`openspec archive <change>`), so specs in `openspec/specs/` always describe `main`.
 - `npx openspec validate --all --strict` must pass (part of `scripts/ci`).
 
