@@ -1,0 +1,9 @@
+## Decisions
+
+- **Alpha, not Beta and not Pre-Alpha.** 0.1.0 is released and its checks pass, so Pre-Alpha understates it; but it is not yet run on a team repository (dogfooding comes after the first release), so Beta would claim more than is true. Rationale: the classifier is a promise to someone deciding whether to install; Beta when it is lived. The maintainer can overrule at review.
+- **The status box goes, nothing replaces it.** A sentence saying what stage the tool is at would need a requirement that pins it, and the classifier already says it. Rationale: AGENTS.md, "Docs say only what is pinned or run".
+- **The removed requirement is replaced by a negative one.** "The README says nothing of an unreleased state" fixes the four strings so the wording cannot creep back. Rationale: a removed requirement leaves nothing a test can hold.
+- **The classifier is a task, not a requirement.** No capability covers package metadata; adding one for a single trove line is more spec than the line is worth. Rationale: small and reviewable by reading the diff.
+- **`LOOP.md` line 121 stays.** It tells the loops to install from git as users will until the first PyPI release, a harness text outside this change; mr-miyagi's to propose. Rationale: `LOOP.md` is not changed by a spec change.
+- **The prompt's command is run, not assumed.** `cd /tmp && uvx prepush-ci@0.1.0 skill | head -4` (uv, 0.1.0 from PyPI) prints the skill front matter (`name: prepush-ci-setup`), so the plain `uvx prepush-ci skill` of the prompt works without the git form.
+- **The phrases match ignoring case and whitespace.** The README has "Until the first release…" at a sentence start and wraps lines, so a literal match would miss the very text being cut (review round 1). Rationale: the check must catch the real wording; the address is exact, since a URL has neither case nor line breaks to vary.
