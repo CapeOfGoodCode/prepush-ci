@@ -109,6 +109,19 @@ def test_the_command_exits_1_and_says_so_when_neither_file_exists(
     assert b"the skill is not part of this installation" in captured.err
 
 
+def test_a_source_tree_that_was_never_installed_prints_the_skill_of_the_checkout(
+    tmp_path: Path, capsysbinary: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        sys, "path", [str(tmp_path)]
+    )  # no installed prepush-ci to be found
+
+    code = skill_command.run(False, tmp_path)
+
+    assert code == 0
+    assert capsysbinary.readouterr().out == SKILL.read_bytes()
+
+
 # --- The skill command can write the project skill ---------------------------------------------
 
 

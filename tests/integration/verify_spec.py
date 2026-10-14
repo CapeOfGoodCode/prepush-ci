@@ -509,6 +509,19 @@ def test_verify_refuses_a_commit_whose_config_git_cannot_read_and_says_what_fail
     assert "cannot read .prepush-ci.toml" in one_line(result.stdout)
 
 
+def test_verify_refuses_a_commit_whose_history_git_cannot_read_and_says_what_failed(
+    configured: Path, git: Git, lose_the_parent_of_head: Callable[[Path], None]
+) -> None:
+    commit(configured, git, "work" + TRAILER)
+    lose_the_parent_of_head(configured)
+
+    result = verify(configured, "HEAD")
+
+    assert result.returncode == 1
+    assert "cannot read the committer of" in one_line(result.stdout)
+    assert "Traceback" not in result.stderr
+
+
 def test_verify_after_a_double_dash_decides_like_verify_without_it(
     configured: Path, git: Git
 ) -> None:
