@@ -570,26 +570,51 @@ def test_the_prompts_command_exists(invocations: Any) -> None:
     ]
 
 
-PRE_RELEASE = (
-    "uvx --from git+https://github.com/CapeOfGoodCode/prepush-ci prepush-ci skill"
-)
-
-
 def spans(text: str) -> list[str]:
     return re.findall(r"`([^`\n]+)`", text)
 
 
-def test_the_agent_step_has_a_form_that_runs_before_the_first_release(
-    invocations: Any,
-) -> None:
-    step = agent_step()
+PRE_RELEASE_PHRASES = (
+    "under construction",
+    "Nothing here is released yet",
+    "until the first release",
+)
+PRE_RELEASE_ADDRESS = "git+https://github.com/CapeOfGoodCode/prepush-ci"
 
-    assert PRE_RELEASE in spans(step)
-    assert "until the first release is on pypi" in flat(step).lower()
-    assert invocations.problems(f"`{PRE_RELEASE}`") == []
-    assert ["skill"] in [
-        words[:1] for words in invocations.words_after_the_name(PRE_RELEASE)
-    ]
+
+def pre_release_wording(text: str) -> list[str]:
+    """The phrases (ignoring case, whitespace runs as one space) and the address (as it is) a README must not have."""
+    plain = flat(text).lower()
+    found = [p for p in PRE_RELEASE_PHRASES if p.lower() in plain]
+    return found + [PRE_RELEASE_ADDRESS] * (PRE_RELEASE_ADDRESS in text)
+
+
+def test_the_shipped_readme_has_no_pre_release_wording() -> None:
+    assert pre_release_wording(shipped()) == []
+
+
+def test_a_leftover_status_box_is_reported_as_pre_release_wording() -> None:
+    text = "> **Status: under construction.**\n"
+
+    assert pre_release_wording(text) == ["under construction"]
+
+
+def test_a_phrase_in_other_case_or_across_a_line_break_is_reported_as_pre_release_wording() -> (
+    None
+):
+    start = "Until the first release is on PyPI, use the plugin.\n"
+    wrapped = "Hello, nothing here is\nreleased yet.\n"
+
+    assert pre_release_wording(start) == ["until the first release"]
+    assert pre_release_wording(wrapped) == ["Nothing here is released yet"]
+
+
+def test_a_leftover_install_from_git_is_reported_as_pre_release_wording() -> None:
+    text = (
+        "```sh\nuv tool install git+https://github.com/CapeOfGoodCode/prepush-ci\n```\n"
+    )
+
+    assert pre_release_wording(text) == [PRE_RELEASE_ADDRESS]
 
 
 def test_the_agent_step_names_the_claude_code_plugin() -> None:
