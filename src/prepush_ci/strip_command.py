@@ -22,7 +22,7 @@ from prepush_ci.core.strip import (
     report,
     strip_message,
 )
-from prepush_ci.git import GitError, dirty, git, git_bytes, hidden, trailers
+from prepush_ci.git import GitError, answer, dirty, git, git_bytes, hidden, trailers
 from prepush_ci.repo_config import load_repository_config
 
 
@@ -67,7 +67,7 @@ def _worktree_root(cwd: Path) -> Path:
     result = git(cwd, "rev-parse", "--show-toplevel")
     if result.returncode != 0:
         raise Refused("not inside a git worktree, so there is nothing to strip")
-    return text_io.to_path(result.stdout.strip())
+    return text_io.to_path(answer(result))
 
 
 def _check_state(root: Path) -> None:

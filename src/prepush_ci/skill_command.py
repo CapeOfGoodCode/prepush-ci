@@ -13,7 +13,7 @@ from prepush_ci.core.skill import (
     SKILL_FILE,
     choose,
 )
-from prepush_ci.git import git
+from prepush_ci.git import answer, git
 
 # Two directories above the package: the root of a source checkout, where the skill is edited.
 CHECKOUT_FILE = Path(__file__).resolve().parents[2] / SKILL_FILE
@@ -39,8 +39,7 @@ def run(
     if top.returncode != 0:
         print(NO_REPOSITORY, file=sys.stderr)
         return 1
-    # Only the newline git ends its answer with goes: a root that ends in a space is a root.
-    target = text_io.to_path(top.stdout.removesuffix("\n")) / PROJECT_SKILL
+    target = text_io.to_path(answer(top)) / PROJECT_SKILL
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         # bytes: no newline translation may change the skill

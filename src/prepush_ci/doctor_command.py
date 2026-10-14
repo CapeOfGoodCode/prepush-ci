@@ -21,7 +21,7 @@ from prepush_ci.core.hook_managers import (
 )
 from prepush_ci.core.install import HOOKS, HOOKS_DIRECTORY, PYTHON_FILE
 from prepush_ci.core.preflight import missing_env
-from prepush_ci.git import git
+from prepush_ci.git import answer, git
 from prepush_ci.repo_config import load_repository_config
 
 
@@ -43,8 +43,8 @@ def run(
     if top.returncode != 0:
         print(doctor.NO_WORKTREE, file=sys.stderr)
         return 1
-    root = (cwd / text_io.to_path(top.stdout.strip())).resolve()
-    common = (cwd / text_io.to_path(common_dir.stdout.strip())).resolve()
+    root = (cwd / text_io.to_path(answer(top))).resolve()
+    common = (cwd / text_io.to_path(answer(common_dir))).resolve()
     commit_msg, pre_push = _hook_checks(cwd, root, common, hooks)
     config, config_check = _config(root)
     found = {
@@ -165,7 +165,7 @@ def _marker(root: Path, name: str) -> bool:
 def _hooks_path(cwd: Path, root: Path) -> tuple[str, Path] | None:
     """The effective `core.hooksPath` as configured and made absolute against the worktree root."""
     configured = git(cwd, "config", "--type=path", "--get", "core.hooksPath")
-    value = configured.stdout.strip()
+    value = answer(configured)
     if configured.returncode != 0 or not value:
         return None
     return value, (root / text_io.to_path(value)).resolve()

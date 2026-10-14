@@ -26,6 +26,13 @@ def git(cwd: Path, *args: str, env: Mapping[str, str] | None = None) -> Complete
     return text_io.run(["git", *args], cwd=cwd, env=env)
 
 
+def answer(result: Completed) -> str:
+    """The one-line answer of git: only its final newline goes, for a path may end in a space
+    (`--show-toplevel` of a directory called `work `, `--git-common-dir` of a submodule at
+    `sub `, a `core.hooksPath` of `hooks `), which `strip()` would take with it."""
+    return result.stdout.removesuffix("\n")
+
+
 def git_bytes(cwd: Path, *args: str, stdin: bytes | None = None) -> bytes:
     """Run git and return its standard output as bytes; a failure raises `GitError`."""
     result = text_io.run_bytes(["git", *args], cwd=cwd, stdin=stdin)

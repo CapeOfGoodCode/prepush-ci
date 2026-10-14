@@ -31,7 +31,7 @@ from prepush_ci.core.install import (
     report,
 )
 from prepush_ci.core.uv_cache import TEMPORARY_WARNING, is_temporary
-from prepush_ci.git import git
+from prepush_ci.git import answer, git
 
 
 class Unreadable(Exception):
@@ -66,7 +66,7 @@ def run(cwd: Path, hooks: str | None = None) -> int:
         return 1
     if chosen in MANAGERS:
         return _install_manager(cwd, root, chosen)
-    common = _resolve(cwd, common_dir.stdout.strip())
+    common = _resolve(cwd, answer(common_dir))
     directory = common.joinpath(*HOOKS_DIRECTORY)
     ours = _hooks_path(cwd) == directory
     try:
@@ -125,7 +125,7 @@ def _in(directory: Path, name: str) -> Path:
 def _worktree_root(cwd: Path) -> Path | None:
     """The top of the worktree; None in a bare repository."""
     top = git(cwd, "rev-parse", "--show-toplevel")
-    return _resolve(cwd, top.stdout.strip()) if top.returncode == 0 else None
+    return _resolve(cwd, answer(top)) if top.returncode == 0 else None
 
 
 def _found(root: Path | None) -> list[str]:
@@ -148,7 +148,7 @@ def found_files(root: Path | None) -> dict[str, str]:
 def previous_pre_push(cwd: Path) -> Path | None:
     """The `pre-push` hook `install` would chain to, if one is there to run; unreadable is an
     error."""
-    common = _resolve(cwd, git(cwd, "rev-parse", "--git-common-dir").stdout.strip())
+    common = _resolve(cwd, answer(git(cwd, "rev-parse", "--git-common-dir")))
     directory = common.joinpath(*HOOKS_DIRECTORY)
     hook = _previous(cwd, common, directory) / "pre-push"
     return hook if hook.name in _listing(hook.parent) else None
@@ -239,7 +239,7 @@ def _put_back(root: Path, attempted: list[tuple[str, str | None]]) -> list[str]:
 
 
 def _native_directory(cwd: Path) -> Path:
-    common = _resolve(cwd, git(cwd, "rev-parse", "--git-common-dir").stdout.strip())
+    common = _resolve(cwd, answer(git(cwd, "rev-parse", "--git-common-dir")))
     return common.joinpath(*HOOKS_DIRECTORY)
 
 
@@ -287,10 +287,7 @@ def _hooks_without_local(cwd: Path, root: Path) -> Path:
     ]
     if others:
         return _resolve(root, others[-1])
-    return (
-        _resolve(cwd, git(cwd, "rev-parse", "--git-common-dir").stdout.strip())
-        / "hooks"
-    )
+    return _resolve(cwd, answer(git(cwd, "rev-parse", "--git-common-dir"))) / "hooks"
 
 
 def _recorded_text(path: Path) -> str:
@@ -302,7 +299,7 @@ def _recorded_text(path: Path) -> str:
 def _recorded_directory(path: Path) -> Path:
     """The directory the record `path` names; what `install` writes there is absolute, so anything
     else (bytes that are no path) is a corrupt record, a `ValueError`."""
-    directory = text_io.to_path(_recorded_text(path).strip())
+    directory = text_io.to_path(_recorded_text(path).removesuffix("\n"))
     if not directory.is_absolute():
         raise ValueError("it does not name a directory")
     return directory
@@ -345,10 +342,10 @@ def _executable(path: Path) -> bool:
 def _hooks_path(cwd: Path) -> Path | None:
     """The effective `core.hooksPath` (any scope, `~` expanded, relative to the worktree root)."""
     configured = git(cwd, "config", "--type=path", "--get", "core.hooksPath")
-    value = configured.stdout.strip()
+    value = answer(configured)
     if configured.returncode != 0 or not value:
         return None
-    root = git(cwd, "rev-parse", "--show-toplevel").stdout.strip()
+    root = answer(git(cwd, "rev-parse", "--show-toplevel"))
     return _resolve(_resolve(cwd, root), value)
 
 

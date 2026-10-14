@@ -5,7 +5,7 @@ from pathlib import Path
 from prepush_ci import text_io
 from prepush_ci.core.config import Config, ConfigError
 from prepush_ci.core.config_source import PREPUSH_CI_FILE, PYPROJECT_FILE, load_config
-from prepush_ci.git import git
+from prepush_ci.git import answer, git
 
 
 def repository_root(cwd: Path) -> Path:
@@ -13,7 +13,7 @@ def repository_root(cwd: Path) -> Path:
     result = git(cwd, "rev-parse", "--show-toplevel")
     if result.returncode != 0:
         raise ConfigError(["not inside a git working tree: no config to read"])
-    return text_io.to_path(result.stdout.strip())
+    return text_io.to_path(answer(result))
 
 
 def load_repository_config(cwd: Path) -> Config:

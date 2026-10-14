@@ -47,7 +47,7 @@ from prepush_ci.core.init import (
     session_start_script,
     validate,
 )
-from prepush_ci.git import git
+from prepush_ci.git import answer, git
 from prepush_ci.repo_config import load_repository_config
 
 
@@ -313,7 +313,7 @@ def _origin_fetch(root: Path) -> list[str]:
 
 def _worktree_root(cwd: Path) -> Path | None:
     top = git(cwd, "rev-parse", "--show-toplevel")
-    return text_io.to_path(top.stdout.strip()) if top.returncode == 0 else None
+    return text_io.to_path(answer(top)) if top.returncode == 0 else None
 
 
 def _read(path: Path, *, strict: str | None = None) -> str | None:
