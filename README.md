@@ -26,19 +26,19 @@
 | src/prepush\_ci/core/uv\_cache.py      |       32 |        0 |       10 |        0 |    100% |           |
 | src/prepush\_ci/core/verify.py         |       45 |        0 |       16 |        0 |    100% |           |
 | src/prepush\_ci/doctor\_command.py     |      121 |       10 |       22 |        0 |     93% |36-38, 72-74, 179-180, 219-220 |
-| src/prepush\_ci/git.py                 |       53 |        1 |       12 |        1 |     97% |        68 |
-| src/prepush\_ci/init\_command.py       |      199 |        2 |       56 |        0 |     99% |   220-221 |
+| src/prepush\_ci/git.py                 |       55 |        1 |       12 |        1 |     97% |        75 |
+| src/prepush\_ci/init\_command.py       |      199 |        0 |       56 |        0 |    100% |           |
 | src/prepush\_ci/install\_command.py    |      205 |        0 |       58 |        0 |    100% |           |
 | src/prepush\_ci/pass\_cache.py         |       35 |        1 |        8 |        1 |     95% |        56 |
 | src/prepush\_ci/pre\_push\_hook.py     |       76 |        0 |       24 |        0 |    100% |           |
 | src/prepush\_ci/preflight.py           |       32 |        1 |       18 |        1 |     96% |        65 |
 | src/prepush\_ci/repo\_config.py        |       22 |        0 |        2 |        0 |    100% |           |
 | src/prepush\_ci/run\_command.py        |       29 |        0 |        4 |        0 |    100% |           |
-| src/prepush\_ci/skill\_command.py      |       47 |        2 |       10 |        0 |     96% |     63-64 |
+| src/prepush\_ci/skill\_command.py      |       47 |        2 |       10 |        0 |     96% |     62-63 |
 | src/prepush\_ci/strip\_command.py      |      103 |        0 |       38 |        0 |    100% |           |
 | src/prepush\_ci/text\_io.py            |       76 |        0 |        6 |        0 |    100% |           |
 | src/prepush\_ci/verify\_command.py     |       49 |        1 |       14 |        1 |     97% |        81 |
-| **TOTAL**                              | **2327** |   **18** |  **708** |    **4** | **99%** |           |
+| **TOTAL**                              | **2329** |   **16** |  **708** |    **4** | **99%** |           |
 
 
 ## Setup coverage badge

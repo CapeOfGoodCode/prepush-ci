@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_1775bdf95c0e59b5_text_io_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-14 06:13 +0000
+            created at 2026-10-14 07:58 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -106,7 +106,7 @@
     <p class="run run2"><span class="n"><a id="t22" href="#t22">22</a></span><span class="t">    <span class="nam">report</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t23" href="#t23">23</a></span><span class="t">    <span class="nam">strip_message</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t24" href="#t24">24</a></span><span class="t"><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t25" href="#t25">25</a></span><span class="t"><span class="key">from</span> <span class="nam">prepush_ci</span><span class="op">.</span><span class="nam">git</span> <span class="key">import</span> <span class="nam">GitError</span><span class="op">,</span> <span class="nam">dirty</span><span class="op">,</span> <span class="nam">git</span><span class="op">,</span> <span class="nam">git_bytes</span><span class="op">,</span> <span class="nam">hidden</span><span class="op">,</span> <span class="nam">trailers</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t25" href="#t25">25</a></span><span class="t"><span class="key">from</span> <span class="nam">prepush_ci</span><span class="op">.</span><span class="nam">git</span> <span class="key">import</span> <span class="nam">GitError</span><span class="op">,</span> <span class="nam">answer</span><span class="op">,</span> <span class="nam">dirty</span><span class="op">,</span> <span class="nam">git</span><span class="op">,</span> <span class="nam">git_bytes</span><span class="op">,</span> <span class="nam">hidden</span><span class="op">,</span> <span class="nam">trailers</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t26" href="#t26">26</a></span><span class="t"><span class="key">from</span> <span class="nam">prepush_ci</span><span class="op">.</span><span class="nam">repo_config</span> <span class="key">import</span> <span class="nam">load_repository_config</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t27" href="#t27">27</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t28" href="#t28">28</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -151,7 +151,7 @@
     <p class="run"><span class="n"><a id="t67" href="#t67">67</a></span><span class="t">    <span class="nam">result</span> <span class="op">=</span> <span class="nam">git</span><span class="op">(</span><span class="nam">cwd</span><span class="op">,</span> <span class="str">&quot;rev-parse&quot;</span><span class="op">,</span> <span class="str">&quot;--show-toplevel&quot;</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t68" href="#t68">68</a></span><span class="t">    <span class="key">if</span> <span class="nam">result</span><span class="op">.</span><span class="nam">returncode</span> <span class="op">!=</span> <span class="num">0</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t69" href="#t69">69</a></span><span class="t">        <span class="key">raise</span> <span class="nam">Refused</span><span class="op">(</span><span class="str">&quot;not inside a git worktree, so there is nothing to strip&quot;</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t70" href="#t70">70</a></span><span class="t">    <span class="key">return</span> <span class="nam">text_io</span><span class="op">.</span><span class="nam">to_path</span><span class="op">(</span><span class="nam">result</span><span class="op">.</span><span class="nam">stdout</span><span class="op">.</span><span class="nam">strip</span><span class="op">(</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t70" href="#t70">70</a></span><span class="t">    <span class="key">return</span> <span class="nam">text_io</span><span class="op">.</span><span class="nam">to_path</span><span class="op">(</span><span class="nam">answer</span><span class="op">(</span><span class="nam">result</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t71" href="#t71">71</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t72" href="#t72">72</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t73" href="#t73">73</a></span><span class="t"><span class="key">def</span> <span class="nam">_check_state</span><span class="op">(</span><span class="nam">root</span><span class="op">:</span> <span class="nam">Path</span><span class="op">)</span> <span class="op">-&gt;</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -256,7 +256,7 @@
             <a class="nav" href="z_1775bdf95c0e59b5_text_io_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-14 06:13 +0000
+            created at 2026-10-14 07:58 +0000
         </p>
     </div>
 </footer>
