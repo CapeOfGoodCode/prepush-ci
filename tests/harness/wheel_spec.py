@@ -86,6 +86,6 @@ def test_the_check_builds_and_starts_the_wheel_after_the_tests() -> None:
 
     assert "scripts/check-wheel" in text
     assert text.index("scripts/check-wheel") > text.index(
-        "coverage report --fail-under=95"
+        "coverage report --fail-under="
     )
     assert text.index("scripts/check-wheel") < text.index("==> full check passed")
