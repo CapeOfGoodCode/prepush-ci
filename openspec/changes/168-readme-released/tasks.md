@@ -8,7 +8,7 @@
 
 ## 2. The classifier
 
-- [ ] 2.1 Change the classifier in `pyproject.toml` to `Development Status :: 3 - Alpha`, in a `chore` commit of its own
+- [x] 2.1 Change the classifier in `pyproject.toml` to `Development Status :: 3 - Alpha`, in a `chore` commit of its own
 
 ## Workflow follow-up
 
