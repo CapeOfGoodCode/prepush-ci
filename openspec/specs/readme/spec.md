@@ -173,13 +173,6 @@ The usage section SHALL open with a step before the install step that sets a rep
 - **WHEN** the check reads the code block of the agent step
 - **THEN** it finds the invocation `prepush-ci skill` and reports no unknown command or option
 
-### Requirement: The agent step has a form that runs before the first release
-Because the first release is not on PyPI yet, the agent step SHALL also give, in a code span, the form that runs from the repository, `uvx --from git+https://github.com/CapeOfGoodCode/prepush-ci prepush-ci skill`, with the words "until the first release is on PyPI" as the install step has them.
-
-#### Scenario: Before the first release
-- **WHEN** a reader looks at the agent step
-- **THEN** it has the code span `uvx --from git+https://github.com/CapeOfGoodCode/prepush-ci prepush-ci skill` next to the words "until the first release is on PyPI", and the check finds `prepush-ci skill` in it with no unknown command or option
-
 ### Requirement: The agent step names the Claude Code plugin
 The agent step SHALL name the Claude Code plugin as the other way to give the agent the skill, with the commands `/plugin marketplace add CapeOfGoodCode/prepush-ci` and `/plugin install prepush-ci@prepush-ci`, in code spans.
 
@@ -190,3 +183,22 @@ The agent step SHALL name the Claude Code plugin as the other way to give the ag
 #### Scenario: The plugin commands match the manifests
 - **WHEN** the check compares the `<plugin>@<marketplace>` of the install command with the plugin name and the marketplace name in `.claude-plugin/marketplace.json`
 - **THEN** they are equal
+
+### Requirement: The README says nothing of an unreleased state
+`README.md` SHALL NOT say the tool is under construction or unreleased, and SHALL NOT send the reader to install or run it from the git repository instead of PyPI. It SHALL NOT contain the phrases `under construction`, `Nothing here is released yet` or `until the first release`, nor the address `git+https://github.com/CapeOfGoodCode/prepush-ci`. The phrases are matched ignoring case and with every run of whitespace, a line break included, read as one space; the address is matched as it is.
+
+#### Scenario: The shipped README has no pre-release wording
+- **WHEN** the check reads the `README.md` of the repository
+- **THEN** it finds none of `under construction`, `Nothing here is released yet`, `until the first release` and `git+https://github.com/CapeOfGoodCode/prepush-ci`
+
+#### Scenario: A leftover status box
+- **WHEN** the check reads a README text with the line `> **Status: under construction.**`
+- **THEN** it reports `under construction` as pre-release wording
+
+#### Scenario: A phrase in other case or across a line break
+- **WHEN** the check reads a README text with `Until the first release is on PyPI` at the start of a sentence, and another with `nothing here is\nreleased yet` broken over two lines
+- **THEN** it reports `until the first release` in the first and `Nothing here is released yet` in the second as pre-release wording
+
+#### Scenario: A leftover install from git
+- **WHEN** the check reads a README text with the code line `uv tool install git+https://github.com/CapeOfGoodCode/prepush-ci`
+- **THEN** it reports the address as pre-release wording

@@ -4,7 +4,7 @@
 
 - [x] 1.1 Cut from `README.md` the status box, the `uvx --from git+…` sentence of step 1 (keeping the plugin sentence) and the comment and `uv tool install git+…` line of step 2; verify with a test for each scenario of the added requirement
 - [x] 1.2 Replace `test_the_agent_step_has_a_form_that_runs_before_the_first_release` and its `PRE_RELEASE` constant with tests named after the new scenarios
-- [ ] 1.3 Run `sh scripts/ci` and verify it passes
+- [x] 1.3 Run `sh scripts/ci` and verify it passes
 
 ## 2. The classifier
 
