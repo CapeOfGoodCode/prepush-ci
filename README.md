@@ -2,43 +2,43 @@
 
 [Full report](https://htmlpreview.github.io/?https://github.com/CapeOfGoodCode/prepush-ci/blob/python-coverage-comment-action-data/htmlcov/index.html)
 
-| Name                                   |    Stmts |     Miss |   Branch |   BrPart |   Cover |   Missing |
-|--------------------------------------- | -------: | -------: | -------: | -------: | ------: | --------: |
-| src/prepush\_ci/\_\_init\_\_.py        |        0 |        0 |        0 |        0 |    100% |           |
-| src/prepush\_ci/\_\_main\_\_.py        |        2 |        0 |        0 |        0 |    100% |           |
-| src/prepush\_ci/checking.py            |       30 |        0 |       10 |        0 |    100% |           |
-| src/prepush\_ci/cli.py                 |       66 |        0 |       20 |        0 |    100% |           |
-| src/prepush\_ci/commit\_msg\_hook.py   |       63 |        0 |       14 |        0 |    100% |           |
-| src/prepush\_ci/core/\_\_init\_\_.py   |        0 |        0 |        0 |        0 |    100% |           |
-| src/prepush\_ci/core/commit\_msg.py    |       65 |        0 |       26 |        0 |    100% |           |
-| src/prepush\_ci/core/config.py         |      103 |        0 |       42 |        0 |    100% |           |
-| src/prepush\_ci/core/config\_source.py |       31 |        0 |        8 |        0 |    100% |           |
-| src/prepush\_ci/core/doctor.py         |       92 |        0 |       34 |        0 |    100% |           |
-| src/prepush\_ci/core/doctor\_hooks.py  |       86 |        0 |       34 |        0 |    100% |           |
-| src/prepush\_ci/core/hook\_managers.py |      194 |        0 |       74 |        0 |    100% |           |
-| src/prepush\_ci/core/init.py           |      187 |        0 |       70 |        0 |    100% |           |
-| src/prepush\_ci/core/install.py        |       54 |        0 |        8 |        0 |    100% |           |
-| src/prepush\_ci/core/pre\_push.py      |       87 |        0 |       30 |        0 |    100% |           |
-| src/prepush\_ci/core/preflight.py      |       25 |        0 |        2 |        0 |    100% |           |
-| src/prepush\_ci/core/run\_cache.py     |       20 |        0 |        0 |        0 |    100% |           |
-| src/prepush\_ci/core/skill.py          |       17 |        0 |        6 |        0 |    100% |           |
-| src/prepush\_ci/core/strip.py          |       81 |        0 |       32 |        0 |    100% |           |
-| src/prepush\_ci/core/uv\_cache.py      |       32 |        0 |       10 |        0 |    100% |           |
-| src/prepush\_ci/core/verify.py         |       45 |        0 |       16 |        0 |    100% |           |
-| src/prepush\_ci/doctor\_command.py     |      121 |       10 |       22 |        0 |     93% |36-38, 72-74, 179-180, 219-220 |
-| src/prepush\_ci/git.py                 |       55 |        1 |       12 |        1 |     97% |        75 |
-| src/prepush\_ci/init\_command.py       |      199 |        0 |       56 |        0 |    100% |           |
-| src/prepush\_ci/install\_command.py    |      205 |        0 |       58 |        0 |    100% |           |
-| src/prepush\_ci/pass\_cache.py         |       35 |        1 |        8 |        1 |     95% |        56 |
-| src/prepush\_ci/pre\_push\_hook.py     |       76 |        0 |       24 |        0 |    100% |           |
-| src/prepush\_ci/preflight.py           |       32 |        1 |       18 |        1 |     96% |        65 |
-| src/prepush\_ci/repo\_config.py        |       22 |        0 |        2 |        0 |    100% |           |
-| src/prepush\_ci/run\_command.py        |       29 |        0 |        4 |        0 |    100% |           |
-| src/prepush\_ci/skill\_command.py      |       47 |        2 |       10 |        0 |     96% |     62-63 |
-| src/prepush\_ci/strip\_command.py      |      103 |        0 |       38 |        0 |    100% |           |
-| src/prepush\_ci/text\_io.py            |       76 |        0 |        6 |        0 |    100% |           |
-| src/prepush\_ci/verify\_command.py     |       49 |        1 |       14 |        1 |     97% |        81 |
-| **TOTAL**                              | **2329** |   **16** |  **708** |    **4** | **99%** |           |
+| Name                                   |    Stmts |     Miss |   Branch |   BrPart |    Cover |   Missing |
+|--------------------------------------- | -------: | -------: | -------: | -------: | -------: | --------: |
+| src/prepush\_ci/\_\_init\_\_.py        |        0 |        0 |        0 |        0 |     100% |           |
+| src/prepush\_ci/\_\_main\_\_.py        |        2 |        0 |        0 |        0 |     100% |           |
+| src/prepush\_ci/checking.py            |       30 |        0 |       10 |        0 |     100% |           |
+| src/prepush\_ci/cli.py                 |       66 |        0 |       20 |        0 |     100% |           |
+| src/prepush\_ci/commit\_msg\_hook.py   |       63 |        0 |       14 |        0 |     100% |           |
+| src/prepush\_ci/core/\_\_init\_\_.py   |        0 |        0 |        0 |        0 |     100% |           |
+| src/prepush\_ci/core/commit\_msg.py    |       65 |        0 |       26 |        0 |     100% |           |
+| src/prepush\_ci/core/config.py         |      103 |        0 |       42 |        0 |     100% |           |
+| src/prepush\_ci/core/config\_source.py |       31 |        0 |        8 |        0 |     100% |           |
+| src/prepush\_ci/core/doctor.py         |       92 |        0 |       34 |        0 |     100% |           |
+| src/prepush\_ci/core/doctor\_hooks.py  |       86 |        0 |       34 |        0 |     100% |           |
+| src/prepush\_ci/core/hook\_managers.py |      194 |        0 |       74 |        0 |     100% |           |
+| src/prepush\_ci/core/init.py           |      187 |        0 |       70 |        0 |     100% |           |
+| src/prepush\_ci/core/install.py        |       54 |        0 |        8 |        0 |     100% |           |
+| src/prepush\_ci/core/pre\_push.py      |       87 |        0 |       30 |        0 |     100% |           |
+| src/prepush\_ci/core/preflight.py      |       25 |        0 |        2 |        0 |     100% |           |
+| src/prepush\_ci/core/run\_cache.py     |       20 |        0 |        0 |        0 |     100% |           |
+| src/prepush\_ci/core/skill.py          |       17 |        0 |        6 |        0 |     100% |           |
+| src/prepush\_ci/core/strip.py          |       81 |        0 |       32 |        0 |     100% |           |
+| src/prepush\_ci/core/uv\_cache.py      |       32 |        0 |       10 |        0 |     100% |           |
+| src/prepush\_ci/core/verify.py         |       45 |        0 |       16 |        0 |     100% |           |
+| src/prepush\_ci/doctor\_command.py     |      121 |        0 |       22 |        0 |     100% |           |
+| src/prepush\_ci/git.py                 |       55 |        0 |       12 |        0 |     100% |           |
+| src/prepush\_ci/init\_command.py       |      199 |        0 |       56 |        0 |     100% |           |
+| src/prepush\_ci/install\_command.py    |      205 |        0 |       58 |        0 |     100% |           |
+| src/prepush\_ci/pass\_cache.py         |       35 |        0 |        8 |        0 |     100% |           |
+| src/prepush\_ci/pre\_push\_hook.py     |       76 |        0 |       24 |        0 |     100% |           |
+| src/prepush\_ci/preflight.py           |       32 |        0 |       18 |        0 |     100% |           |
+| src/prepush\_ci/repo\_config.py        |       22 |        0 |        2 |        0 |     100% |           |
+| src/prepush\_ci/run\_command.py        |       29 |        0 |        4 |        0 |     100% |           |
+| src/prepush\_ci/skill\_command.py      |       47 |        0 |       10 |        0 |     100% |           |
+| src/prepush\_ci/strip\_command.py      |      103 |        0 |       38 |        0 |     100% |           |
+| src/prepush\_ci/text\_io.py            |       76 |        0 |        6 |        0 |     100% |           |
+| src/prepush\_ci/verify\_command.py     |       49 |        0 |       14 |        0 |     100% |           |
+| **TOTAL**                              | **2329** |    **0** |  **708** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
