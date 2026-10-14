@@ -6,7 +6,7 @@ from pathlib import Path
 from prepush_ci import text_io
 from prepush_ci.core.config import Config
 from prepush_ci.core.pre_push import message_dirty, message_hidden
-from prepush_ci.git import dirty, git, hidden
+from prepush_ci.git import answer, dirty, git, hidden
 
 
 class Refused(Exception):
@@ -36,7 +36,7 @@ def worktree_root(cwd: Path) -> Path:
         raise Refused(
             "the repository has no worktree, so there is no commit to check here"
         )
-    return text_io.to_path(result.stdout.strip())
+    return text_io.to_path(answer(result))
 
 
 def run_check(config: Config, root: Path) -> int:
