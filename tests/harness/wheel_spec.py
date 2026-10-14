@@ -4,12 +4,14 @@ read its data files, so a module, an entry point or a data file that the wheel l
 
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "check-wheel"
+VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
 
 
 @pytest.fixture
@@ -39,7 +41,7 @@ def test_the_built_wheel_starts_in_an_empty_environment(source: Path) -> None:
     result = check(source)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "prepush-ci 0.0.0" in result.stdout
+    assert f"prepush-ci {VERSION}" in result.stdout
 
 
 def test_a_module_missing_from_the_package_fails_the_wheel_check(source: Path) -> None:

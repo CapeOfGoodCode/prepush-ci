@@ -1,6 +1,6 @@
 [project]
 name = "prepush-ci"
-version = "0.0.0"
+version = "0.1.0"
 description = "Run the full CI check in the pre-push hook and let pull request CI skip commits that provably went through it"
 readme = "README.md"
 license = "MIT"
