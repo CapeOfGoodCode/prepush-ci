@@ -16,8 +16,6 @@ Run the full CI check in the `pre-push` hook of an AI agent's cloud session (or 
 
 The full check can run on any machine that opts in, for example on the VM of a [Claude Code cloud session](https://code.claude.com/docs/en/claude-code-on-the-web), which has no separate VM charge; pull request CI then does not repeat it on billed runners.
 
-> **Status: under construction.** The tool is being built by a small fleet of AI coding loops from the intent in [issue #1](https://github.com/CapeOfGoodCode/prepush-ci/issues/1). Nothing here is released yet.
-
 <p align="center">
   <img src="https://raw.githubusercontent.com/CapeOfGoodCode/prepush-ci/main/docs/assets/demo.svg" alt="Terminal recording: a repository is set up with prepush-ci init, a push is refused because the full check fails, and a passing push goes through once the check passes" width="720">
 </p>
@@ -36,7 +34,7 @@ The quickest way is to hand the job to a coding agent such as Claude Code, with 
 Run uvx prepush-ci skill and follow what it prints to set this repository up with prepush-ci.
 ```
 
-Until the first release is on PyPI, run the command from the repository instead: `uvx --from git+https://github.com/CapeOfGoodCode/prepush-ci prepush-ci skill`. In Claude Code you can add the skill as a plugin instead: `/plugin marketplace add CapeOfGoodCode/prepush-ci`, then `/plugin install prepush-ci@prepush-ci`.
+In Claude Code you can add the skill as a plugin instead: `/plugin marketplace add CapeOfGoodCode/prepush-ci`, then `/plugin install prepush-ci@prepush-ci`.
 
 To keep the skill with a project, run `prepush-ci skill --write`; it writes the skill to `.claude/skills/prepush-ci-setup/SKILL.md` of the repository, where the agent finds it by itself.
 
@@ -51,8 +49,6 @@ The steps below are the manual core. On top of them the skill finds or writes th
 ```sh
 uv tool install prepush-ci
 # or: pipx install prepush-ci
-# until the first release is on PyPI:
-uv tool install git+https://github.com/CapeOfGoodCode/prepush-ci
 ```
 
 `uvx prepush-ci` runs it without installing. It needs Python 3.11 or newer and git, and nothing else.
