@@ -151,6 +151,20 @@ def test_a_cache_that_cannot_be_written_warns_and_does_not_raise(
     assert not has(config(), committed)
 
 
+def test_a_repository_git_can_no_longer_find_has_no_cache_and_a_pass_only_warns(
+    committed: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    key = pass_cache.current_key(config(), committed)
+    (committed / ".git" / "HEAD").write_text(
+        "not a ref\n"
+    )  # what a check could do to it
+
+    pass_cache.record_pass(config(), committed, key)
+
+    assert "cannot find the git directory" in capsys.readouterr().err
+    assert not pass_cache.has_pass(config(), committed, key)
+
+
 def test_a_repository_without_a_commit_has_no_key(repo: Path) -> None:
     with pytest.raises(GitError):
         pass_cache.current_key(config(), repo)

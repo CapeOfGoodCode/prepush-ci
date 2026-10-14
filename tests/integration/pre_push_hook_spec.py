@@ -715,6 +715,21 @@ def test_a_pushed_sha_that_is_no_object_of_the_repository_aborts_the_push_and_is
     assert unknown in result.stderr
 
 
+def test_a_tip_whose_history_git_cannot_read_aborts_the_push_and_names_the_commit(
+    pushing_repo: Path, git: Git, lose_the_parent_of_head: Callable[[Path], None]
+) -> None:
+    commit(pushing_repo, git, "work" + TRAILER)
+    tip = commit(pushing_repo, git, "more work" + TRAILER)
+    lose_the_parent_of_head(pushing_repo)
+
+    result = push(pushing_repo, git, "main")
+
+    assert result.returncode != 0
+    assert f"cannot read the message of {tip}" in result.stderr
+    assert ran(pushing_repo) == 0
+    assert not remote_has(pushing_repo, git, "refs/heads/main")
+
+
 def test_a_push_from_a_bare_repository_is_refused_because_it_has_no_worktree(
     pushing_repo: Path, git: Git
 ) -> None:

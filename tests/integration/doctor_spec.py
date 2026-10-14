@@ -118,6 +118,20 @@ def test_a_config_file_that_is_not_text_fails_instead_of_crashing(repo: Path) ->
     assert "Traceback" not in result.stderr
 
 
+def test_a_config_file_that_cannot_be_read_fails_and_names_the_file(
+    repo: Path,
+) -> None:
+    (
+        repo / ".prepush-ci.toml"
+    ).mkdir()  # exists, and reading it is an error on every platform
+
+    result = doctor(repo)
+
+    assert status(result, "config") == "fail"
+    assert "cannot read .prepush-ci.toml" in line(result, "config")
+    assert "Traceback" not in result.stderr
+
+
 # Checks that need the config
 
 
@@ -245,6 +259,20 @@ def test_in_a_bare_repository_it_exits_1_without_a_check_line(
     assert "no working tree" in result.stderr
 
 
+def test_when_git_cannot_start_it_exits_1_without_a_check_line_and_says_so(
+    repo: Path, tmp_path: Path
+) -> None:
+    no_git = tmp_path / "no-git"
+    no_git.mkdir()
+
+    result = doctor(repo, env={"PATH": str(no_git)})
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert "cannot run git" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
 def test_it_checks_the_whole_worktree_from_a_subdirectory(repo: Path) -> None:
     (repo / ".prepush-ci.toml").write_text(CONFIG)
     (repo / "src" / "deep").mkdir(parents=True)
@@ -270,6 +298,14 @@ NATIVE = Path(".git") / "prepush-ci" / "hooks"
 POSIX_ONLY = pytest.mark.skipif(
     sys.platform == "win32", reason="Windows has no executable bit"
 )
+
+
+def unreadable(path: Path, mode: int = 0o000) -> None:
+    """`path` that git sees and this process cannot read; the permission must bind the user."""
+    path.chmod(mode)
+    assert not os.access(path, os.R_OK), (
+        "run the specs as a user whose permissions bind"
+    )
 
 
 def install(repo: Path, *args: str) -> None:
@@ -585,6 +621,19 @@ def test_a_pre_commit_file_without_the_block_fails_and_names_the_file(
     assert ".pre-commit-config.yaml" in line(result, "pre-push")
 
 
+@POSIX_ONLY
+def test_a_manager_file_that_cannot_be_read_has_no_block(repo: Path) -> None:
+    config = repo / ".pre-commit-config.yaml"
+    config.write_text(PRE_COMMIT_CONFIG)
+    unreadable(config)
+
+    result = doctor(repo)
+
+    assert both(result) == ("fail", "fail")
+    assert ".pre-commit-config.yaml" in line(result, "pre-push")
+    assert "Traceback" not in result.stderr
+
+
 def test_a_pre_commit_file_with_an_unfinished_block_fails_instead_of_crashing(
     repo: Path,
 ) -> None:
@@ -719,6 +768,16 @@ def test_a_lefthook_script_that_is_not_executable_is_not_activated(repo: Path) -
 
     assert both(result) == ("ok", "fail")
     assert "not executable" in line(result, "pre-push")
+
+
+@POSIX_ONLY
+def test_a_lefthook_script_that_cannot_be_read_is_not_activated(repo: Path) -> None:
+    (repo / "lefthook.yml").write_text(LEFTHOOK_CONFIG)
+    install(repo, "--hooks", "lefthook")
+    activate(repo, repo / ".git" / "hooks", "lefthook", "commit-msg", "pre-push")
+    unreadable(repo / ".git" / "hooks" / "pre-push", 0o100)  # executable, not readable
+
+    assert both(doctor(repo)) == ("ok", "fail")
 
 
 def test_a_hook_script_of_another_tool_is_not_the_activation_of_lefthook(

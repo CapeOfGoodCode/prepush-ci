@@ -199,6 +199,22 @@ def repo(tmp_path: Path, git: Git) -> Path:
 
 
 @pytest.fixture
+def lose_the_parent_of_head(git: Git) -> Callable[[Path], None]:
+    """Delete the loose object of `HEAD^` from a repository: `HEAD` still names a commit, but git
+    cannot walk its history, so `git log HEAD` fails with a status other than 1."""
+
+    def lose(repo: Path) -> None:
+        parent = git(repo, "rev-parse", "HEAD^").stdout.strip()
+        stored = repo / ".git" / "objects" / parent[:2] / parent[2:]
+        stored.chmod(
+            0o644
+        )  # git stores objects read-only; Windows refuses to delete them
+        stored.unlink()
+
+    return lose
+
+
+@pytest.fixture
 def hooked_repo(repo: Path) -> Path:
     """`repo` with a valid config and the commit-msg hook installed the way git runs it."""
     (repo / ".prepush-ci.toml").write_text('check = "true"\n')

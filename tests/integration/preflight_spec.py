@@ -266,6 +266,25 @@ def test_a_branch_that_is_behind_the_default_branch_is_refused_with_how_to_fix_i
     assert steps(pushing_repo) == []
 
 
+def test_a_remote_branch_that_is_no_commit_refuses_the_push_and_says_it_could_not_compare(
+    pushing_repo: Path, tmp_path: Path, git: Git
+) -> None:
+    publish_main(pushing_repo, git)
+    configure(pushing_repo, git, 'require_up_to_date = "origin/main"')
+    commit(pushing_repo, git, "work" + TRAILER)
+    remote = tmp_path / "remote.git"
+    nothing = tmp_path / "nothing"
+    nothing.write_text("")
+    tree = git(remote, "hash-object", "-w", "-t", "tree", str(nothing)).stdout.strip()
+    (remote / "refs" / "heads" / "main").write_text(tree + "\n")  # a branch gone wrong
+
+    result = push(pushing_repo, git, "main:topic")
+
+    assert result.returncode != 0
+    assert "could not compare this branch with origin/main" in output(result)
+    assert steps(pushing_repo) == []
+
+
 def test_a_branch_behind_stops_the_preflight(
     pushing_repo: Path, tmp_path: Path, git: Git
 ) -> None:
