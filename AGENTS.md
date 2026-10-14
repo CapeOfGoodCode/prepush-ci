@@ -66,7 +66,7 @@ The rulebook for everyone who changes this repository, human or agent. `README.m
   - `tests/harness/`: the repository's own tooling (agent hooks); not part of the product.
 - End-to-end use of the released tool (`uvx` in throwaway repositories) is not part of the suite; terminator does it (`LOOP.md`).
 - **Never weaken a test to make it pass**, never skip one silently. A test that cannot run fails.
-- **Coverage** (branch, gated in `scripts/ci`): `src/prepush_ci/core/` at **100% from `tests/unit` alone** (a branch only an integration test reaches does not count), everything at **95%** overall, including code the tests start as a subprocess through git. `core/` does no I/O (a unit spec enforces it). Every `# pragma: no cover` carries a comment saying why.
+- **Coverage** (branch, gated in `scripts/ci`): `src/prepush_ci/core/` at **100% from `tests/unit` alone** (a branch only an integration test reaches does not count), everything at **100%** overall on Linux (**95%** on Windows, which skips the specs that need the executable bit or an `sh` stub), including code the tests start as a subprocess through git. `core/` does no I/O (a unit spec enforces it). Every `# pragma: no cover` carries a comment saying why.
 
 ## Versioning
 
