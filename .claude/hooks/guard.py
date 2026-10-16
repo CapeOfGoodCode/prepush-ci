@@ -4,7 +4,7 @@ A safeguard for Claude Code sessions opened in this repository (it runs only whe
 working directory is the repository). The hard limits are server-side: the rulesets on main and on
 release tags, and the bot's token scope. This stops slips, not a determined actor. Blocked:
 
-- merging a pull request (`gh pr merge`, the merge API): only a human's approval merges, after reading the proof;
+- merging a pull request (`gh pr merge`, the merge API): only a human's approval or the factory's merger merges (LOOP.md), never an agent;
 - pushing to `main` or force-pushing without a lease: `main` changes only through merged pull requests;
 - pushing a tag or creating a release: a tag publishes to PyPI, and only a human releases;
 - bypassing git hooks (`--no-verify`): the hooks are the quality gate.

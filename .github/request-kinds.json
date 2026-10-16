@@ -1,0 +1,9 @@
+{
+  "decide_paths": [
+    "LOOP.md", "AGENTS.md", "CLAUDE.md", ".github/*", ".claude/*", "scripts/ci",
+    "pyproject.toml", "uv.lock", "package.json", "package-lock.json", "cchk.toml", ".pre-commit-config.yaml"
+  ],
+  "decide_titles": ["^chore\\(release\\)"],
+  "user_visible_paths": ["src/*", "skills/*", "README.md", ".claude-plugin/*"],
+  "sample_rate": {"user_visible": 0.4, "internal": 0.15}
+}

@@ -6,25 +6,22 @@ Closes #
 
 ## Proof
 
-<!-- Required (CI fails without it). Readable in two minutes (LOOP.md, Proof). -->
-
-**Acceptance**
-
-- [x] <criterion of the issue>: `test_…`
-
-**Demo**
-
-<!-- Show what the human would look at: a transcript for the tool; for anything visual, the image or a screenshot (raw URL at the head commit). -->
+<!-- Required (CI fails without it). Read in one minute (LOOP.md, Proof). Keep the one form that fits, delete the others:
+     - users see it: a demo, shown, not described (a transcript of at most 10 lines, or the image);
+     - internal: one line, "Internal: <what changes>";
+     - request:decide: at most five lines, what changes, why, what it costs or risks. -->
 
 ```
 $ …
 ```
 
-**Check**: CI on <head sha>: <n> passed, coverage <x>%, specs valid (<link to the run>).
-
 <details><summary>Details for the reviewer</summary>
 
-<!-- All new test names, further transcripts, notes per review round. -->
+<!-- One line per acceptance criterion with its test, the check line from the CI run on the head, new test names, notes per review round. -->
+
+- [x] <criterion of the issue>: `test_…`
+
+**Check**: CI on <head sha>: <n> passed, coverage <x>%, specs valid (<link to the run>).
 
 </details>
 
