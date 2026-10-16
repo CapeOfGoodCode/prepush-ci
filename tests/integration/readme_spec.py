@@ -2,9 +2,10 @@
 
 The README is the PyPI long description. Its prose cannot be tested for its sense; what is tested is
 that it names no command or option that does not exist, leaves none out, gives the config's keys and
-defaults as the config has them, and walks the usage steps in order. The commands and flags come from
-the `--help` of the real CLI, the keys from the config's own `unknown key` message, the defaults from
-what the config loads: no second list in the tests to drift.
+defaults as the config has them, and gives the agent prompt and plugin commands as the CLI and the
+manifests have them. The commands and flags come from the `--help` of the real CLI, the keys from the
+config's own `unknown key` message, the defaults from what the config loads: no second list in the
+tests to drift.
 """
 
 import json
@@ -195,31 +196,6 @@ def test_the_reference_lists_the_nine_commands(invocations: Any) -> None:
     ]
 
 
-# --- Each entry says what the command is for -------------------------------------------------
-
-
-@pytest.mark.parametrize("hook", ["hook commit-msg", "hook pre-push"])
-def test_the_entry_of_a_hook_says_git_runs_it_and_not_a_person(hook: str) -> None:
-    entry = flat(entries(shipped())[hook]).lower()
-
-    assert "git runs" in entry
-    assert "not a person" in entry
-
-
-def test_each_entry_shows_an_example_invocation_of_its_command(
-    invocations: Any,
-) -> None:
-    listed = entries(shipped())
-
-    for command in command_names(invocations):
-        examples = [
-            words
-            for words in invocation_words(invocations, listed[command], command)
-            if not any("[" in word for word in words)
-        ]
-        assert examples, f"{command} has no example without a bracketed option"
-
-
 # --- The exit statuses are stated ------------------------------------------------------------
 
 
@@ -406,16 +382,7 @@ def test_a_wrong_default_is_reported_with_the_one_the_config_loads() -> None:
     ]
 
 
-# --- The usage section walks from install to a push -----------------------------------------
-
-STEPS = [
-    ("agent setup", r"\bagent\b"),
-    ("install", r"\binstall\b"),
-    ("init", r"\binit\b"),
-    ("opt in", r"PREPUSH_CI=full"),
-    ("commit and push", r"commit.*push"),
-    ("CI gate", r"\bgate\b"),
-]
+# --- The usage steps ---------------------------------------------------------------------
 
 
 def steps(text: str) -> dict[str, str]:
@@ -427,106 +394,20 @@ def steps(text: str) -> dict[str, str]:
     }
 
 
-def step_problems(text: str) -> list[str]:
-    headings = list(steps(text))
-    found: list[str] = []
-    last = -1
-    for name, pattern in STEPS:
-        index = next(
-            (i for i, h in enumerate(headings) if re.search(pattern, h, re.IGNORECASE)),
-            None,
-        )
-        if index is None:
-            found.append(f"the step `{name}` is missing")
-        elif index < last:
-            found.append(f"the step `{name}` is out of order")
-        else:
-            last = index
-    return found
-
-
-def usage(*, without: str = "", swap: bool = False) -> str:
-    headings = {
-        "agent setup": "Let an agent set it up",
-        "install": "Install",
-        "init": "Set a repository up with `init`",
-        "opt in": "Opt in with `PREPUSH_CI=full`",
-        "commit and push": "What a commit and a push do",
-        "CI gate": "The CI gate",
-    }
-    names = [n for n, _ in STEPS if n != without]
-    if swap:
-        names[0], names[1] = names[1], names[0]
-    return "## Usage\n\n" + "".join(f"### {headings[n]}\n\ntext\n\n" for n in names)
-
-
-def test_the_shipped_usage_steps_come_in_order() -> None:
-    assert step_problems(shipped()) == []
-
-
-def test_a_usage_step_left_out_is_reported() -> None:
-    assert step_problems(usage(without="commit and push")) == [
-        "the step `commit and push` is missing"
-    ]
-
-
-def test_an_agent_step_left_out_is_reported() -> None:
-    assert step_problems(usage(without="agent setup")) == [
-        "the step `agent setup` is missing"
-    ]
-
-
-def test_usage_steps_in_the_wrong_order_are_reported() -> None:
-    assert step_problems(usage(swap=True)) == ["the step `install` is out of order"]
-
-
-def test_the_install_step_comes_with_a_command_to_run() -> None:
-    step = next(
-        body for heading, body in steps(shipped()).items() if "Install" in heading
-    )
-
-    assert "```" in step
-
-
-def test_the_gate_step_names_where_its_snippet_comes_from_and_the_default_branch() -> (
-    None
-):
-    step = next(body for heading, body in steps(shipped()).items() if "gate" in heading)
-    text = flat(step)
-
-    assert "docs/ci/" in text or "init --ci" in text
-    assert "default branch always runs CI in full" in text
-
-
-def test_the_step_after_the_gate_names_run_doctor_and_strip_with_one_sentence_each() -> (
-    None
-):
-    headings = list(steps(shipped()))
-    gate = next(i for i, h in enumerate(headings) if "gate" in h)
-    body = steps(shipped())[headings[gate + 1]]
-    bullets = {
-        name: flat(item)
-        for name in ("run", "doctor", "strip")
-        for item in re.findall(
-            rf"^- (`prepush-ci {name}`.*?)(?=^- |\Z)", body, re.MULTILINE | re.DOTALL
-        )
-    }
-
-    assert set(bullets) == {"run", "doctor", "strip"}
-    for bullet in bullets.values():
-        assert bullet.endswith(".")
-        assert ". " not in bullet
-
-
 # --- The agent step ------------------------------------------------------------------------
 
 SKILL_FILE = "skills/prepush-ci-setup/SKILL.md"
 
 
-def agent_step() -> str:
-    return next(
-        body for heading, body in steps(shipped()).items() if "agent" in heading
-    )
+def agent_step(text: str | None = None) -> str:
+    """The one `### ` step of the usage section whose heading names the agent."""
+    found = [
+        body
+        for heading, body in steps(shipped() if text is None else text).items()
+        if "agent" in heading
+    ]
+    assert len(found) == 1, f"{len(found)} usage steps name the agent"
+    return found[0]
 
 
 def agent_prompt() -> str:
@@ -537,19 +418,15 @@ def agent_prompt() -> str:
     return flat(blocks[0])
 
 
-def test_the_agent_step_comes_first() -> None:
-    assert "agent" in list(steps(shipped()))[0]
-    assert "Install" in list(steps(shipped()))[1]
-
-
-def test_the_prompt_to_hand_over_runs_the_skill_command_and_asks_for_the_setup() -> (
+def test_the_agent_step_is_found_once_and_reported_not_raised_when_none_names_the_agent() -> (
     None
 ):
-    prompt = agent_prompt()
+    assert agent_step()
 
-    assert "uvx prepush-ci skill" in prompt
-    assert re.search(r"\bfollow\b", prompt, re.IGNORECASE)
-    assert re.search(r"set this repository up with prepush-ci", prompt, re.IGNORECASE)
+    with pytest.raises(AssertionError, match="0 usage steps name the agent"):
+        agent_step("## Usage\n\n### 1. Install\n\ntext\n")
+    with pytest.raises(AssertionError, match="2 usage steps name the agent"):
+        agent_step("## Usage\n\n### An agent\n\nx\n\n### Another agent\n\ny\n")
 
 
 def test_the_agent_step_has_no_link_to_the_skill_on_github() -> None:
@@ -574,49 +451,6 @@ def spans(text: str) -> list[str]:
     return re.findall(r"`([^`\n]+)`", text)
 
 
-PRE_RELEASE_PHRASES = (
-    "under construction",
-    "Nothing here is released yet",
-    "until the first release",
-)
-PRE_RELEASE_ADDRESS = "git+https://github.com/CapeOfGoodCode/prepush-ci"
-
-
-def pre_release_wording(text: str) -> list[str]:
-    """The phrases (ignoring case, whitespace runs as one space) and the address (as it is) a README must not have."""
-    plain = flat(text).lower()
-    found = [p for p in PRE_RELEASE_PHRASES if p.lower() in plain]
-    return found + [PRE_RELEASE_ADDRESS] * (PRE_RELEASE_ADDRESS in text)
-
-
-def test_the_shipped_readme_has_no_pre_release_wording() -> None:
-    assert pre_release_wording(shipped()) == []
-
-
-def test_a_leftover_status_box_is_reported_as_pre_release_wording() -> None:
-    text = "> **Status: under construction.**\n"
-
-    assert pre_release_wording(text) == ["under construction"]
-
-
-def test_a_phrase_in_other_case_or_across_a_line_break_is_reported_as_pre_release_wording() -> (
-    None
-):
-    start = "Until the first release is on PyPI, use the plugin.\n"
-    wrapped = "Hello, nothing here is\nreleased yet.\n"
-
-    assert pre_release_wording(start) == ["until the first release"]
-    assert pre_release_wording(wrapped) == ["Nothing here is released yet"]
-
-
-def test_a_leftover_install_from_git_is_reported_as_pre_release_wording() -> None:
-    text = (
-        "```sh\nuv tool install git+https://github.com/CapeOfGoodCode/prepush-ci\n```\n"
-    )
-
-    assert pre_release_wording(text) == [PRE_RELEASE_ADDRESS]
-
-
 def test_the_agent_step_names_the_claude_code_plugin() -> None:
     found = spans(agent_step())
 
@@ -635,67 +469,6 @@ def test_the_plugin_commands_match_the_manifests() -> None:
 
     assert marketplace == manifest["name"]
     assert plugin in [entry["name"] for entry in manifest["plugins"]]
-
-
-def test_the_agent_step_names_the_project_skill_command_and_where_it_writes() -> None:
-    text = flat(agent_step())
-
-    assert "`prepush-ci skill --write`" in text
-    assert ".claude/skills/" in text
-
-
-def test_the_agent_step_says_the_following_steps_are_the_manual_core_and_what_the_skill_adds() -> (
-    None
-):
-    text = flat(agent_step()).lower()
-
-    assert "manual core" in text
-    for added in (
-        "command that runs the full check",
-        "services",
-        "preflight",
-        "sessionstart",
-        "`doctor`",
-    ):
-        assert added in text, added
-
-
-def test_the_agent_step_names_a_remote_to_push_branches_to_and_a_package_index() -> (
-    None
-):
-    text = flat(agent_step()).lower()
-
-    assert "remote" in text and "push branches" in text
-    assert "package index" in text
-
-
-def test_the_agent_step_says_the_agent_opens_a_pull_request_and_does_not_push_the_default_branch() -> (
-    None
-):
-    text = flat(agent_step()).lower()
-
-    assert "works on a branch and opens a pull request" in text
-    assert "not push to the default branch" in text
-
-
-def test_the_agent_step_says_what_the_agent_always_asks() -> None:
-    text = flat(agent_step()).lower()
-
-    assert "always" in text
-    assert "confirm the command that runs the full check" in text
-    assert "what pre-push should do" in text
-
-
-def test_the_agent_step_says_what_the_agent_asks_only_sometimes() -> None:
-    text = flat(agent_step()).lower()
-
-    assert "which hook manager" in text and "two" in text
-    assert "default branch when `origin` is missing, cannot be reached" in text
-    assert "has no default branch" in text
-    assert "(a single-branch clone of another branch)" in text
-    assert "origin/head" not in text
-    assert "a yes before" in text and "removes a hook" in text
-    assert "only" in text
 
 
 # --- What the README says about the command line and about strip -----------------------------

@@ -1,7 +1,7 @@
 # readme Specification
 
 ## Purpose
-What `README.md`, the PyPI long description, says a user acts on, and the checks that keep it true against the CLI and the config: every command and option exists, the reference leaves none out, the keys and defaults are the config's, and the usage section walks from the agent setup through install to a push.
+What `README.md`, the PyPI long description, says a user acts on, and the checks that keep it true against the CLI and the config: every command and option exists, the reference leaves none out, the keys and defaults are the config's, and the agent step's prompt and plugin commands match the CLI and the manifests. The spec checks drift, not prose.
 
 ## Requirements
 
