@@ -54,8 +54,8 @@ The rulebook for everyone who changes this repository, human or agent. `README.m
 ## Branches and pull requests
 
 - **One branch per issue**: `<type>/<issue>-<name>`, e.g. `feat/4-pre-push-hook`. Nothing but bootstrap is committed on `main`.
-- **Pull requests** follow `.github/pull_request_template.md`, start with `Closes #<n>`, and carry a **Proof** section a human can read in two minutes: acceptance criteria with one test each, a short demo transcript, the check result (`LOOP.md`, Proof). CI fails a pull request without it.
-- **Only a human approves, and the approval merges**: the last loop before the human turns on auto-merge (rebase only): terminator when its attack passes, or robocop for a pull request that changes no code of the tool; no agent merges directly. Rebase onto the latest `main` before asking for the merge; update with `git push --force-with-lease`, never `--force`.
+- **Pull requests** follow `.github/pull_request_template.md`, start with `Closes #<n>`, and carry a **Proof** section a human reads in one minute, in the form `LOOP.md` (Proof) gives for the change: a short demo when users see it, one line when it is internal, a decision note for `request:decide`. The acceptance criteria with their tests and the check result go into the reviewer's details. CI fails a pull request without a proof.
+- **The human decides, the checks verify**: the factory labels every pull request `request:decide` or `request:merge` from its files and title, as `.github/request-kinds.json` lists them (a release, the rules in `LOOP.md`, `AGENTS.md`, `.github/`, `.claude/` and `scripts/ci`, dependencies: decide). A `request:decide` pull request merges only on the human's approval; a `request:merge` one is merged by the factory's merger once the last loop has handed it over and every check passed on its head. The last loop before that turns on auto-merge (rebase only): terminator when its attack passes, or robocop for a pull request that changes no code of the tool; no loop merges directly. Rebase onto the latest `main` before handing over; update with `git push --force-with-lease`, never `--force`.
 
 ## Testing
 

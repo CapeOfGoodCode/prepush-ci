@@ -1,7 +1,7 @@
 name: ci
 
 # Pull requests run only once they are ready for review: drafts are work in progress. The human's
-# approval merges through auto-merge; two pull requests that pass alone can still break together,
+# approval or the factory's merger merges them (LOOP.md); two pull requests that pass alone can still break together,
 # so every push to main runs the full check again, Linux and Windows (the coverage badge too).
 # Description edits do not trigger this workflow (proof.yml checks those), so an edit can never
 # cancel a running check and leave a skipped, "passing" one behind.
