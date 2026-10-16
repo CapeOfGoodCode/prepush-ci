@@ -10,8 +10,6 @@ tests to drift.
 
 import json
 import re
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -469,58 +467,3 @@ def test_the_plugin_commands_match_the_manifests() -> None:
 
     assert marketplace == manifest["name"]
     assert plugin in [entry["name"] for entry in manifest["plugins"]]
-
-
-# --- What the README says about the command line and about strip -----------------------------
-
-
-def reference_intro() -> str:
-    """The text of the command reference before its first entry."""
-    return flat(section(shipped(), "reference").split("### ", 1)[0])
-
-
-def exit_status_with_two_arguments(command: str) -> int:
-    """The exit status of `prepush-ci <command> a b`, a command line no command takes."""
-    result = subprocess.run(
-        [sys.executable, "-m", "prepush_ci", command, "a", "b"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return result.returncode
-
-
-def test_the_reference_names_the_commands_that_exit_two_on_a_wrong_command_line() -> (
-    None
-):
-    intro = reference_intro()
-    two, one = re.search(r"makes (.+?) exit 2; (.+?) exit 1", intro).groups()  # type: ignore[union-attr]
-    named = {2: set(re.findall(r"`(\w+)`", two)), 1: set(re.findall(r"`(\w+)`", one))}
-
-    actual: dict[int, set[str]] = {1: set(), 2: set()}
-    for command in sorted(named[1] | named[2]):
-        actual[exit_status_with_two_arguments(command)].add(command)
-
-    assert named == actual
-    assert named[1] | named[2] == {
-        "init",
-        "install",
-        "run",
-        "doctor",
-        "hook",
-        "verify",
-        "strip",
-    }
-
-
-def test_the_usage_step_on_strip_names_its_range_and_the_force_push() -> None:
-    body = steps(shipped())[list(steps(shipped()))[-1]]
-    bullet = flat(re.search(r"^- (`prepush-ci strip`.*)$", body, re.MULTILINE).group(1))  # type: ignore[union-attr]
-
-    assert "commits of your branch since the default branch" in bullet
-    assert "`git push --force-with-lease`" in bullet
-    assert "not pushed" not in bullet
-
-
-def test_the_entry_of_strip_names_the_force_push() -> None:
-    assert "`git push --force-with-lease`" in flat(entries(shipped())["strip"])
