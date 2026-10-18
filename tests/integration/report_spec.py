@@ -629,6 +629,53 @@ def test_origin_wins_over_github_repository(world: World) -> None:
     assert "/repos/acme/widgets/" in world.api.requests[-1].path
 
 
+def test_a_short_alias_of_origin_names_the_repository(world: World) -> None:
+    world.git(world.repo, "config", "url.https://github.com/acme/.insteadOf", "gh:")
+    set_origin(world, "gh:widgets")
+
+    result = world.passed()
+
+    assert result.returncode == 0
+    assert "/repos/acme/widgets/" in world.api.requests[-1].path
+
+
+def test_a_push_only_rewrite_is_ignored(world: World) -> None:
+    world.git(
+        world.repo,
+        "config",
+        "url.https://github.com/fork/.pushInsteadOf",
+        "https://github.com/acme/",
+    )
+    set_origin(world, "https://github.com/acme/widgets.git")
+
+    result = world.passed()
+
+    assert result.returncode == 0
+    assert "/repos/acme/widgets/" in world.api.requests[-1].path
+    assert "/repos/fork/" not in world.api.requests[-1].path
+
+
+def test_an_ssh_host_alias_exits_1_and_sends_no_request(world: World) -> None:
+    set_origin(world, "git@github.com-work:acme/widgets.git")
+
+    result = world.passed(env={"GITHUB_TOKEN": "tok", "GITHUB_API_URL": None})
+
+    assert result.returncode == 1
+    assert "no repository could be read from `origin`" in result.stderr
+    assert world.api.requests == []
+
+
+def test_a_host_that_only_starts_like_githubs_exits_1_and_sends_no_request(
+    world: World,
+) -> None:
+    set_origin(world, "https://ssh.github.com.example.test/acme/widgets.git")
+
+    result = world.passed(env={"GITHUB_TOKEN": "tok", "GITHUB_API_URL": None})
+
+    assert result.returncode == 1
+    assert world.api.requests == []
+
+
 def test_no_origin_and_no_repository_name_exits_1_and_sends_no_request(
     world: World,
 ) -> None:

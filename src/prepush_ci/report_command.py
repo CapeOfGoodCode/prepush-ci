@@ -129,7 +129,7 @@ def _tree_of(sha: str, cwd: Path) -> str:
 
 
 def _origin(cwd: Path) -> str | None:
-    result = git(cwd, "config", "--get", "remote.origin.url")
+    result = git(cwd, "remote", "get-url", "origin")
     return answer(result) if result.returncode == 0 else None
 
 
