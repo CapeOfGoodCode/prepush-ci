@@ -174,17 +174,24 @@ def test_a_flag_left_out_of_its_entry_is_reported_as_missing_from_the_command(
     ]
 
 
+def test_a_readme_without_an_entry_for_report_is_reported(invocations: Any) -> None:
+    text = reference(invocations, without="report")
+
+    assert reference_problems(text, invocations) == ["report has no entry"]
+
+
 def test_an_entry_without_a_synopsis_is_reported(invocations: Any) -> None:
     text = reference(invocations).replace("prepush-ci strip", "strip")
 
     assert reference_problems(text, invocations) == ["strip has no synopsis"]
 
 
-def test_the_reference_lists_the_nine_commands(invocations: Any) -> None:
+def test_the_reference_lists_the_ten_commands(invocations: Any) -> None:
     assert command_names(invocations) == [
         "doctor",
         "init",
         "install",
+        "report",
         "run",
         "skill",
         "strip",
@@ -225,6 +232,16 @@ def test_the_entries_of_run_and_strip_say_zero_means_done_and_one_means_refused(
 
     assert "0 means it did its work" in entry
     assert "1 means it refused or failed" in entry
+
+
+def test_the_entry_of_report_says_zero_means_posted_one_refused_and_two_rejected() -> (
+    None
+):
+    entry = flat(entries(shipped())["report"])
+
+    assert "0 means the result was posted" in entry
+    assert "1 means it refused or failed" in entry
+    assert "2 means the parser rejected the command line" in entry
 
 
 # --- PREPUSH_CI ------------------------------------------------------------------------------
