@@ -2,8 +2,10 @@
 
 import argparse
 import sys
+from collections.abc import Callable
 from importlib.metadata import version
 from pathlib import Path
+from typing import TypeVar
 
 from prepush_ci import (
     commit_msg_hook,
@@ -11,6 +13,7 @@ from prepush_ci import (
     init_command,
     install_command,
     pre_push_hook,
+    report_command,
     run_command,
     skill_command,
     strip_command,
@@ -20,6 +23,21 @@ from prepush_ci import (
 from prepush_ci.core.doctor import MODES
 from prepush_ci.core.hook_managers import CHOICES
 from prepush_ci.core.init import CI_CHOICES, ConfigFlags
+from prepush_ci.core.report import Malformed, parse_duration, parse_name, parse_tool
+
+T = TypeVar("T")
+
+
+def _parsed(parse: Callable[[str], T]) -> Callable[[str], T]:
+    """`parse` as an argparse type: a `Malformed` value is a usage error that names its flag."""
+
+    def convert(text: str) -> T:
+        try:
+            return parse(text)
+        except Malformed as error:
+            raise argparse.ArgumentTypeError(str(error)) from error
+
+    return convert
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -137,7 +155,64 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="write it to .claude/skills/prepush-ci-setup/SKILL.md of the repository",
     )
+    report = commands.add_parser(
+        "report",
+        help="post the result of a run of the check for a commit, as a check run or a status",
+    )
+    report.add_argument(
+        "--result",
+        required=True,
+        choices=("passed", "failed"),
+        help="how the run ended",
+    )
+    report.add_argument(
+        "--tree",
+        required=True,
+        help="the full hash of the tree the check ran on; refused when it is not the commit's",
+    )
+    report.add_argument(
+        "--commit", default="HEAD", help="the commit to report on (default: HEAD)"
+    )
+    report.add_argument(
+        "--name",
+        type=_parsed(parse_name),
+        help="the name of the check run, or the context of the status",
+    )
+    report.add_argument(
+        "--duration",
+        type=_parsed(parse_duration),
+        help="how long the run took, in whole seconds",
+    )
+    report.add_argument(
+        "--tool",
+        action="append",
+        type=_parsed(parse_tool),
+        help="a tool the run used, as NAME=VERSION (repeatable)",
+    )
+    report.add_argument(
+        "--junit",
+        action="append",
+        help="a JUnit XML file of the run (repeatable); its test cases are counted",
+    )
+    report.add_argument(
+        "--coverage", help="the coverage.json of coverage.py; its total is shown"
+    )
     args = parser.parse_args(args_in)
+    if args.command == "report":
+        return report_command.run(
+            report_command.Options(
+                args.result,
+                args.tree,
+                args.commit,
+                args.name,
+                args.duration,
+                tuple(args.tool or ()),
+                tuple(args.junit or ()),
+                args.coverage,
+            ),
+            env,
+            Path.cwd(),
+        )
     if args.command == "skill":
         return skill_command.run(args.write, Path.cwd())
     if args.command == "strip":

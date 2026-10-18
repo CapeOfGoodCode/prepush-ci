@@ -82,7 +82,7 @@ Add a first job to pull request CI that reads the trailer of the head commit wit
 
 ## Command reference
 
-A command line the parser rejects makes `init`, `install`, `run`, `doctor` and `hook` exit 2; `verify` and `strip` check their own arguments and exit 1.
+A command line the parser rejects makes `init`, `install`, `run`, `doctor`, `report` and `hook` exit 2; `verify` and `strip` check their own arguments and exit 1.
 
 ### `init`
 
@@ -192,6 +192,20 @@ prepush-ci doctor --mode full
 ```
 
 **Exit status:** 0 means every check passed, 1 means at least one did not.
+
+### `report`
+
+Posts the result of a run of the check for a commit: as a check run when `PREPUSH_CI_APP_ID` and `PREPUSH_CI_APP_KEY` are set, otherwise as a commit status with `GITHUB_TOKEN` or `GH_TOKEN`. Say which tree you checked with `--tree`: `report` refuses a tree that is not the commit's, so a result never shows on a state it did not check. It runs nothing itself.
+
+```
+prepush-ci report --result passed|failed --tree TREE [--commit SHA] [--name NAME] [--duration SECONDS] [--tool NAME=VERSION] [--junit FILE] [--coverage FILE]
+```
+
+```sh
+prepush-ci report --result passed --tree "$(git rev-parse 'HEAD^{tree}')" --junit report.xml --coverage coverage.json
+```
+
+**Exit status:** 0 means the result was posted, 1 means it refused or failed, 2 means the parser rejected the command line.
 
 ### `skill`
 

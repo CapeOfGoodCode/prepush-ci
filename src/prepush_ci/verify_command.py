@@ -15,7 +15,7 @@ from prepush_ci.core.verify import (
     unresolved,
     usage_problem,
 )
-from prepush_ci.git import GitError, committed_config, git, trailers
+from prepush_ci.git import GitError, committed_config, git, resolve_commit, trailers
 
 
 def run(args: Sequence[str], cwd: Path) -> int:
@@ -40,7 +40,7 @@ def _decide(argument: str, cwd: Path) -> tuple[str | None, Verdict]:
         return argument, unreadable(
             f"not inside a git repository: {inside.stderr.strip()}"
         )
-    sha = _resolve(argument, cwd)
+    sha = resolve_commit(argument, cwd)
     if sha is None:
         return argument, unresolved(argument, _is_shallow(cwd))
     try:
@@ -49,15 +49,6 @@ def _decide(argument: str, cwd: Path) -> tuple[str | None, Verdict]:
         return sha, invalid_config(error.problems)
     except GitError as error:
         return sha, unreadable(str(error))
-
-
-def _resolve(argument: str, cwd: Path) -> str | None:
-    if argument.startswith(
-        "-"
-    ):  # no revision starts with a dash; never hand an option to git
-        return None
-    result = git(cwd, "rev-parse", "--verify", "--quiet", f"{argument}^{{commit}}")
-    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def _is_shallow(cwd: Path) -> bool:

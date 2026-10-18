@@ -104,3 +104,13 @@ def _file(sha: str, name: str, cwd: Path) -> str | None:
         return text_io.decode_utf8(blob.stdout, name)
     except text_io.NotUtf8 as error:
         raise ConfigError([str(error)]) from error
+
+
+def resolve_commit(argument: str, cwd: Path) -> str | None:
+    """The full sha of the commit `argument` names, or None when it names none."""
+    if argument.startswith(
+        "-"
+    ):  # no revision starts with a dash; never hand an option to git
+        return None
+    result = git(cwd, "rev-parse", "--verify", "--quiet", f"{argument}^{{commit}}")
+    return result.stdout.strip() if result.returncode == 0 else None
