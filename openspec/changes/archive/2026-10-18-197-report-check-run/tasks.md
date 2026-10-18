@@ -17,5 +17,5 @@
 
 ## 4. The README
 
-- [ ] 4.1 Add the entry for `report` to the README's reference, with every flag in its synopsis and its exit statuses, and copy the `Purpose` of `report` from this `design.md` into `openspec/specs/report/spec.md` when the change is archived; verify with the drift checks of the `readme` capability. The prose on setting up an app is #201's.
-- [ ] 4.2 Run `sh scripts/ci` and verify it passes
+- [x] 4.1 Add the entry for `report` to the README's reference, with every flag in its synopsis and its exit statuses, and copy the `Purpose` of `report` from this `design.md` into `openspec/specs/report/spec.md` when the change is archived; verify with the drift checks of the `readme` capability. The prose on setting up an app is #201's.
+- [x] 4.2 Run `sh scripts/ci` and verify it passes
