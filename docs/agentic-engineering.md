@@ -26,7 +26,7 @@ This repository is built by five AI loops and one human. This page lists the pra
 | Skills (primitive 3) | OpenSpec skills in `.claude/`; the skill the tool ships in [`skills/`](../skills/) |
 | Durable external memory (primitive "+ memory") | GitHub (issues, labels, comments) and the OpenSpec specs, not a chat history |
 | Retrospectives and post-mortems; avoid cognitive surrender (`operating-loops.md`, `concepts.md`) | A coach loop, mr-miyagi, reads a daily digest of escalations, review rounds, cost outliers and the human's corrections, and proposes rule changes as pull requests; only the human's approval lands them, and it never widens its own reach |
-| Avoid intent and comprehension debt (`concepts.md`) | Issue #1 is the intent; specs before code; test names read as specs; a proof a reviewer can read without running anything |
+| Avoid intent and comprehension debt (`concepts.md`) | The open epics are the intent; specs before code; test names read as specs; a proof a reviewer can read without running anything |
 
 ## Done differently
 
