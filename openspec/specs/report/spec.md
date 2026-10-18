@@ -109,7 +109,7 @@
 - **THEN** it exits 1 and no request is sent
 
 ### Requirement: Where the result is posted
-`report` SHALL post to the GitHub repository named by the URL of the remote `origin`, in the forms `https://[<userinfo>@]github.com/<owner>/<repo>[.git]`, `ssh://[<user>@]github.com/<owner>/<repo>[.git]` and `git@github.com:<owner>/<repo>[.git]`; the userinfo SHALL be ignored. When no repository can be read from `origin`, the environment SHALL name it (next requirement).
+`report` SHALL post to the GitHub repository named by the URL of the remote `origin` as `git remote get-url origin` prints it, in the forms `https://[<userinfo>@]<host>/<owner>/<repo>[.git]`, `ssh://[<user>@]<host>[:<port>]/<owner>/<repo>[.git]` and `git@<host>:<owner>/<repo>[.git]`, with `github.com` or `ssh.github.com` as `<host>`; the userinfo SHALL be ignored. When no repository can be read from `origin`, the environment SHALL name it (next requirement).
 
 #### Scenario: HTTPS remote
 - **WHEN** `origin` is `https://github.com/acme/widgets.git`
@@ -135,6 +135,30 @@
 - **WHEN** the repository has no remote `origin` and `GITHUB_REPOSITORY` is unset
 - **THEN** it exits 1, the reason says no repository could be read from `origin` and no request is sent
 
+#### Scenario: SSH over the HTTPS port
+- **WHEN** `origin` is `ssh://git@ssh.github.com:443/acme/widgets.git`, `GITHUB_API_URL` is unset and `GITHUB_REPOSITORY` is unset
+- **THEN** the request goes to `https://api.github.com` for `/repos/acme/widgets/`
+
+#### Scenario: A short alias of origin
+- **WHEN** the config sets `url.https://github.com/acme/.insteadOf` to `gh:`, `origin` is `gh:widgets`, `GITHUB_API_URL` is unset and `GITHUB_REPOSITORY` is unset
+- **THEN** the request goes to `https://api.github.com` for `/repos/acme/widgets/`
+
+#### Scenario: A push-only rewrite is ignored
+- **WHEN** `origin` is `https://github.com/acme/widgets.git` and the config sets `url.https://github.com/fork/.pushInsteadOf` to `https://github.com/acme/`
+- **THEN** the request path holds `/repos/acme/widgets/` and not `/repos/fork/`
+
+#### Scenario: An ssh host alias
+- **WHEN** `origin` is `git@github.com-work:acme/widgets.git`, `GITHUB_API_URL` is unset and `GITHUB_REPOSITORY` is unset
+- **THEN** it exits 1, the reason says no repository could be read from `origin` and no request is sent
+
+#### Scenario: An ssh host alias with a repository name
+- **WHEN** `origin` is `git@github.com-work:acme/widgets.git`, `GITHUB_API_URL` is unset and `GITHUB_REPOSITORY` is `acme/widgets`
+- **THEN** the request goes to `https://api.github.com` for `/repos/acme/widgets/`
+
+#### Scenario: A host that only starts like GitHub's
+- **WHEN** `origin` is `https://ssh.github.com.example.test/acme/widgets.git`, `GITHUB_API_URL` is unset and `GITHUB_REPOSITORY` is unset
+- **THEN** it exits 1 and no request is sent
+
 ### Requirement: The repository from the environment
 When no repository can be read from `origin`, `GITHUB_REPOSITORY` SHALL name it, in the form `<owner>/<repo>`; an empty value counts as unset. When neither names a repository, or the value is not of that form, `report` SHALL exit 1 and send no request, and the reason SHALL name `GITHUB_REPOSITORY` when it was the one at fault.
 
@@ -151,7 +175,7 @@ When no repository can be read from `origin`, `GITHUB_REPOSITORY` SHALL name it,
 - **THEN** the request goes to `https://api.github.com` for `/repos/acme/widgets/`
 
 ### Requirement: The API address
-`report` SHALL send its requests to the address in `GITHUB_API_URL` or, when it is unset or empty, to `https://api.github.com`. A host other than `github.com` in the URL of `origin` SHALL count only when `GITHUB_API_URL` is set and non-empty.
+`report` SHALL send its requests to the address in `GITHUB_API_URL` or, when it is unset or empty, to `https://api.github.com`. A host other than `github.com` or `ssh.github.com` in the URL of `origin` SHALL count only when `GITHUB_API_URL` is set and non-empty.
 
 #### Scenario: Another API address
 - **WHEN** `GITHUB_API_URL` is the address of a local server and `origin` is `https://git.example.test/acme/widgets.git`
