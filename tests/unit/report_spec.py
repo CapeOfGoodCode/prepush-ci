@@ -248,6 +248,56 @@ def test_a_proxy_remote_with_a_repository_name_goes_to_the_default_api_address()
     )
 
 
+def test_ssh_over_the_https_port_goes_to_the_default_api_address() -> None:
+    origin = "ssh://git@ssh.github.com:443/acme/widgets.git"
+
+    assert target(origin, {}) == Target(
+        "https://api.github.com", Repository("acme", "widgets")
+    )
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "ssh://ssh.github.com/acme/widgets",
+        "git@ssh.github.com:acme/widgets.git",
+        "https://SSH.GitHub.com/acme/widgets",
+    ],
+)
+def test_ssh_github_com_counts_as_github_in_every_form(origin: str) -> None:
+    assert target(origin, {}) == Target(
+        "https://api.github.com", Repository("acme", "widgets")
+    )
+
+
+def test_an_ssh_host_alias_names_no_repository() -> None:
+    with pytest.raises(ReportError, match="no repository could be read from `origin`"):
+        target("git@github.com-work:acme/widgets.git", {})
+
+
+def test_an_ssh_host_alias_with_a_repository_name_goes_to_the_default_api_address() -> (
+    None
+):
+    env = {"GITHUB_REPOSITORY": "acme/widgets"}
+
+    assert target("git@github.com-work:acme/widgets.git", env) == Target(
+        "https://api.github.com", Repository("acme", "widgets")
+    )
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://ssh.github.com.example.test/acme/widgets.git",
+        "https://xssh.github.com/acme/widgets.git",
+        "https://github.com.example.test/acme/widgets.git",
+    ],
+)
+def test_a_host_that_only_starts_like_githubs_names_no_repository(origin: str) -> None:
+    with pytest.raises(ReportError, match="no repository could be read from `origin`"):
+        target(origin, {})
+
+
 def test_the_refusal_never_quotes_the_remote() -> None:
     with pytest.raises(ReportError) as refused:
         target("https://x-access-token:s3cret@git.example.test/acme/w.git", {})

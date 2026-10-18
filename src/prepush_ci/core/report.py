@@ -11,6 +11,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 DEFAULT_API = "https://api.github.com"
+# GitHub's own hosts: ssh.github.com is its ssh endpoint over the HTTPS port.
+GITHUB_HOSTS = frozenset({"github.com", "ssh.github.com"})
 CHECK_RUN_NAME = "prepush-ci / full"
 STATUS_CONTEXT = "prepush-ci/full"
 FROM_A_SESSION = "reported from a session"
@@ -114,11 +116,11 @@ def _remote(url: str) -> tuple[str, Repository] | None:
 
 def target(origin_url: str | None, env: Mapping[str, str]) -> Target:
     """The API and the repository to post to: `origin` names the repository when it can (a host
-    other than github.com only when `GITHUB_API_URL` says where its API is), `GITHUB_REPOSITORY`
+    other than GitHub's only when `GITHUB_API_URL` says where its API is), `GITHUB_REPOSITORY`
     when it cannot. The refusal never quotes the URL: it may carry a token."""
     api = value(env, "GITHUB_API_URL")
     remote = None if origin_url is None else _remote(origin_url)
-    if remote is not None and (remote[0] == "github.com" or api is not None):
+    if remote is not None and (remote[0] in GITHUB_HOSTS or api is not None):
         return Target((api or DEFAULT_API).rstrip("/"), remote[1])
     named = value(env, "GITHUB_REPOSITORY")
     if named is None:
