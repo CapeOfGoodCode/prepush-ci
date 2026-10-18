@@ -21,7 +21,7 @@ Every `prepush-ci` invocation in a code block or code span of `README.md` SHALL 
 - **THEN** it reports `sync` as unknown
 
 ### Requirement: The reference lists every command and flag
-The README SHALL have a command reference with an entry for each of `init`, `install`, `hook commit-msg`, `hook pre-push`, `run`, `verify`, `strip`, `doctor` and `skill`, and the check SHALL fail when the CLI has a command the reference has no entry for, or an entry has no code span or block with its `prepush-ci <command>` synopsis. The synopsis of an entry SHALL name every flag the `--help` of that command lists, `-h` and `--help` apart.
+The README SHALL have a command reference with an entry for each of `init`, `install`, `hook commit-msg`, `hook pre-push`, `run`, `verify`, `strip`, `doctor`, `skill` and `report`, and the check SHALL fail when the CLI has a command the reference has no entry for, or an entry has no code span or block with its `prepush-ci <command>` synopsis. The synopsis of an entry SHALL name every flag the `--help` of that command lists, `-h` and `--help` apart.
 
 #### Scenario: The shipped reference is complete
 - **WHEN** the check reads the `README.md` of the repository and the `--help` of the CLI
@@ -35,8 +35,12 @@ The README SHALL have a command reference with an entry for each of `init`, `ins
 - **WHEN** the check reads a README text whose entry for `init` names every flag of `init` but `--no-session-hook`
 - **THEN** it reports `--no-session-hook` as missing from `init`
 
+#### Scenario: The report command left out
+- **WHEN** the check reads a README text without any entry for `report`
+- **THEN** it reports that `report` has no entry
+
 ### Requirement: The exit statuses are stated
-The entries of `run`, `verify`, `doctor` and `strip` SHALL state their exit statuses: `run` and `strip` 0 when they did their work and 1 when they refused or failed; `verify` 0 when the commit is verified and 1 otherwise; `doctor` 0 when every check passed and 1 otherwise. The entry of `init` SHALL state that it exits 2 when `--check` is missing and no config exists.
+The entries of `run`, `verify`, `doctor`, `strip` and `report` SHALL state their exit statuses: `run` and `strip` 0 when they did their work and 1 when they refused or failed; `verify` 0 when the commit is verified and 1 otherwise; `doctor` 0 when every check passed and 1 otherwise; `report` 0 when the result was posted, 1 when it refused or failed and 2 when the parser rejects the command line. The entry of `init` SHALL state that it exits 2 when `--check` is missing and no config exists.
 
 #### Scenario: Exit statuses of verify
 - **WHEN** a reader looks at the entry of `verify`
@@ -53,6 +57,10 @@ The entries of `run`, `verify`, `doctor` and `strip` SHALL state their exit stat
 #### Scenario: Exit statuses of run and strip
 - **WHEN** a reader looks at the entries of `run` and `strip`
 - **THEN** each says exit 0 means it did its work and exit 1 that it refused or failed
+
+#### Scenario: Exit statuses of report
+- **WHEN** a reader looks at the entry of `report`
+- **THEN** it says exit 0 means the result was posted, exit 1 that it refused or failed and exit 2 that the parser rejected the command line
 
 ### Requirement: The README documents PREPUSH_CI and the config keys
 The README SHALL document what `PREPUSH_CI` does when it is `full`, `off`, unset or empty, as the `commit-msg-hook` and `pre-push-hook` capabilities specify, and SHALL list every key of `.prepush-ci.toml` with its default in a table of rows `key | default`, including the sub-keys of `trailer`. The set of keys it lists SHALL equal the set the config accepts, read from the `known keys` list of the config's own `unknown key` message, for the top level and for `trailer`.
