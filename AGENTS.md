@@ -8,20 +8,20 @@ The rulebook for everyone who changes this repository, human or agent. `README.m
 
 ## Scope and backlog
 
-- **Issue #1 is the intent.** It is the scope contract for the first release. Decisions it leaves open are made by whoever picks them up, with a one-line rationale in the commit body (the intent asks for exactly this).
+- **The open `Epic` issues are the intent.** Each is the scope contract for what it describes; #1 was the first release. A step an epic leaves for later is out of scope until the human decides on it. Decisions an epic leaves open are made by whoever picks them up, with a one-line rationale in the commit body (#1 asked for exactly this).
 - **Every piece of work is an issue** with an issue type. Ideas, follow-ups and bugs become issues right away (`gh issue create --type …`), never TODO comments. Anything outside the intent gets the label `proposal` and waits for a human.
 
   | Type | Use it for | Usual commit type |
   | --- | --- | --- |
-  | `Epic` | the intent; its features are sub-issues (here: #1) | — |
+  | `Epic` | the intent; its features are sub-issues (the first: #1) | — |
   | `Feature` | new or changed behavior a user sees, improvements included | `feat` |
   | `Bug` | the tool behaves differently from its spec or the intent; comes with a reproduction | `fix` |
   | `Refactoring` | a change inside the code that changes no behavior | `refactor` |
   | `Task` | everything without product behavior: docs, tooling, this harness, releases | `chore`, `docs`, `test` |
 
   The organization also offers `Improvement` and `Sub-task`; this repository does not use them.
-- **Every issue says why.** Its body opens with `## Why`: one to three sentences on whose problem it solves and what goes wrong without it. A pointer is not a reason: a slice says the reason in its own words, then cites its section of #1; "the owner asked" is not a reason, the owner's reason is. For a bug, the why is what it costs the user. An open issue without one gets it from bruce-lee before its spec starts.
-- **Structure is native, not prose**: slices of the intent are sub-issues of #1 (`--parent 1`); dependencies are "blocked by" relations (`--blocked-by <n>`). Pick up an issue only when nothing blocks it.
+- **Every issue says why.** Its body opens with `## Why`: one to three sentences on whose problem it solves and what goes wrong without it. A pointer is not a reason: a slice says the reason in its own words, then cites its section of its epic; "the owner asked" is not a reason, the owner's reason is. For a bug, the why is what it costs the user. An open issue without one gets it from bruce-lee before its spec starts.
+- **Structure is native, not prose**: slices of the intent are sub-issues of their epic (`--parent <epic>`); dependencies are "blocked by" relations (`--blocked-by <n>`). Pick up an issue only when nothing blocks it.
 - **Types say what an issue is; labels say whose move it is** (`LOOP.md`).
 
 ## OpenSpec
