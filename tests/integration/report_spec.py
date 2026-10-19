@@ -5,6 +5,7 @@ import base64
 import json
 import os
 import platform
+import re
 import shutil
 import socket
 import subprocess
@@ -1161,6 +1162,74 @@ def test_the_summary_names_the_tools_the_duration_and_the_system(
     summary = summary_of(world)
     for part in ("ruff 0.14.2", "mypy 1.18.2", "8m 12s", platform.system()):
         assert part in summary
+
+
+def row_of(world: World, label: str) -> str:
+    rows = [line for line in summary_of(world).splitlines() if line.startswith("|")]
+    (row,) = [line for line in rows if line.startswith(f"| {label} |")]
+    return row
+
+
+def configure(world: World, config: str) -> None:
+    (world.repo / ".prepush-ci.toml").write_text(
+        config + "require_up_to_date = false\n"
+    )
+    world.git(world.repo, "commit", "-q", "-a", "-m", "config")
+
+
+@needs_openssl
+def test_a_pipe_in_the_check_is_written_with_a_backslash_in_the_summary(
+    world: World,
+) -> None:
+    configure(world, 'check = "sh scripts/ci | tee ci.log"\n')
+
+    assert world.passed(env=world.app_env()).returncode == 0
+
+    row = row_of(world, "Check")
+    assert row == r"| Check | ` sh scripts/ci \| tee ci.log ` |"
+    cell = row.removeprefix("| Check | ").removesuffix(" |")
+    assert not re.search(r"(?<!\\)\|", cell)
+
+
+@needs_openssl
+def test_a_pipe_in_the_preflight_is_written_with_a_backslash_in_the_summary(
+    world: World,
+) -> None:
+    configure(world, 'check = "sh scripts/ci"\npreflight = "make lint | cat"\n')
+
+    assert world.passed(env=world.app_env()).returncode == 0
+
+    assert row_of(world, "Preflight") == r"| Preflight | ` make lint \| cat ` |"
+
+
+@needs_openssl
+def test_a_pipe_in_a_tool_name_is_written_with_a_backslash_in_the_summary(
+    world: World,
+) -> None:
+    result = world.passed("--tool", "a|b=1.0", env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert row_of(world, "Tools") == r"| Tools | a\|b 1.0 |"
+
+
+@needs_openssl
+def test_a_backslash_before_a_pipe_in_the_check_is_kept_and_the_pipe_escaped(
+    world: World,
+) -> None:
+    configure(world, "check = 'echo \\| cat'\n")
+
+    assert world.passed(env=world.app_env()).returncode == 0
+
+    assert row_of(world, "Check") == r"| Check | ` echo \\| cat ` |"
+
+
+@needs_openssl
+def test_a_check_without_a_pipe_is_written_as_typed_in_the_summary(
+    world: World,
+) -> None:
+    assert world.passed(env=world.app_env()).returncode == 0
+
+    assert row_of(world, "Check") == "| Check | ` sh scripts/ci ` |"
 
 
 @needs_openssl

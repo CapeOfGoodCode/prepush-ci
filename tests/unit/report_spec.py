@@ -497,6 +497,24 @@ def test_the_summary_lists_tools_duration_counts_and_coverage_when_given() -> No
     assert "94.5%" in text
 
 
+def test_a_pipe_in_a_value_of_the_summary_table_is_escaped_in_every_row() -> None:
+    text = summary(
+        facts(
+            check="a|b",
+            preflight="c|d",
+            tools=(Tool("e|f", "1|2"),),
+            system="g|h",
+            duration=1,
+        )
+    )
+
+    rows = [line for line in text.splitlines() if line.startswith("| ")]
+    assert r"| Check | ` a\|b ` |" in rows
+    assert r"| Preflight | ` c\|d ` |" in rows
+    assert r"| Tools | e\|f 1\|2 |" in rows
+    assert r"| System | g\|h |" in rows
+
+
 def test_the_summary_leaves_out_what_was_not_given() -> None:
     text = summary(facts())
 
