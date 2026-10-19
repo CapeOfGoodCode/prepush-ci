@@ -1,7 +1,7 @@
 """`prepush-ci hook pre-push`: a pushed commit that carries the trailer was checked before it goes."""
 
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from prepush_ci.checking import Refused, head, require_clean, run_check, worktree_root
@@ -18,9 +18,14 @@ from prepush_ci.core.pre_push import (
     parse_ref_lines,
     pre_commit_push,
 )
-from prepush_ci.core.run_cache import Key, fingerprint, message_skipped
+from prepush_ci.core.run_cache import (
+    Key,
+    fingerprint,
+    message_skipped,
+    pushes_to_origin,
+)
 from prepush_ci.git import GitError, committed_config, git, trailers
-from prepush_ci.pass_cache import current_head, has_pass, record_pass
+from prepush_ci.pass_cache import current_head, has_pass, publish_pass, record_pass
 from prepush_ci.preflight import PreflightRefused
 from prepush_ci.preflight import run as run_preflight
 from prepush_ci.repo_config import load_repository_config
@@ -33,12 +38,18 @@ HINT = (
 )
 
 
-def run(read_stdin: Callable[[], str], env: Mapping[str, str], cwd: Path) -> int:
+def run(
+    read_stdin: Callable[[], str],
+    env: Mapping[str, str],
+    cwd: Path,
+    git_args: Sequence[str] = (),
+) -> int:
     """Run the hook; return the exit code (non-zero makes git abort the push). `read_stdin`
-    reads the ref lines git writes, after the mode is checked."""
+    reads the ref lines git writes, after the mode is checked; `git_args` are the remote name and
+    url git passes."""
     try:
         parse_mode(env.get(ENV_VAR))  # refuse unknown values before any ref is read
-        return _decide(read_stdin(), env, cwd)
+        return _decide(read_stdin(), env, cwd, git_args)
     except ConfigError as error:
         for problem in error.problems:
             print(f"prepush-ci: {problem}", file=sys.stderr)
@@ -54,7 +65,9 @@ def run(read_stdin: Callable[[], str], env: Mapping[str, str], cwd: Path) -> int
         return 1
 
 
-def _decide(stdin_text: str, env: Mapping[str, str], cwd: Path) -> int:
+def _decide(
+    stdin_text: str, env: Mapping[str, str], cwd: Path, git_args: Sequence[str]
+) -> int:
     tips = branch_tips(_pushed_refs(stdin_text, env, cwd))
     if not tips:
         return 0
@@ -65,11 +78,15 @@ def _decide(stdin_text: str, env: Mapping[str, str], cwd: Path) -> int:
         if env.get(ENV_VAR) == "full":  # a user who did not opt in is not nagged
             print(HINT, file=sys.stderr)
         return 0
-    return _enforce(demanding, env, config, root)
+    return _enforce(demanding, env, config, root, pushes_to_origin(git_args, env))
 
 
 def _enforce(
-    demanding: list[str], env: Mapping[str, str], config: Config, root: Path
+    demanding: list[str],
+    env: Mapping[str, str],
+    config: Config,
+    root: Path,
+    to_origin: bool,
 ) -> int:
     """Refuse for the cheap, certain reasons first; run the check only on a state that is the commit."""
     if (
@@ -87,10 +104,12 @@ def _enforce(
     passed = has_pass(config, root, key)
     if passed is not None:  # only the check is skipped: the preflight is never cached
         print(message_skipped(key.tree, passed), file=sys.stderr)
+        if to_origin:  # a publish that failed once is retried by the next push
+            publish_pass(config, root, key)
         return 0
     code = run_check(config, root)
-    if code == 0:
-        record_pass(config, root, key, checked.sha)
+    if code == 0 and record_pass(config, root, key, checked.sha) and to_origin:
+        publish_pass(config, root, key)
     return code
 
 

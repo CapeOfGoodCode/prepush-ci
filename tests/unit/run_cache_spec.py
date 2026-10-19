@@ -5,8 +5,10 @@ from prepush_ci.core.run_cache import (
     Key,
     fingerprint,
     message_not_cached,
+    message_not_shared,
     message_skipped,
     passed_commit,
+    pushes_to_origin,
     result_message,
     result_ref,
 )
@@ -159,3 +161,42 @@ def test_the_warning_for_an_unwritable_cache_says_the_pass_was_not_cached() -> N
 
     assert "could not be cached" in message
     assert "File exists" in message
+
+
+def test_the_remote_name_in_the_first_argument_is_origin() -> None:
+    assert pushes_to_origin(["origin", "https://example.test/x.git"], {})
+
+
+def test_another_remote_name_in_the_first_argument_is_not_origin() -> None:
+    assert not pushes_to_origin(["upstream", "https://example.test/x.git"], {})
+
+
+def test_a_url_in_the_first_argument_is_not_origin_whatever_the_url() -> None:
+    assert not pushes_to_origin(["../remote.git", "../remote.git"], {})
+
+
+def test_without_an_argument_the_name_pre_commit_sets_decides() -> None:
+    assert pushes_to_origin([], {"PRE_COMMIT_REMOTE_NAME": "origin"})
+    assert not pushes_to_origin([], {"PRE_COMMIT_REMOTE_NAME": "upstream"})
+
+
+def test_the_first_argument_wins_over_the_name_pre_commit_sets() -> None:
+    env = {"PRE_COMMIT_REMOTE_NAME": "origin"}
+
+    assert not pushes_to_origin(["upstream", "u"], env)
+
+
+def test_without_an_argument_and_without_the_pre_commit_name_the_remote_is_unknown() -> (
+    None
+):
+    assert not pushes_to_origin([], {})
+
+
+def test_the_warning_for_a_result_that_was_not_shared_names_origin_and_the_reason() -> (
+    None
+):
+    text = message_not_shared("remote said no")
+
+    assert "origin" in text
+    assert "remote said no" in text
+    assert "not shared" in text

@@ -2,7 +2,7 @@
 
 ## 1. Publish
 
-- [ ] 1.1 In the hook, push the result ref to `origin` after a pass and when a local result is reused, only when the remote is known to be `origin` (argument 1, else `PRE_COMMIT_REMOTE_NAME`; a url or no value is not `origin`), with `--no-verify` so the push of the ref does not start the hook again; `run` does not publish; a failed push is a warning naming `origin`; verify with specs for a hook pass to `origin`, a native hook that counts its runs, a reused local result that an earlier refused publish left behind, a push to another remote, a push by url, no remote known, the name from `PRE_COMMIT_REMOTE_NAME`, `run`, a failing check, `cache = false`, a repository without `origin` and a remote that refuses the ref, and for the check running once
+- [x] 1.1 In the hook, push the result ref to `origin` after a pass and when a local result is reused, only when the remote is known to be `origin` (argument 1, else `PRE_COMMIT_REMOTE_NAME`; a url or no value is not `origin`), with `--no-verify` so the push of the ref does not start the hook again; `run` does not publish; a failed push is a warning naming `origin`; verify with specs for a hook pass to `origin`, a native hook that counts its runs, a reused local result that an earlier refused publish left behind, a push to another remote, a push by url, no remote known, the name from `PRE_COMMIT_REMOTE_NAME`, `run`, a failing check, `cache = false`, a repository without `origin` and a remote that refuses the ref, and for the check running once
 
 ## 2. Look up
 
