@@ -14,6 +14,8 @@ RESULTS = "refs/prepush-ci/results"
 IDENTITY = ("prepush-ci", "prepush-ci@localhost")
 SUBJECT = "prepush-ci: the check passed"
 NAMES = "commit "
+EXPIRES_AFTER = 30 * 24 * 60 * 60  # seconds
+BATCH = 100  # refs per `git push` that deletes them, so the command line stays short on Windows
 
 
 @dataclass(frozen=True)
@@ -75,6 +77,22 @@ def pushes_to_origin(args: Sequence[str], env: Mapping[str, str]) -> bool:
     return name == REMOTE
 
 
+def expired_refs(listing: str, now: int) -> list[str]:
+    """The refs older than 30 days at `now` (a Unix time), from the output of
+    `git for-each-ref --format='%(refname) %(committerdate:unix)'`. A ref dated in the future or
+    without a readable date is kept: the tool removes only what it can age."""
+    expired: list[str] = []
+    for line in listing.splitlines():
+        ref, _, stamp = line.rpartition(" ")
+        if ref and stamp.isdigit() and now - int(stamp) > EXPIRES_AFTER:
+            expired.append(ref)
+    return expired
+
+
+def batches(refs: Sequence[str]) -> list[list[str]]:
+    return [list(refs[start : start + BATCH]) for start in range(0, len(refs), BATCH)]
+
+
 def message_skipped(tree: str, sha: str) -> str:
     return (
         f"prepush-ci: the check passed earlier on tree {tree[:SHORT]} "
@@ -108,3 +126,11 @@ def message_not_shared(reason: str) -> str:
         f"prepush-ci: the result was not shared through {REMOTE}, so another clone "
         f"runs the check again: {reason}"
     )
+
+
+def message_not_cleaned(reason: str) -> str:
+    return f"prepush-ci: old results could not be removed: {reason}"
+
+
+def message_not_cleaned_from_origin(reason: str) -> str:
+    return f"prepush-ci: old results could not be removed from {REMOTE}, so they stay until a later push: {reason}"

@@ -5,14 +5,19 @@ import sys
 import time
 from pathlib import Path
 
+from prepush_ci import text_io
 from prepush_ci.core.config import REMOTE, Config
 from prepush_ci.core.run_cache import (
     IDENTITY,
+    RESULTS,
     Head,
     Key,
+    batches,
+    expired_refs,
     lists_ref,
     message_not_asked,
     message_not_cached,
+    message_not_cleaned,
     message_not_shared,
     passed_commit,
     result_message,
@@ -59,6 +64,58 @@ def publish_pass(root: Path, key: Key) -> None:
     pushed = git(root, "push", "--no-verify", REMOTE, f"+{ref}:{ref}")
     if pushed.returncode != 0:
         print(message_not_shared(pushed.stderr.strip()), file=sys.stderr)
+
+
+def expire_passes(root: Path, to_origin: bool) -> None:
+    """Delete the result refs older than 30 days, after a pass was recorded; `to_origin` is
+    whether the push the hook checks goes to `origin`. A repository without `origin` shares
+    nothing and cleans its clone. A failure is a warning, for the pass it follows is recorded."""
+    if _has_origin(
+        root
+    ):  # a clone that deleted what `origin` keeps leaves no name to drop it by
+        return
+    expired = expired_refs(_dated_results(root), int(time.time()))
+    if expired:
+        _delete_local(root, expired)
+
+
+def _dated_results(root: Path) -> str:
+    """Each result ref and its commit date, one per line. One ref git cannot date (its object is
+    missing) makes git refuse the whole listing, so the refs are asked for in batches, and a batch
+    that fails is halved until the ref that fails is alone; that one is left out, so it stays."""
+    listing = _dated(root, [RESULTS])
+    if listing is not None:
+        return listing
+    names = git(root, "for-each-ref", "--format=%(refname)", RESULTS).stdout.split()
+    return "".join(_dated_among(root, batch) for batch in batches(names))
+
+
+def _dated_among(root: Path, refs: list[str]) -> str:
+    listing = _dated(root, refs)
+    if listing is not None:
+        return listing
+    if len(refs) == 1:
+        return ""
+    middle = len(refs) // 2
+    return _dated_among(root, refs[:middle]) + _dated_among(root, refs[middle:])
+
+
+def _dated(root: Path, patterns: list[str]) -> str | None:
+    listing = git(
+        root, "for-each-ref", "--format=%(refname) %(committerdate:unix)", *patterns
+    )
+    return listing.stdout if listing.returncode == 0 else None
+
+
+def _delete_local(root: Path, refs: list[str]) -> None:
+    """One `git update-ref --stdin` for all of them, however many there are."""
+    commands = "".join(f"delete {ref}\n" for ref in refs)
+    deleted = text_io.run_bytes(
+        ["git", "update-ref", "--stdin"], cwd=root, stdin=text_io.encode(commands)
+    )
+    if deleted.returncode != 0:
+        reason = text_io.decode(deleted.stderr).strip()
+        print(message_not_cleaned(reason), file=sys.stderr)
 
 
 def fetch_pass(config: Config, root: Path, key: Key) -> str | None:

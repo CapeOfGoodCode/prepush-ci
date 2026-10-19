@@ -8,7 +8,7 @@ from prepush_ci.checking import Refused, head, require_clean, run_check, worktre
 from prepush_ci.core.config import ConfigError
 from prepush_ci.core.run_cache import Key, fingerprint
 from prepush_ci.git import GitError
-from prepush_ci.pass_cache import current_head, record_pass
+from prepush_ci.pass_cache import current_head, expire_passes, record_pass
 from prepush_ci.preflight import PreflightRefused
 from prepush_ci.preflight import run as run_preflight
 from prepush_ci.repo_config import load_repository_config
@@ -30,7 +30,8 @@ def run(env: Mapping[str, str], cwd: Path) -> int:
         code = run_check(config, root)
         if code == 0:
             key = Key(checked.tree, fingerprint(config, output))
-            record_pass(config, root, key, checked.sha)
+            if record_pass(config, root, key, checked.sha):
+                expire_passes(root, to_origin=False)
         return code
     except ConfigError as error:
         for problem in error.problems:
