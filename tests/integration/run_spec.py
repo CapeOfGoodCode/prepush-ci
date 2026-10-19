@@ -44,7 +44,9 @@ def configure(
         "require_up_to_date = false",
         *lines,
     ]
-    (repo / ".prepush-ci.toml").write_text("\n".join(body) + "\n")
+    # LF on every platform: a CRLF file reads as modified on Windows once the system
+    # `core.autocrlf=true` is gone, as the identity test below removes it
+    (repo / ".prepush-ci.toml").write_text("\n".join(body) + "\n", newline="\n")
     git(repo, "add", ".prepush-ci.toml")
     git(repo, "commit", "-q", "-m", "init")
 
@@ -55,9 +57,12 @@ def configured(repo: Path, git: Git, log: Path) -> Path:
     return repo
 
 
-def records(repo: Path) -> list[Path]:
-    directory = repo / ".git" / "prepush-ci"
-    return sorted(directory.iterdir()) if directory.is_dir() else []
+def results(repo: Path, git: Git) -> list[str]:
+    """The result refs, as `refname`."""
+    listing = git(
+        repo, "for-each-ref", "--format=%(refname)", "refs/prepush-ci/results"
+    )
+    return listing.stdout.split()
 
 
 def test_run_exits_0_when_the_check_passes(configured: Path, log: Path) -> None:
@@ -140,6 +145,71 @@ def test_run_runs_the_preflight_before_the_check(
     assert ran(log) == ["preflight", "check"]
 
 
+def test_the_error_stream_of_the_preflight_stays_its_own(
+    repo: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    script = tmp_path / "both_streams.py"
+    script.write_text("import sys\nprint('to-out')\nprint('to-err', file=sys.stderr)\n")
+    command = f"{Path(sys.executable).as_posix()} {script.as_posix()}"
+    configure(repo, git, log, f"preflight = '{command}'")
+
+    result = run_cli(repo)
+
+    assert result.returncode == 0, result.stderr
+    assert "to-err" in result.stderr
+    assert "to-err" not in result.stdout
+    assert "to-out" in result.stdout
+    assert "to-out" not in result.stderr
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX shell and /dev/full")
+@pytest.mark.parametrize("sink", ["full disk", "closed pipe"])
+@pytest.mark.parametrize("preflight", ["echo v1", "seq 1 200000"])
+def test_run_survives_a_standard_output_that_cannot_be_written(
+    repo: Path, git: Git, log: Path, preflight: str, sink: str
+) -> None:
+    configure(repo, git, log, f'preflight = "{preflight}"')
+    inherited = {k: v for k, v in os.environ.items() if k != "PREPUSH_CI"}
+    if sink == "full disk":
+        unwritable = os.open("/dev/full", os.O_WRONLY)
+    else:
+        reader, unwritable = os.pipe()
+        os.close(reader)
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "prepush_ci", "run"],
+            cwd=repo,
+            stdout=unwritable,
+            stderr=subprocess.PIPE,
+            check=False,
+            env=inherited,
+        )
+    finally:
+        os.close(unwritable)
+
+    assert result.stderr == b""  # no traceback, no "Exception ignored" at exit
+    assert result.returncode == 0
+    assert ran(log) == ["check"]
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="POSIX shell; Windows keeps it open"
+)
+def test_run_leaves_no_file_of_the_preflights_output_in_the_temporary_directory(
+    repo: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    configure(repo, git, log, "preflight = 'ls \"$TMPDIR\"'")
+
+    result = run_cli(repo, env={"TMPDIR": str(scratch)})
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""  # the command saw no file of ours while it ran
+    assert list(scratch.iterdir()) == []
+
+
 def test_run_with_an_unknown_config_key_exits_1_naming_the_key(
     repo: Path, git: Git, log: Path
 ) -> None:
@@ -204,12 +274,15 @@ def test_run_runs_the_check_again_after_a_pass_was_cached(
     assert ran(log) == ["check", "check"]
 
 
-def test_a_pass_of_run_is_recorded_under_prepush_ci_in_the_git_directory(
-    configured: Path,
+def test_a_pass_of_run_is_recorded_as_a_result_ref_of_the_tree_of_head(
+    configured: Path, git: Git
 ) -> None:
     run_cli(configured)
 
-    assert len(records(configured)) == 1
+    tree = git(configured, "rev-parse", "HEAD^{tree}").stdout.strip()
+    [ref] = results(configured, git)
+    assert ref.startswith(f"refs/prepush-ci/results/{tree}-")
+    assert git(configured, "rev-parse", f"{ref}^{{tree}}").stdout.strip() == tree
 
 
 def test_a_failing_run_records_nothing(repo: Path, git: Git, log: Path) -> None:
@@ -217,15 +290,15 @@ def test_a_failing_run_records_nothing(repo: Path, git: Git, log: Path) -> None:
 
     run_cli(repo)
 
-    assert records(repo) == []
+    assert results(repo, git) == []
 
 
-def test_a_refused_run_records_nothing(configured: Path) -> None:
+def test_a_refused_run_records_nothing(configured: Path, git: Git) -> None:
     (configured / ".prepush-ci.toml").write_text("# changed\n")
 
     run_cli(configured)
 
-    assert records(configured) == []
+    assert results(configured, git) == []
 
 
 def test_run_with_the_cache_off_records_nothing(
@@ -235,13 +308,13 @@ def test_run_with_the_cache_off_records_nothing(
 
     assert run_cli(repo).returncode == 0
 
-    assert records(repo) == []
+    assert results(repo, git) == []
 
 
 def test_run_that_passes_with_an_unwritable_cache_exits_0_and_warns(
     configured: Path,
 ) -> None:
-    (configured / ".git" / "prepush-ci").write_text("in the way")
+    (configured / ".git" / "refs" / "prepush-ci").write_text("in the way")
 
     result = run_cli(configured)
 
@@ -253,22 +326,65 @@ def test_run_that_fails_with_an_unwritable_cache_still_exits_1(
     repo: Path, git: Git, log: Path
 ) -> None:
     configure(repo, git, log, check="exit 1")
-    (repo / ".git" / "prepush-ci").write_text("in the way")
+    (repo / ".git" / "refs" / "prepush-ci").write_text("in the way")
 
     assert run_cli(repo).returncode == 1
 
 
-def test_run_records_the_commit_it_checked_when_the_check_makes_a_commit(
+def test_run_records_the_tree_it_checked_when_the_check_makes_a_commit(
     repo: Path, git: Git, log: Path
 ) -> None:
-    configure(repo, git, log, check="git commit --allow-empty -q -m moved")
+    configure(
+        repo,
+        git,
+        log,
+        check="echo more > more.txt && git add more.txt && git commit -q -m moved",
+    )
     checked = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
 
     result = run_cli(repo)
 
     assert result.returncode == 0, result.stderr
     assert git(repo, "rev-parse", "HEAD").stdout.strip() != checked
-    assert [p.read_text().split()[0] for p in records(repo)] == [checked]
+    [ref] = results(repo, git)
+    assert ref.startswith(f"refs/prepush-ci/results/{tree}-")
+    assert git(repo, "rev-parse", f"{ref}^{{tree}}").stdout.strip() == tree
+
+
+def test_the_commit_a_result_ref_points_at_names_the_commit_that_was_checked(
+    configured: Path, git: Git
+) -> None:
+    checked = git(configured, "rev-parse", "HEAD").stdout.strip()
+    run_cli(configured)
+
+    [ref] = results(configured, git)
+    message = git(configured, "log", "-1", "--format=%B", ref).stdout
+
+    assert f"commit {checked}" in message
+    assert git(configured, "rev-list", "--parents", "-1", ref).stdout.split() == [
+        git(configured, "rev-parse", ref).stdout.strip()
+    ]  # no parent
+
+
+def test_a_result_is_recorded_without_a_git_identity_and_with_signing_on(
+    configured: Path, git: Git
+) -> None:
+    git(configured, "config", "--unset", "user.name")
+    git(configured, "config", "--unset", "user.email")
+    git(configured, "config", "commit.gpgsign", "true")
+
+    result = run_cli(
+        configured,
+        env={
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert len(results(configured, git)) == 1
 
 
 def test_run_works_in_a_repository_whose_path_has_a_non_ascii_character_under_an_ascii_locale(

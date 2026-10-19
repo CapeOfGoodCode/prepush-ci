@@ -4,11 +4,11 @@ from prepush_ci.core.config import Config, Trailer
 from prepush_ci.core.run_cache import (
     Key,
     fingerprint,
-    is_pass_for,
     message_not_cached,
     message_skipped,
-    pass_record,
-    record_name,
+    passed_commit,
+    result_message,
+    result_ref,
 )
 
 CONFIG = Config(
@@ -21,35 +21,53 @@ CONFIG = Config(
     legacy_keys=(),
     cache=True,
 )
-KEY = Key("a" * 40, "b" * 40, fingerprint(CONFIG))
+TREE = "b" * 40
+KEY = Key(TREE, fingerprint(CONFIG, "uv 0.8.1\n"))
 
 
-def test_the_same_config_values_give_the_same_fingerprint() -> None:
-    assert fingerprint(CONFIG) == fingerprint(dataclasses.replace(CONFIG))
+def test_the_same_inputs_give_the_same_fingerprint() -> None:
+    assert fingerprint(CONFIG, "uv 0.8.1\n") == fingerprint(
+        dataclasses.replace(CONFIG), "uv 0.8.1\n"
+    )
+
+
+def test_the_name_of_a_result_ref_leaves_room_in_a_windows_path() -> None:
+    # Windows refuses paths of 260 characters; git adds `.lock` to the file of a ref it updates,
+    # so the file name of a ref (a 40-hex tree, a dash and the fingerprint) stays under 80.
+    name = result_ref(KEY).rsplit("/", 1)[1]
+    assert len(name) <= 80
 
 
 def test_another_check_command_changes_the_fingerprint() -> None:
-    assert fingerprint(dataclasses.replace(CONFIG, check="make other")) != fingerprint(
-        CONFIG
+    assert fingerprint(dataclasses.replace(CONFIG, check="make other"), "") != (
+        fingerprint(CONFIG, "")
     )
 
 
 def test_another_preflight_changes_the_fingerprint() -> None:
-    assert fingerprint(dataclasses.replace(CONFIG, preflight=None)) != fingerprint(
-        CONFIG
+    assert fingerprint(dataclasses.replace(CONFIG, preflight=None), "") != (
+        fingerprint(CONFIG, "")
     )
 
 
 def test_other_required_variables_change_the_fingerprint() -> None:
     changed = dataclasses.replace(CONFIG, require_env=("DATABASE_URL", "TOKEN"))
 
-    assert fingerprint(changed) != fingerprint(CONFIG)
+    assert fingerprint(changed, "") != fingerprint(CONFIG, "")
 
 
 def test_another_up_to_date_ref_changes_the_fingerprint() -> None:
-    assert fingerprint(
-        dataclasses.replace(CONFIG, require_up_to_date=None)
-    ) != fingerprint(CONFIG)
+    changed = dataclasses.replace(CONFIG, require_up_to_date=None)
+
+    assert fingerprint(changed, "") != fingerprint(CONFIG, "")
+
+
+def test_another_output_of_the_preflight_changes_the_fingerprint() -> None:
+    assert fingerprint(CONFIG, "uv 0.8.2\n") != fingerprint(CONFIG, "uv 0.8.1\n")
+
+
+def test_no_output_of_the_preflight_differs_from_some_output() -> None:
+    assert fingerprint(CONFIG, "") != fingerprint(CONFIG, "uv 0.8.1\n")
 
 
 def test_keys_that_do_not_change_what_a_pass_means_leave_the_fingerprint_alone() -> (
@@ -63,7 +81,7 @@ def test_keys_that_do_not_change_what_a_pass_means_leave_the_fingerprint_alone()
         cache=False,
     )
 
-    assert fingerprint(changed) == fingerprint(CONFIG)
+    assert fingerprint(changed, "") == fingerprint(CONFIG, "")
 
 
 def test_values_that_would_run_together_in_a_naive_join_give_different_fingerprints() -> (
@@ -72,67 +90,67 @@ def test_values_that_would_run_together_in_a_naive_join_give_different_fingerpri
     one = dataclasses.replace(CONFIG, check="a b", preflight="c")
     other = dataclasses.replace(CONFIG, check="a", preflight="b c")
 
-    assert fingerprint(one) != fingerprint(other)
+    assert fingerprint(one, "") != fingerprint(other, "")
 
 
-def test_the_record_of_a_pass_is_intact_for_its_own_key() -> None:
-    assert is_pass_for(pass_record(KEY), KEY)
+def test_output_that_is_no_utf8_still_gives_a_fingerprint() -> None:
+    assert len(fingerprint(CONFIG, "a\udcffb")) == 32
 
 
-def test_the_record_of_a_pass_names_the_commit_and_the_tree() -> None:
-    assert KEY.sha in pass_record(KEY) and KEY.tree in pass_record(KEY)
+def test_a_result_ref_is_the_tree_and_the_config_under_the_results_namespace() -> None:
+    assert result_ref(KEY) == f"refs/prepush-ci/results/{TREE}-{KEY.config}"
 
 
-def test_a_missing_record_is_not_a_pass() -> None:
-    assert not is_pass_for(None, KEY)
-
-
-def test_an_empty_record_is_not_a_pass() -> None:
-    assert not is_pass_for("", KEY)
-
-
-def test_a_truncated_record_is_not_a_pass() -> None:
-    record = pass_record(KEY)
-
-    assert not is_pass_for(record[: len(record) // 2], KEY)
-
-
-def test_a_record_for_another_commit_is_not_a_pass() -> None:
-    other = dataclasses.replace(KEY, sha="c" * 40)
-
-    assert not is_pass_for(pass_record(other), KEY)
-
-
-def test_a_record_for_another_tree_is_not_a_pass() -> None:
-    other = dataclasses.replace(KEY, tree="c" * 40)
-
-    assert not is_pass_for(pass_record(other), KEY)
-
-
-def test_a_record_for_another_fingerprint_is_not_a_pass() -> None:
-    other = dataclasses.replace(KEY, fingerprint="0" * 64)
-
-    assert not is_pass_for(pass_record(other), KEY)
-
-
-def test_a_record_is_filed_by_a_name_that_is_safe_and_depends_on_the_whole_key() -> (
-    None
-):
+def test_a_result_ref_depends_on_the_tree_and_on_the_config() -> None:
     names = {
-        record_name(KEY),
-        record_name(dataclasses.replace(KEY, sha="c" * 40)),
-        record_name(dataclasses.replace(KEY, tree="c" * 40)),
-        record_name(dataclasses.replace(KEY, fingerprint="0" * 64)),
+        result_ref(KEY),
+        result_ref(dataclasses.replace(KEY, tree="c" * 40)),
+        result_ref(dataclasses.replace(KEY, config="0" * 64)),
     }
 
-    assert len(names) == 4
-    assert all(name.isalnum() for name in names)
+    assert len(names) == 3
 
 
-def test_the_skip_message_names_the_commit_and_says_the_check_passed_earlier() -> None:
-    message = message_skipped("a" * 40)
+def test_a_result_ref_name_is_hex_apart_from_its_fixed_parts() -> None:
+    name = result_ref(KEY).removeprefix("refs/prepush-ci/results/")
 
-    assert "aaaaaaaaaaaa" in message
+    assert set(name) <= set("0123456789abcdef-")
+
+
+def test_the_message_of_a_result_commit_names_the_commit_that_was_checked() -> None:
+    assert result_message("a" * 40) == [
+        "prepush-ci: the check passed",
+        f"commit {'a' * 40}",
+    ]
+
+
+def test_a_result_commit_of_the_tree_gives_the_commit_it_names() -> None:
+    assert passed_commit(f"{TREE}\ncommit {'a' * 40}\n", KEY) == "a" * 40
+
+
+def test_a_result_commit_of_another_tree_is_a_miss() -> None:
+    assert passed_commit(f"{'c' * 40}\ncommit {'a' * 40}\n", KEY) is None
+
+
+def test_a_result_commit_that_names_no_commit_is_a_miss() -> None:
+    assert passed_commit(f"{TREE}\nsomething else\n", KEY) is None
+
+
+def test_a_result_commit_with_an_empty_message_is_a_miss() -> None:
+    assert passed_commit(f"{TREE}\n\n", KEY) is None
+
+
+def test_no_answer_from_git_is_a_miss() -> None:
+    assert passed_commit("", KEY) is None
+
+
+def test_the_skip_message_names_the_tree_and_the_commit_by_twelve_characters_each() -> (
+    None
+):
+    message = message_skipped("1" * 40, "2" * 40)
+
+    assert "111111111111" in message and "1" * 13 not in message
+    assert "222222222222" in message and "2" * 13 not in message
     assert "passed earlier" in message
 
 

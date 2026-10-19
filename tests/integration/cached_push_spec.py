@@ -62,8 +62,11 @@ def push(
     return git(repo, "push", "origin", "main", env=env, check=False)
 
 
-def run_cli(repo: Path) -> "subprocess.CompletedProcess[str]":
+def run_cli(
+    repo: Path, extra: dict[str, str] | None = None
+) -> "subprocess.CompletedProcess[str]":
     env = {k: v for k, v in os.environ.items() if k != "PREPUSH_CI"}
+    env.update(extra or {})
     return subprocess.run(
         [sys.executable, "-m", "prepush_ci", "run"],
         cwd=repo,
@@ -74,9 +77,16 @@ def run_cli(repo: Path) -> "subprocess.CompletedProcess[str]":
     )
 
 
-def records(repo: Path) -> list[Path]:
-    directory = repo / ".git" / "prepush-ci"
-    return sorted(directory.iterdir()) if directory.is_dir() else []
+def refs(repo: Path, git: Git) -> list[str]:
+    """The result refs, as `refname`."""
+    listing = git(
+        repo, "for-each-ref", "--format=%(refname)", "refs/prepush-ci/results"
+    )
+    return listing.stdout.split()
+
+
+def head_of(repo: Path, git: Git, rev: str = "HEAD") -> str:
+    return git(repo, "rev-parse", rev).stdout.strip()
 
 
 def remote_has(repo: Path, git: Git) -> bool:
@@ -85,6 +95,15 @@ def remote_has(repo: Path, git: Git) -> bool:
         git(repo.parent / "remote.git", "cat-file", "-e", head, check=False).returncode
         == 0
     )
+
+
+def write_versions(repo: Path, log: Path, tmp_path: Path) -> None:
+    """A config whose `preflight` prints the variable `TOOL_VERSION`, as a tool reports its version."""
+    script = tmp_path / "version.py"
+    script.write_text("import os\nprint(os.environ['TOOL_VERSION'])\n")
+    # no quotes around the paths: cmd strips the outer pair of a command that starts with one
+    command = f"{Path(sys.executable).as_posix()} {script.as_posix()}"
+    write_config(repo, log, f"preflight = '{command}'")
 
 
 def test_a_push_after_a_passing_run_skips_the_check_and_says_so(
@@ -153,10 +172,15 @@ def test_a_dirty_worktree_is_still_refused_for_a_cached_pass(
     assert runs(log) == 1
 
 
-def test_a_pass_in_the_hook_is_recorded(pushing: Path, git: Git) -> None:
+def test_a_pass_in_the_hook_is_recorded_for_the_tree_of_the_tip(
+    pushing: Path, git: Git
+) -> None:
     assert push(pushing, git).returncode == 0
 
-    assert len(records(pushing)) == 1
+    tree = head_of(pushing, git, "HEAD^{tree}")
+    [ref] = refs(pushing, git)
+    assert ref.startswith(f"refs/prepush-ci/results/{tree}-")
+    assert head_of(pushing, git, f"{ref}^{{tree}}") == tree
 
 
 def test_a_failing_check_in_the_hook_records_nothing(
@@ -166,14 +190,54 @@ def test_a_failing_check_in_the_hook_records_nothing(
 
     assert push(pushing, git).returncode != 0
 
-    assert records(pushing) == []
+    assert refs(pushing, git) == []
 
 
-def test_an_amended_commit_runs_the_check_again(
-    pushing: Path, git: Git, log: Path
-) -> None:
+def test_an_amended_message_skips_the_check(pushing: Path, git: Git, log: Path) -> None:
     run_cli(pushing)
     git(pushing, "commit", "--allow-empty", "-q", "--amend", "-m", "other" + TRAILER)
+
+    result = push(pushing, git)
+
+    assert result.returncode == 0
+    assert runs(log) == 1
+    assert SKIPPED in result.stderr
+
+
+def test_squashed_commits_skip_the_check(pushing: Path, git: Git, log: Path) -> None:
+    git(pushing, "commit", "--allow-empty", "-q", "-m", "more" + TRAILER)
+    run_cli(pushing)
+    git(pushing, "reset", "--soft", "HEAD~2")
+    git(pushing, "commit", "--allow-empty", "-q", "-m", "squashed" + TRAILER)
+
+    result = push(pushing, git)
+
+    assert result.returncode == 0
+    assert runs(log) == 1
+    assert SKIPPED in result.stderr
+
+
+def test_the_skip_line_names_the_tree_and_the_commit_that_passed(
+    pushing: Path, git: Git
+) -> None:
+    run_cli(pushing)
+    passed = head_of(pushing, git)
+    git(pushing, "commit", "--allow-empty", "-q", "--amend", "-m", "other" + TRAILER)
+    amended = head_of(pushing, git)
+    tree = head_of(pushing, git, "HEAD^{tree}")
+
+    result = push(pushing, git)
+
+    assert tree[:12] in result.stderr
+    assert passed[:12] in result.stderr
+    assert amended[:12] not in result.stderr
+
+
+def test_another_tree_runs_the_check_again(pushing: Path, git: Git, log: Path) -> None:
+    run_cli(pushing)
+    (pushing / "new.txt").write_text("new")
+    git(pushing, "add", "new.txt")
+    git(pushing, "commit", "-q", "-m", "more" + TRAILER)
 
     result = push(pushing, git)
 
@@ -220,7 +284,63 @@ def test_a_key_that_does_not_change_the_result_still_skips_the_check(
     assert SKIPPED in result.stderr
 
 
-def test_with_the_cache_off_a_record_is_ignored(
+def test_a_changed_tool_version_runs_the_check_again(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    write_versions(pushing, log, tmp_path)
+    assert run_cli(pushing, {"TOOL_VERSION": "1"}).returncode == 0
+
+    result = push(pushing, git, {"TOOL_VERSION": "2"})
+
+    assert result.returncode == 0
+    assert runs(log) == 2
+    assert SKIPPED not in result.stderr
+
+
+def test_the_same_tool_version_skips_the_check(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    write_versions(pushing, log, tmp_path)
+    assert run_cli(pushing, {"TOOL_VERSION": "1"}).returncode == 0
+
+    result = push(pushing, git, {"TOOL_VERSION": "1"})
+
+    assert result.returncode == 0
+    assert runs(log) == 1
+    assert SKIPPED in result.stderr
+
+
+def test_the_error_stream_of_the_preflight_is_not_in_the_key(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    script = tmp_path / "version_to_stderr.py"
+    script.write_text(
+        "import os, sys\nprint(os.environ['TOOL_VERSION'], file=sys.stderr)\n"
+    )
+    command = f"{Path(sys.executable).as_posix()} {script.as_posix()}"
+    write_config(pushing, log, f"preflight = '{command}'")
+    assert run_cli(pushing, {"TOOL_VERSION": "1"}).returncode == 0
+
+    result = push(pushing, git, {"TOOL_VERSION": "2"})
+
+    assert result.returncode == 0
+    assert runs(log) == 1
+    assert SKIPPED in result.stderr
+
+
+def test_the_output_of_the_preflight_is_still_shown(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    write_versions(pushing, log, tmp_path)
+
+    run = run_cli(pushing, {"TOOL_VERSION": "versions-ok"})
+    pushed = push(pushing, git, {"TOOL_VERSION": "versions-ok"})
+
+    assert "versions-ok" in run.stdout
+    assert "versions-ok" in pushed.stdout + pushed.stderr
+
+
+def test_with_the_cache_off_a_result_is_ignored(
     pushing: Path, git: Git, log: Path
 ) -> None:
     run_cli(pushing)
@@ -239,14 +359,15 @@ def test_with_the_cache_off_the_hook_records_nothing(
 
     assert push(pushing, git).returncode == 0
 
-    assert records(pushing) == []
+    assert refs(pushing, git) == []
 
 
-def test_a_truncated_record_runs_the_check_again(
+def test_an_emptied_result_ref_runs_the_check_again(
     pushing: Path, git: Git, log: Path
 ) -> None:
     run_cli(pushing)
-    records(pushing)[0].write_text("")
+    [ref] = refs(pushing, git)
+    (pushing / ".git" / ref).write_text("")
 
     result = push(pushing, git)
 
@@ -254,28 +375,31 @@ def test_a_truncated_record_runs_the_check_again(
     assert runs(log) == 2
 
 
-def test_a_record_made_for_another_key_runs_the_check_again(
+def test_a_result_ref_moved_to_a_commit_of_another_tree_runs_the_check_again(
     pushing: Path, git: Git, log: Path
 ) -> None:
+    (pushing / "other.txt").write_text("other")
+    git(pushing, "add", "other.txt")
+    git(pushing, "commit", "-q", "-m", "other tree" + TRAILER)
     run_cli(pushing)
-    other_key = records(pushing)[0]
-    git(pushing, "commit", "--allow-empty", "-q", "--amend", "-m", "other" + TRAILER)
+    [other] = refs(pushing, git)
+    elsewhere = head_of(pushing, git, other)
+    git(pushing, "reset", "-q", "--hard", "HEAD~1")
     run_cli(pushing)
-    new_record = next(p for p in records(pushing) if p != other_key)
-    new_record.write_text(
-        other_key.read_text()
-    )  # the old commit's record under the new name
+    [ref] = [name for name in refs(pushing, git) if name != other]
+    git(pushing, "update-ref", ref, elsewhere)
 
     result = push(pushing, git)
 
     assert result.returncode == 0
     assert runs(log) == 3
+    assert SKIPPED not in result.stderr
 
 
 def test_a_push_goes_through_with_a_warning_when_the_cache_cannot_be_written(
     pushing: Path, git: Git
 ) -> None:
-    (pushing / ".git" / "prepush-ci").write_text("in the way")
+    (pushing / ".git" / "refs" / "prepush-ci").write_text("in the way")
 
     result = push(pushing, git)
 
@@ -286,15 +410,19 @@ def test_a_push_goes_through_with_a_warning_when_the_cache_cannot_be_written(
 def test_a_commit_made_during_the_check_is_not_taken_for_a_checked_one(
     pushing: Path, git: Git, log: Path
 ) -> None:
+    checked = head_of(pushing, git, "HEAD^{tree}")
     moving = (
         f"echo ran >> {log.as_posix()} && "
-        'git commit --allow-empty -q -m moved -m "Prepush-CI: full"'
+        "echo more >> more.txt && git add more.txt && "
+        'git commit -q -m moved -m "Prepush-CI: full"'
     )
     write_config(pushing, log, check=moving)
     assert push(pushing, git).returncode == 0
+    [ref] = refs(pushing, git)
 
     result = push(pushing, git)
 
     assert result.returncode == 0
+    assert ref.startswith(f"refs/prepush-ci/results/{checked}-")
     assert runs(log) == 2
     assert SKIPPED not in result.stderr

@@ -1,5 +1,6 @@
 import io
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -203,3 +204,74 @@ def test_a_stream_that_cannot_encode_a_character_replaces_it(
     print("caf\u00e9 x\udcff", file=stream, flush=True)
 
     assert buffer.getvalue() == b"caf? x?\n"
+
+
+def test_a_teed_shell_command_returns_its_status_and_its_output_and_shows_it(
+    tmp_path: Path, capfd: pytest.CaptureFixture[str]
+) -> None:
+    code = "import sys; print('out'); print('err', file=sys.stderr); sys.exit(2)"
+
+    status, output = text_io.run_shell_tee(
+        f'"{sys.executable}" -c "{code}"', cwd=tmp_path
+    )
+
+    shown = capfd.readouterr()
+    assert status == 2
+    assert output.split() == ["out"]
+    assert shown.out.split() == ["out"]
+    assert shown.err.split() == ["err"]
+
+
+def test_a_teed_shell_command_that_runs_for_a_while_is_shown_and_collected_whole(
+    tmp_path: Path, capfd: pytest.CaptureFixture[str]
+) -> None:
+    code = (
+        "import sys, time; print('first', flush=True); time.sleep(0.5); print('second')"
+    )
+
+    status, output = text_io.run_shell_tee(
+        f'"{sys.executable}" -c "{code}"', cwd=tmp_path
+    )
+
+    assert status == 0
+    assert output.split() == ["first", "second"]
+    assert capfd.readouterr().out.split() == ["first", "second"]
+
+
+def test_a_teed_shell_command_that_prints_bytes_that_are_no_utf8_keeps_them(
+    tmp_path: Path,
+) -> None:
+    code = "import sys; sys.stdout.buffer.write(b'a\\xffb')"
+
+    _, output = text_io.run_shell_tee(f'"{sys.executable}" -c "{code}"', cwd=tmp_path)
+
+    assert output == "a\udcffb"
+
+
+def test_a_teed_shell_command_runs_in_the_directory_and_gets_no_standard_input(
+    tmp_path: Path,
+) -> None:
+    code = "import os, sys; print(os.getcwd()); sys.exit(len(sys.stdin.read()))"
+
+    status, output = text_io.run_shell_tee(
+        f'"{sys.executable}" -c "{code}"', cwd=tmp_path
+    )
+
+    assert status == 0
+    assert Path(output.strip()).resolve() == tmp_path.resolve()
+
+
+def test_a_teed_shell_command_does_not_wait_for_a_process_it_leaves_running(
+    tmp_path: Path,
+) -> None:
+    command = (
+        f'"{sys.executable}" -c "import subprocess, sys; '
+        f"subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(5)']); "
+        f'print(1)"'
+    )
+    started = time.monotonic()
+
+    status, output = text_io.run_shell_tee(command, cwd=tmp_path)
+
+    assert (status, output.strip()) == (0, "1")
+    assert time.monotonic() - started < 4  # the child sleeps for 5 seconds
