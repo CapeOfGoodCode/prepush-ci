@@ -14,5 +14,5 @@
 
 ## 4. A dry run and a declined push (spec round 2)
 
-- [ ] 4.1 Verify with specs for `git push --dry-run origin main` and for a push that `origin`'s `pre-receive` hook declines: in both `origin` holds the result ref and its `main` has not moved; no code change is expected beyond what publishing already does
+- [x] 4.1 Verify with specs for `git push --dry-run origin main` and for a push that `origin`'s `pre-receive` hook declines: in both `origin` holds the result ref and its `main` has not moved; no code change is expected beyond what publishing already does
 - [ ] 4.2 In the README's step 5, replace "the tree goes up only with that push" with the fact that the tree goes up with a push to `origin` even when it is a `--dry-run` or `origin` declines it, because git does not tell the hook, and that `cache = false` keeps `origin` out of it; run the sentence against the head as `AGENTS.md` asks
