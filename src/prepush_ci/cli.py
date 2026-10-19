@@ -23,7 +23,13 @@ from prepush_ci import (
 from prepush_ci.core.doctor import MODES
 from prepush_ci.core.hook_managers import CHOICES
 from prepush_ci.core.init import CI_CHOICES, ConfigFlags
-from prepush_ci.core.report import Malformed, parse_duration, parse_name, parse_tool
+from prepush_ci.core.report import (
+    STARTED,
+    Malformed,
+    parse_duration,
+    parse_name,
+    parse_tool,
+)
 
 T = TypeVar("T")
 
@@ -38,6 +44,30 @@ def _parsed(parse: Callable[[str], T]) -> Callable[[str], T]:
             raise argparse.ArgumentTypeError(str(error)) from error
 
     return convert
+
+
+# The flags that belong to a result, with the attribute each fills: `--start` takes none of them.
+_RESULT_FLAGS = (
+    ("--result", "result"),
+    ("--junit", "junit"),
+    ("--coverage", "coverage"),
+    ("--ruff", "ruff"),
+    ("--mypy", "mypy"),
+    ("--duration", "duration"),
+    ("--tool", "tool"),
+)
+
+
+def _report_problem(args: argparse.Namespace) -> str | None:
+    """Why the flags of `report` do not go together, or None."""
+    given = [flag for flag, name in _RESULT_FLAGS if getattr(args, name) is not None]
+    if not args.start:
+        return (
+            None if args.result is not None else "--result is required without --start"
+        )
+    if given:
+        return f"--start cannot be combined with {', '.join(given)}"
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -161,9 +191,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     report.add_argument(
         "--result",
-        required=True,
         choices=("passed", "failed"),
-        help="how the run ended",
+        help="how the run ended (or --start)",
+    )
+    report.add_argument(
+        "--start",
+        action="store_true",
+        help="show the check as in progress instead; --result completes it later",
     )
     report.add_argument(
         "--tree",
@@ -209,9 +243,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(args_in)
     if args.command == "report":
+        problem = _report_problem(args)
+        if problem is not None:
+            report.error(problem)
         return report_command.run(
             report_command.Options(
-                args.result,
+                STARTED if args.start else args.result,
                 args.tree,
                 args.commit,
                 args.name,

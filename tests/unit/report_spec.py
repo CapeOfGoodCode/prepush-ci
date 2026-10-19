@@ -36,6 +36,10 @@ from prepush_ci.core.report import (
     redact,
     relative_path,
     ruff_failures,
+    started_at,
+    started_body,
+    started_status_body,
+    started_update_body,
     status_body,
     status_description,
     summary,
@@ -1073,3 +1077,56 @@ def test_markdown_characters_of_a_text_are_in_a_code_span_as_typed() -> None:
         "- pytest ` test_x[__init__] `",
         "- mypy ` a.py:3 ` `` Name `x` is not defined | a|b ``",
     ]
+
+
+# --- A run can be shown as in progress -----------------------------------------------------------
+
+
+def test_the_time_a_run_started_is_utc_in_the_form_github_reads() -> None:
+    assert started_at(0) == "1970-01-01T00:00:00Z"
+    assert started_at(1_800_000_000) == "2027-01-15T08:00:00Z"
+
+
+def test_a_started_run_is_in_progress_titled_running_and_names_the_commit_and_the_check() -> (
+    None
+):
+    body = started_body("prepush-ci / full", facts(preflight="test -f ready"), 0)
+
+    assert body["name"] == "prepush-ci / full"
+    assert body["head_sha"] == SHA
+    assert body["status"] == "in_progress"
+    assert body["started_at"] == "1970-01-01T00:00:00Z"
+    assert "conclusion" not in body
+    output = body["output"]
+    assert output["title"] == "Running"  # type: ignore[index]
+    for part in (
+        SHA,
+        TREE,
+        "sh scripts/ci",
+        "test -f ready",
+        "reported from a session",
+    ):
+        assert part in output["summary"]  # type: ignore[index]
+
+
+def test_a_started_run_says_none_for_a_missing_preflight_and_lists_no_result() -> None:
+    summary_text = started_body("n", facts(), 0)["output"]["summary"]  # type: ignore[index]
+
+    assert "| Preflight | none |" in summary_text
+    assert "Failures" not in summary_text
+    assert "Tests" not in summary_text
+
+
+def test_a_pending_status_has_the_context_and_the_tree_and_the_session() -> None:
+    assert started_status_body("prepush-ci/full", facts()) == {
+        "state": "pending",
+        "context": "prepush-ci/full",
+        "description": f"tree {TREE[:7]} (reported from a session)",
+    }
+
+
+def test_restarting_a_run_in_progress_updates_its_started_at_only() -> None:
+    assert started_update_body(0) == {
+        "status": "in_progress",
+        "started_at": "1970-01-01T00:00:00Z",
+    }

@@ -7,10 +7,10 @@
 
 ## 2. A run in progress
 
-- [ ] 2.1 Add `--start`: an `in_progress` check run (or an updated `started_at`), a `pending` status without an app, the refusal of the flags of a result with exit 2, and `--start` or `--result` required; verify with the scenarios of "A run can be shown as in progress" and "A start takes no flag of a result"
+- [x] 2.1 Add `--start`: an `in_progress` check run (or an updated `started_at`), a `pending` status without an app, the refusal of the flags of a result with exit 2, and `--start` or `--result` required; verify with the scenarios of "A run can be shown as in progress" and "A start takes no flag of a result"
 - [ ] 2.2 Complete the run in progress on the final `report`: look it up, update the one with the highest id, create a run when there is none; verify with the scenarios of "The final report completes the run in progress"
 
 ## 3. Reference and archive
 
-- [ ] 3.1 Name `--start`, `--ruff` and `--mypy` in the README's reference of `report`, with `-o junit_family=xunit1` for pytest locations only if a spec or a run on the head backs the sentence (design.md, "Run the tools"; pytest's paths follow its rootdir); verify with the `readme` drift specs
+- [x] 3.1 Name `--start`, `--ruff` and `--mypy` in the README's reference of `report`, with `-o junit_family=xunit1` for pytest locations only if a spec or a run on the head backs the sentence (design.md, "Run the tools"; pytest's paths follow its rootdir); verify with the `readme` drift specs
 - [ ] 3.2 Run `sh scripts/ci` and verify it passes
