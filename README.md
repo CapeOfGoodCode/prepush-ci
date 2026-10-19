@@ -68,7 +68,7 @@ Nothing happens until a machine opts in: set `PREPUSH_CI=full` in its environmen
 
 ### 5. What a commit and a push do
 
-A commit made with `PREPUSH_CI=full` gets the trailer `Prepush-CI: full` from the `commit-msg` hook. A push whose tip commit carries the trailer runs the `pre-push` hook, which refuses the push unless your check passes on exactly that commit; a pass is remembered, so a retried push does not run the check twice. A push of a tip without the trailer goes through untouched.
+A commit made with `PREPUSH_CI=full` gets the trailer `Prepush-CI: full` from the `commit-msg` hook. A push whose tip commit carries the trailer runs the `pre-push` hook, which refuses the push unless your check passes on exactly that tree. A pass is remembered for the tree and the inputs, so a retried push, an amended message or squashed commits of the same tree do not run the check again. What the check reads from the commit and not from the tree (a message lint, a version taken from `git describe`) is not covered; set `cache = false` for such a check. The remembered passes are parentless commits under `refs/prepush-ci/results/`, and they show in `git log --all`. A push of a tip without the trailer goes through untouched.
 
 ### 6. Skip CI on verified commits: the CI gate
 
@@ -243,7 +243,7 @@ The environment variable `PREPUSH_CI` decides what commits get:
 | `trailer.key` | `Prepush-CI` | the trailer's key |
 | `trailer.value` | `full` | the trailer's value |
 | `legacy_keys` | `[]` | trailer keys of an older setup that still count as verified |
-| `cache` | `true` | remember a passed check, so a retried push does not run it again |
+| `cache` | `true` | remember a passed check for its tree and inputs, so a retried or amended push of the same tree does not run it again; `false` if the check reads the commit message or history |
 
 ## How this repository is built
 

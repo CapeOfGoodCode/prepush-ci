@@ -478,7 +478,7 @@ def test_a_hook_script_that_embeds_a_non_ascii_path_reads_back_equal(
     assert second.stdout.startswith("already installed"), second.stdout
 
 
-def test_a_pass_record_in_a_non_ascii_repository_is_found_again(
+def test_a_result_in_a_non_ascii_repository_is_found_again(
     pushing_repo: Path, tmp_path: Path, git: Git
 ) -> None:
     git(pushing_repo, "commit", "-q", "--allow-empty", "-m", f"work\n\n{TRAILER}")

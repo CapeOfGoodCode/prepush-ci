@@ -11,6 +11,7 @@ Nothing else outside `core/` calls `read_text`, `write_text`, `open`, `decode`, 
 `universal_newlines`, or uses `sys.stdin` or `subprocess`; a unit spec scans for it.
 """
 
+import contextlib
 import io
 import os
 import subprocess
@@ -23,6 +24,7 @@ from pathlib import Path
 
 CODEC = "utf-8"
 ERRORS = "surrogateescape"
+FOLLOW_SECONDS = 0.1
 
 
 class NotUtf8(Exception):
@@ -206,6 +208,77 @@ def run_shell_captured(
         ).returncode
         output.seek(0)
         return status, decode(output.read())
+
+
+def run_shell_tee(
+    command: str, *, cwd: Path, env: Mapping[str, str] | None = None
+) -> tuple[int, str]:
+    """`run_shell`, with the standard output also collected: it reaches our standard output as the
+    command writes it, and comes back as text with the status. The error stream stays the child's.
+
+    The output goes to a temporary file that is followed while the command runs, not to a pipe: a
+    process the command leaves running keeps a pipe open and would hold the caller. The file is
+    unlinked as soon as both ends are open, so a signal that kills us leaves nothing behind.
+    Standard output that cannot be written (a pipe closed early, a full disk) stops the showing;
+    the command still runs to its end and its output is still collected.
+    """
+    descriptor, name = tempfile.mkstemp()
+    try:
+        with os.fdopen(descriptor, "wb") as writer, open(name, "rb") as reader:
+            _unlink(name)
+            process = subprocess.Popen(
+                to_os(command),
+                shell=True,
+                cwd=cwd,
+                env=_environment(env),
+                stdin=subprocess.DEVNULL,
+                stdout=writer,
+            )
+            status: int | None = None
+            collected = b""
+            showing = True
+            while status is None:
+                with contextlib.suppress(
+                    subprocess.TimeoutExpired
+                ):  # still running: show so far
+                    status = process.wait(timeout=FOLLOW_SECONDS)
+                chunk = reader.read()
+                collected += chunk
+                showing = showing and _show(chunk)
+    finally:
+        _unlink(name)
+    return status, decode(collected)
+
+
+def _unlink(name: str) -> None:
+    """Remove the file; where the system refuses while a process holds it open (Windows), the
+    caller's last call removes it once they have closed."""
+    with contextlib.suppress(FileNotFoundError, PermissionError):
+        os.unlink(name)
+
+
+def _show(chunk: bytes) -> bool:
+    """Write `chunk` to our standard output; False when it cannot be written."""
+    try:
+        sys.stdout.flush()
+        sys.stdout.buffer.write(chunk)
+        sys.stdout.buffer.flush()
+    except OSError:
+        _discard_standard_output()
+        return False
+    return True
+
+
+def _discard_standard_output() -> None:
+    """Point our standard output at the null device: the bytes it could not take stay in its
+    buffers, and the flush at exit would fail again and turn the exit status into 120."""
+    with contextlib.suppress(OSError, ValueError):
+        descriptor = sys.stdout.fileno()
+        null = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(null, descriptor)
+        finally:
+            os.close(null)
 
 
 # --- The terminal --------------------------------------------------------------------------------

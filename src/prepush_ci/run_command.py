@@ -6,8 +6,9 @@ from pathlib import Path
 
 from prepush_ci.checking import Refused, head, require_clean, run_check, worktree_root
 from prepush_ci.core.config import ConfigError
+from prepush_ci.core.run_cache import Key, fingerprint
 from prepush_ci.git import GitError
-from prepush_ci.pass_cache import current_key, record_pass
+from prepush_ci.pass_cache import current_head, record_pass
 from prepush_ci.preflight import PreflightRefused
 from prepush_ci.preflight import run as run_preflight
 from prepush_ci.repo_config import load_repository_config
@@ -23,12 +24,13 @@ def run(env: Mapping[str, str], cwd: Path) -> int:
         root = worktree_root(cwd)
         config = load_repository_config(root)
         head(root)
-        key = current_key(config, root)
+        checked = current_head(root)
         require_clean(root)
-        run_preflight(config, env, root)
+        output = run_preflight(config, env, root)
         code = run_check(config, root)
         if code == 0:
-            record_pass(config, root, key)
+            key = Key(checked.tree, fingerprint(config, output))
+            record_pass(config, root, key, checked.sha)
         return code
     except ConfigError as error:
         for problem in error.problems:

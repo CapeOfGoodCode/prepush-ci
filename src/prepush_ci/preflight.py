@@ -24,8 +24,9 @@ class PreflightRefused(Exception):
     """A requirement does not hold; the message says what and how to fix it."""
 
 
-def run(config: Config, env: Mapping[str, str], root: Path) -> None:
-    """Verify, in this order, the variables, the up-to-date ref and the `preflight` command.
+def run(config: Config, env: Mapping[str, str], root: Path) -> str:
+    """Verify, in this order, the variables, the up-to-date ref and the `preflight` command; return
+    the standard output of the command (empty without one), which is still shown.
 
     Cheapest and most certain first; a rebase the up-to-date step asks for would invalidate
     the work of a later step. Each refusal stops every later step.
@@ -35,10 +36,12 @@ def run(config: Config, env: Mapping[str, str], root: Path) -> None:
         raise PreflightRefused(message_missing_env(missing))
     if config.require_up_to_date is not None:
         _up_to_date(config.require_up_to_date, root)
-    if config.preflight is not None:
-        status = text_io.run_shell(config.preflight, cwd=root)
-        if status != 0:
-            raise PreflightRefused(message_preflight_failed(config.preflight, status))
+    if config.preflight is None:
+        return ""
+    status, output = text_io.run_shell_tee(config.preflight, cwd=root)
+    if status != 0:
+        raise PreflightRefused(message_preflight_failed(config.preflight, status))
+    return output
 
 
 def _up_to_date(ref: str, root: Path) -> None:

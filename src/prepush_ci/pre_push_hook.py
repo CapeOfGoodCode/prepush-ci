@@ -18,9 +18,9 @@ from prepush_ci.core.pre_push import (
     parse_ref_lines,
     pre_commit_push,
 )
-from prepush_ci.core.run_cache import message_skipped
+from prepush_ci.core.run_cache import Key, fingerprint, message_skipped
 from prepush_ci.git import GitError, committed_config, git, trailers
-from prepush_ci.pass_cache import current_key, has_pass, record_pass
+from prepush_ci.pass_cache import current_head, has_pass, record_pass
 from prepush_ci.preflight import PreflightRefused
 from prepush_ci.preflight import run as run_preflight
 from prepush_ci.repo_config import load_repository_config
@@ -77,20 +77,20 @@ def _enforce(
     ):  # unset, empty and `full` behave alike: the trailer demands the check, not the variable
         raise Refused(message_off(demanding))
     tip = head(root)
-    key = current_key(config, root)  # before the check: HEAD may move while it runs
+    checked = current_head(root)  # before the check: HEAD may move while it runs
     others = [sha for sha in demanding if sha != tip]
     if others:
         raise Refused(message_not_head(others, tip))
     require_clean(root)
-    run_preflight(config, env, root)
-    if has_pass(
-        config, root, key
-    ):  # only the check is skipped: the preflight is never cached
-        print(message_skipped(tip), file=sys.stderr)
+    output = run_preflight(config, env, root)
+    key = Key(checked.tree, fingerprint(config, output))
+    passed = has_pass(config, root, key)
+    if passed is not None:  # only the check is skipped: the preflight is never cached
+        print(message_skipped(key.tree, passed), file=sys.stderr)
         return 0
     code = run_check(config, root)
     if code == 0:
-        record_pass(config, root, key)
+        record_pass(config, root, key, checked.sha)
     return code
 
 
