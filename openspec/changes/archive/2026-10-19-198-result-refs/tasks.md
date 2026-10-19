@@ -11,5 +11,5 @@
 
 ## 3. What the change says to readers
 
-- [ ] 3.1 Copy the Purposes of `pre-push-hook` and `run-cache` from this `design.md` into `openspec/specs/pre-push-hook/spec.md` and `openspec/specs/run-cache/spec.md`, word for word, when the change is archived; verify with `openspec validate --all --strict`
+- [x] 3.1 Copy the Purposes of `pre-push-hook` and `run-cache` from this `design.md` into `openspec/specs/pre-push-hook/spec.md` and `openspec/specs/run-cache/spec.md`, word for word, when the change is archived; verify with `openspec validate --all --strict`
 - [x] 3.2 Change the README's step 5 ("passes on exactly that commit; a pass is remembered, so a retried push does not run the check twice") and the `cache` row of the config reference to say that a pass is kept for the tree and the inputs, so an amended or squashed commit of the same tree skips the check; that what the check reads from the commit (a message lint, a version from `git describe`) is not covered and calls for `cache = false`; and that the results are parentless commits under `refs/prepush-ci/results/` that show in `git log --all`; every such sentence is run against the head, as `AGENTS.md` asks, and the output goes into the PR

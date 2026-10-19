@@ -115,17 +115,6 @@ A file the tool reads, changes in a block or a line, and writes back (a hook man
 - **WHEN** `.pre-commit-config.yaml` holds a comment with the byte `\xe9` and `install --hooks pre-commit` runs
 - **THEN** the file holds the prepush-ci block and every other byte of it is as it was
 
-### Requirement: A file the tool writes reads back equal
-A file the tool writes (hook scripts, config, the recorded paths of `install`, the pass records, the settings and the session script) SHALL be written as UTF-8 with `surrogateescape`, with the line ending the command uses today, so that the tool reads back the text it wrote.
-
-#### Scenario: A hook script that embeds a non-ASCII path reads back equal
-- **WHEN** `install --hooks native` writes hook scripts that name an interpreter or a hooks directory with the character `é`, and runs again
-- **THEN** the second run reports no change
-
-#### Scenario: A pass record in a non-ASCII repository is found again
-- **WHEN** the remote rejects a push after the hook passed, in a repository whose path has the character `é`, and the same commit is pushed again
-- **THEN** the check ran exactly once and the second push said it skipped the check
-
 ### Requirement: The terminal never makes a command fail
 Standard output and standard error SHALL replace a character the terminal cannot encode and SHALL NOT raise. On standard output the replacement is `?`.
 
@@ -169,3 +158,14 @@ In `ascii`, the processes of pre-commit (`pre-commit install`, and the commits a
 #### Scenario: Every other process stays hostile
 - **WHEN** the same spec runs the CLI itself (`install --hooks pre-commit`, `doctor`) in the `ascii` variant
 - **THEN** that process gets the three variables
+
+### Requirement: A written file reads back equal
+A file the tool writes (hook scripts, config, the recorded paths of `install`, the settings and the session script) SHALL be written as UTF-8 with `surrogateescape`, with the line ending the command uses today, so that the tool reads back the text it wrote. A result ref is written by git and is not such a file.
+
+#### Scenario: A hook script that embeds a non-ASCII path reads back equal
+- **WHEN** `install --hooks native` writes hook scripts that name an interpreter or a hooks directory with the character `é`, and runs again
+- **THEN** the second run reports no change
+
+#### Scenario: A result in a non-ASCII repository is found again
+- **WHEN** the remote rejects a push after the hook passed, in a repository whose path has the character `é`, and the same commit is pushed again
+- **THEN** the check ran exactly once and the second push said it skipped the check

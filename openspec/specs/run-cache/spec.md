@@ -1,7 +1,7 @@
 # run-cache Specification
 
 ## Purpose
-`prepush-ci run`, which starts the pre-push hook's sequence by hand on HEAD, and the local result cache that lets the hook skip a check that already passed on exactly that commit, tree and config. The cache can only cost time: anything damaged, stale or unwritable means the check runs.
+`prepush-ci run`, which starts the pre-push hook's sequence by hand on HEAD, and the result refs under `refs/prepush-ci/results/` that let the hook skip a check that already passed on exactly that tree with the same inputs, whatever commit it was made for. The cache can only cost time: anything damaged, stale or unwritable means the check runs.
 
 ## Requirements
 
@@ -56,30 +56,30 @@
 - **THEN** the check runs again
 
 ### Requirement: A pass is cached
-When the check passes in `prepush-ci run` or in the pre-push hook, and `cache` is `true`, the tool SHALL record the pass under `prepush-ci/` in the repository's git directory, for the key made of the commit sha of `HEAD`, its tree hash and the values of `check`, `preflight`, `require_env` and `require_up_to_date`, read before the check starts. It SHALL record nothing when the check fails or a refusal stops the run.
+When the check passes in `prepush-ci run` or in the pre-push hook, and `cache` is `true`, the tool SHALL record the pass as the ref `refs/prepush-ci/results/<tree>-<config>` of the key defined below, read before the preflight starts. The ref SHALL point at a commit of that tree whose message names the commit that was checked. It SHALL record nothing when the check fails or a refusal stops the run.
 
 #### Scenario: Pass is recorded
 - **WHEN** `prepush-ci run` passes
-- **THEN** the git directory holds a record under `prepush-ci/`
+- **THEN** exactly one ref exists under `refs/prepush-ci/results/`, its name starts with the tree of `HEAD`, and the tree of the commit it points at is that tree
 
 #### Scenario: Failure is not recorded
 - **WHEN** `prepush-ci run` fails because the check exits 1
-- **THEN** the git directory holds no record
+- **THEN** no ref exists under `refs/prepush-ci/results/`
 
 #### Scenario: Refusal is not recorded
 - **WHEN** `prepush-ci run` is refused because the worktree is dirty
-- **THEN** the git directory holds no record
+- **THEN** no ref exists under `refs/prepush-ci/results/`
 
 #### Scenario: Hook pass is recorded
 - **WHEN** a push of a tip with the trailer passes the check in the hook
-- **THEN** the git directory holds a record under `prepush-ci/`
+- **THEN** a ref exists under `refs/prepush-ci/results/` for the tree of the tip
 
 #### Scenario: Commit made during the check
-- **WHEN** the check makes a commit and then passes
-- **THEN** the record is for the commit that was checked, and a push of the new commit runs the check
+- **WHEN** the check makes a commit that adds a file, and then passes
+- **THEN** the ref is for the tree that was checked, and a push of the new commit runs the check
 
 ### Requirement: A cached pass skips the check in the hook
-When the pre-push hook has satisfied every requirement that precedes the check, including the preflight, and the cache holds a record for the key of the pushed tip, it SHALL NOT run the check, SHALL print a line on standard error that names the commit and says the check passed earlier, and SHALL let the push go on.
+When the pre-push hook has satisfied every requirement that precedes the check, including the preflight, and a result ref exists for the tree of the pushed tip and the current inputs, it SHALL NOT run the check, SHALL print a line on standard error that names the tree and the commit that passed, each by its first twelve characters, and says the check passed earlier, and SHALL let the push go on.
 
 #### Scenario: Run, then push
 - **WHEN** `prepush-ci run` passed on a commit with the trailer and the commit is pushed
@@ -97,12 +97,62 @@ When the pre-push hook has satisfied every requirement that precedes the check, 
 - **WHEN** a pass is cached for the tip and the worktree is dirty
 - **THEN** the push is refused
 
-### Requirement: The key follows the state
-A record SHALL count only for the exact key it was made for. Another commit sha, another tree hash or another value of `check`, `preflight`, `require_env` or `require_up_to_date` SHALL be a miss and the check SHALL run.
+#### Scenario: The line names the commit that passed
+- **WHEN** a pass is cached for a commit, the commit is amended with a new message, and the amended commit is pushed
+- **THEN** the hook's line holds the first twelve characters of the tree and the first twelve characters of the commit that passed, and not the first twelve characters of the amended commit
 
-#### Scenario: New commit
+### Requirement: The cache can be turned off
+With `cache = false` the tool SHALL neither read nor write result refs: `prepush-ci run` SHALL record no pass and the hook SHALL NOT skip the check for a ref that exists.
+
+#### Scenario: Disabled run records nothing
+- **WHEN** the config sets `cache = false` and `prepush-ci run` passes
+- **THEN** no ref exists under `refs/prepush-ci/results/`
+
+#### Scenario: Disabled hook ignores a record
+- **WHEN** a pass is cached, the worktree config is an ignored file that now sets `cache = false`, and the commit is pushed
+- **THEN** the check runs
+
+#### Scenario: Disabled hook records nothing
+- **WHEN** the config sets `cache = false` and a push of a tip with the trailer passes the check
+- **THEN** no ref exists under `refs/prepush-ci/results/`
+
+### Requirement: A cache that cannot be trusted is a miss
+A result ref that is missing, unreadable or points at a commit of another tree SHALL be a miss, and the check SHALL run. A ref that cannot be written SHALL produce a warning on standard error and SHALL NOT change the exit code of `run` or the hook's decision about the push.
+
+#### Scenario: Damaged record
+- **WHEN** the file of the ref of a cached pass is emptied and the commit is pushed
+- **THEN** the check runs
+
+#### Scenario: Record for another key
+- **WHEN** the ref of a cached pass is moved to a commit of another tree and the commit is pushed
+- **THEN** the check runs
+
+#### Scenario: Unwritable cache
+- **WHEN** `refs/prepush-ci` in the git directory is a regular file and `prepush-ci run` passes
+- **THEN** it exits 0 and warns that the pass could not be cached
+
+#### Scenario: Unwritable cache in the hook
+- **WHEN** `refs/prepush-ci` in the git directory is a regular file and a tip with the trailer is pushed whose check passes
+- **THEN** the push succeeds and a warning says the pass could not be cached
+
+#### Scenario: Unwritable cache and a failing check
+- **WHEN** `refs/prepush-ci` in the git directory is a regular file and the check exits 1
+- **THEN** `prepush-ci run` exits 1
+
+### Requirement: The result is keyed by the tree and the inputs
+A result ref SHALL count only for the key it was made for: `<tree>` is the tree hash of `HEAD` and `<config>` a hash of `check`, `preflight`, `require_env`, `require_up_to_date` and the standard output of the `preflight` command. Another value of any of them SHALL be a miss and the check SHALL run; another commit with the same key SHALL be a hit. The output of the `preflight` SHALL still reach standard output.
+
+#### Scenario: Amended message keeps the result
 - **WHEN** a pass is cached and the commit is amended with a new message, which keeps the tree
-- **THEN** pushing it runs the check
+- **THEN** pushing it skips the check
+
+#### Scenario: Squashed commits keep the result
+- **WHEN** a pass is cached for a tip with the trailer, and the tip and its parent are squashed into one commit with the trailer, which keeps the tree
+- **THEN** pushing the new tip skips the check
+
+#### Scenario: Another tree
+- **WHEN** a pass is cached and a commit that changes a file is made and pushed
+- **THEN** the check runs
 
 #### Scenario: Changed check command
 - **WHEN** a pass is cached, the worktree config is an ignored file and its `check` is changed to another command that passes
@@ -116,40 +166,25 @@ A record SHALL count only for the exact key it was made for. Another commit sha,
 - **WHEN** a pass is cached, the worktree config is an ignored file and only its `default_branch` changes
 - **THEN** pushing the same commit skips the check
 
-### Requirement: The cache can be turned off
-With `cache = false` the tool SHALL neither read nor write the cache: `prepush-ci run` SHALL record no pass and the hook SHALL NOT skip the check for a record that exists.
-
-#### Scenario: Disabled run records nothing
-- **WHEN** the config sets `cache = false` and `prepush-ci run` passes
-- **THEN** the git directory holds no record
-
-#### Scenario: Disabled hook ignores a record
-- **WHEN** a pass is cached, the worktree config is an ignored file that now sets `cache = false`, and the commit is pushed
+#### Scenario: Changed tool version
+- **WHEN** the config sets `preflight = "echo $TOOL_VERSION"`, a pass is cached with `TOOL_VERSION=1`, and the commit is pushed with `TOOL_VERSION=2`
 - **THEN** the check runs
 
-#### Scenario: Disabled hook records nothing
-- **WHEN** the config sets `cache = false` and a push of a tip with the trailer passes the check
-- **THEN** the git directory holds no record
+#### Scenario: Same tool version
+- **WHEN** the config sets `preflight = "echo $TOOL_VERSION"`, a pass is cached with `TOOL_VERSION=1`, and the commit is pushed with `TOOL_VERSION=1`
+- **THEN** the push skips the check
 
-### Requirement: A cache that cannot be trusted is a miss
-A record that is missing, empty, truncated or made for another key SHALL be a miss, and the check SHALL run. A cache that cannot be written SHALL produce a warning on standard error and SHALL NOT change the exit code of `run` or the hook's decision about the push.
+#### Scenario: The preflight's output is still shown
+- **WHEN** the config sets `preflight = "echo versions-ok"` and `prepush-ci run` starts
+- **THEN** its standard output contains `versions-ok`
 
-#### Scenario: Damaged record
-- **WHEN** the record of a cached pass is truncated to zero bytes and the commit is pushed
-- **THEN** the check runs
+### Requirement: The preflight's error stream stays its own
+The standard error of the `preflight` command SHALL reach standard error only, never the standard output nor the key. The order between its standard output and its standard error need not be kept when both end in one place.
 
-#### Scenario: Record for another key
-- **WHEN** the record of a cached pass is overwritten with the record of another commit and the commit is pushed
-- **THEN** the check runs
+#### Scenario: The preflight's error stream stays its own
+- **WHEN** the config sets `preflight = "echo to-out; echo to-err >&2"` and `prepush-ci run` starts
+- **THEN** `to-err` appears on standard error only and `to-out` on standard output only
 
-#### Scenario: Unwritable cache
-- **WHEN** `prepush-ci/` in the git directory is a regular file and `prepush-ci run` passes
-- **THEN** it exits 0 and warns that the pass could not be cached
-
-#### Scenario: Unwritable cache in the hook
-- **WHEN** `prepush-ci/` in the git directory is a regular file and a tip with the trailer is pushed whose check passes
-- **THEN** the push succeeds and a warning says the pass could not be cached
-
-#### Scenario: Unwritable cache and a failing check
-- **WHEN** `prepush-ci/` in the git directory is a regular file and the check exits 1
-- **THEN** `prepush-ci run` exits 1
+#### Scenario: The preflight's error stream is not in the key
+- **WHEN** the config sets `preflight = "echo $TOOL_VERSION >&2"`, a pass is cached with `TOOL_VERSION=1`, and the commit is pushed with `TOOL_VERSION=2`
+- **THEN** the push skips the check
