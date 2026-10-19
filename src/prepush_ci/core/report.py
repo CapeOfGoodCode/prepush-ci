@@ -207,6 +207,29 @@ class Counts:
 def count_junit(data: bytes, name: str) -> Counts:
     """The test cases of a JUnit file, by what each case holds, whatever the nesting of suites:
     pytest and `node --test` give the same numbers for the same tests."""
+    counts = Counts()
+    for case in _junit_root(data, name).iter("testcase"):
+        if case.find("failure") is not None or case.find("error") is not None:
+            counts += Counts(failed=1)
+        elif case.find("skipped") is not None:
+            counts += Counts(skipped=1)
+        else:
+            counts += Counts(passed=1)
+    return counts
+
+
+@dataclass(frozen=True)
+class Failure:
+    """One failure the files report: a failed test case, a ruff error or a mypy error. `path` and
+    `line` (1-based, relative to the top of the worktree) are None for a case with no location."""
+
+    tool: str
+    text: str
+    path: str | None = None
+    line: int | None = None
+
+
+def _junit_root(data: bytes, name: str) -> ET.Element:
     try:
         root = ET.fromstring(data)
     except ET.ParseError as error:
@@ -215,15 +238,126 @@ def count_junit(data: bytes, name: str) -> Counts:
         raise ReportError(
             f"{name} is not JUnit XML: it holds <{root.tag}>, not <testsuites>"
         )
-    counts = Counts()
-    for case in root.iter("testcase"):
-        if case.find("failure") is not None or case.find("error") is not None:
-            counts += Counts(failed=1)
-        elif case.find("skipped") is not None:
-            counts += Counts(skipped=1)
+    return root
+
+
+def junit_failures(data: bytes, name: str, top: str) -> list[Failure]:
+    """The failed cases of a JUnit file. A case with a `file` and a `line` sits on that file at
+    `line` + 1: pytest writes the line 0-based. Any other case has the text of its name only."""
+    failures = []
+    for case in _junit_root(data, name).iter("testcase"):
+        found = case.find("failure")
+        if found is None:
+            found = case.find("error")
+        if found is None:
+            continue
+        file, line = case.get("file"), case.get("line")
+        if file and line is not None and line.isascii() and line.isdigit():
+            text = found.get("message") or (found.text or "").strip()
+            failures.append(
+                Failure(
+                    "pytest",
+                    text or case.get("name", ""),
+                    relative_path(file, top),
+                    int(line) + 1,
+                )
+            )
         else:
-            counts += Counts(passed=1)
-    return counts
+            failures.append(Failure("pytest", case.get("name", "")))
+    return failures
+
+
+_DRIVE = re.compile(r"[A-Za-z]:/")
+
+
+def _drive_lowered(path: str) -> str:
+    return path[0].lower() + path[1:] if _DRIVE.match(path) else path
+
+
+def relative_path(path: str, top: str) -> str:
+    """`path` as GitHub knows it: relative to `top`, the top of the worktree, with `/` for every
+    separator (a tool on Windows writes `\\` and `C:\\`). A path that leaves the worktree, or
+    names no file in it, is refused."""
+    slashed = path.replace("\\", "/")
+    if slashed.startswith("/") or _DRIVE.match(slashed):
+        prefix = _drive_lowered(top.replace("\\", "/").rstrip("/") + "/")
+        if not _drive_lowered(slashed).startswith(prefix):
+            raise ReportError(f"{path!r} is not a file inside the worktree")
+        slashed = slashed[len(prefix) :]
+    parts: list[str] = []
+    for part in slashed.split("/"):
+        if part == "..":
+            if not parts:
+                raise ReportError(f"{path!r} is not a file inside the worktree")
+            parts.pop()
+        elif part not in ("", "."):
+            parts.append(part)
+    if not parts:
+        raise ReportError(f"{path!r} is not a file inside the worktree")
+    return "/".join(parts)
+
+
+def _ruff_failure(entry: object, top: str) -> Failure:
+    if not isinstance(entry, dict):
+        raise ValueError("not an object")
+    row = entry["location"]["row"]
+    code, message, filename = entry["code"], entry["message"], entry["filename"]
+    if not all(isinstance(text, str) for text in (code, message, filename)):
+        raise ValueError("not text")
+    if not isinstance(row, int) or isinstance(row, bool):
+        raise ValueError("not a row")
+    return Failure(
+        "ruff", f"{code} {message}", relative_path(filename, top), max(row, 1)
+    )
+
+
+def ruff_failures(text: str, name: str, top: str) -> list[Failure]:
+    """The errors of the output of `ruff check --output-format json`."""
+    try:
+        entries = json.loads(text)
+        if not isinstance(entries, list):
+            raise ValueError("not an array")
+        return [_ruff_failure(entry, top) for entry in entries]
+    except (ValueError, KeyError, TypeError) as error:
+        raise ReportError(
+            f"{name} is not the output of `ruff check --output-format json`: "
+            "expected an array of errors with filename, location.row, code and message"
+        ) from error
+
+
+_MYPY_ERROR = re.compile(
+    r"(?P<path>(?:(?!: (?:note|error): ).)+?)(?::(?P<line>\d+)(?::\d+){0,3})?: error: (?P<message>.*)"
+)
+_MYPY_SUMMARY = re.compile(
+    r"(?:Success: no issues found|Found \d+ errors?)", re.MULTILINE
+)
+
+
+def mypy_failures(text: str, name: str, top: str) -> list[Failure]:
+    """The `error:` lines of the output of mypy; its `note:` lines are context. An error with no
+    line is a failure without a place."""
+    if _MYPY_SUMMARY.search(text) is None:
+        raise ReportError(
+            f"{name} is not the output of mypy: "
+            "it has neither `Success: no issues found` nor `Found <n> errors`"
+        )
+    failures = []
+    for line in text.splitlines():
+        found = _MYPY_ERROR.fullmatch(line)
+        if found is None:
+            continue
+        if found["line"] is None:
+            failures.append(Failure("mypy", f"{found['path']}: {found['message']}"))
+        else:
+            failures.append(
+                Failure(
+                    "mypy",
+                    found["message"],
+                    relative_path(found["path"], top),
+                    max(int(found["line"]), 1),
+                )
+            )
+    return failures
 
 
 def coverage_display(text: str, name: str) -> str:
@@ -254,6 +388,16 @@ def contradiction(result: str, counts: Counts | None) -> str | None:
     return None
 
 
+def file_contradiction(result: str, name: str, failures: list[Failure]) -> str | None:
+    """Why a `passed` result cannot stand with the errors a ruff or mypy file holds."""
+    if result == "passed" and failures:
+        return (
+            f"--result passed contradicts {name}, which holds {len(failures)} "
+            f"{failures[0].tool} errors"
+        )
+    return None
+
+
 # --- What is posted ---------------------------------------------------------------------------
 
 
@@ -268,6 +412,7 @@ class Facts:
     duration: int | None
     counts: Counts | None
     coverage: str | None
+    failures: tuple[Failure, ...] = ()
 
 
 ESCAPED_PIPE = "\\|"
@@ -279,6 +424,26 @@ def code_span(text: str) -> str:
     longest = max((len(run) for run in re.findall(r"`+", one_line)), default=0)
     fence = "`" * (longest + 1)
     return f"{fence} {one_line} {fence}"
+
+
+MAX_ANNOTATION_MESSAGE = 32_000
+
+
+def annotation(failure: Failure) -> dict[str, object]:
+    """The annotation of a failure that has a place; the message is cut far below GitHub's 64 KB."""
+    return {
+        "path": failure.path,
+        "start_line": failure.line,
+        "end_line": failure.line,
+        "annotation_level": "failure",
+        "title": failure.tool,
+        "message": failure.text[:MAX_ANNOTATION_MESSAGE],
+    }
+
+
+def annotations(failures: list[Failure]) -> list[dict[str, object]]:
+    """One annotation per failure that has a place, in order."""
+    return [annotation(failure) for failure in failures if failure.path is not None]
 
 
 def title(result: str, counts: Counts | None) -> str:
@@ -328,12 +493,19 @@ def status_description(facts: Facts) -> str:
 def check_run_body(
     name: str, facts: Facts, result: str, counts: Counts | None
 ) -> dict[str, object]:
+    output: dict[str, object] = {
+        "title": title(result, counts),
+        "summary": summary(facts),
+    }
+    placed = annotations(list(facts.failures))
+    if placed:
+        output["annotations"] = placed
     return {
         "name": name,
         "head_sha": facts.sha,
         "status": "completed",
         "conclusion": "success" if result == "passed" else "failure",
-        "output": {"title": title(result, counts), "summary": summary(facts)},
+        "output": output,
     }
 
 

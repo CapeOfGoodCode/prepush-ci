@@ -198,8 +198,10 @@ prepush-ci doctor --mode full
 Posts the result of a run of the check for a commit: as a check run when `PREPUSH_CI_APP_ID` and `PREPUSH_CI_APP_KEY` are set, otherwise as a commit status with `GITHUB_TOKEN` or `GH_TOKEN`. Say which tree you checked with `--tree`: `report` refuses a tree that is not the commit's, so a result never shows on a state it did not check. It runs nothing itself.
 
 ```
-prepush-ci report --result passed|failed --tree TREE [--commit SHA] [--name NAME] [--duration SECONDS] [--tool NAME=VERSION] [--junit FILE] [--coverage FILE]
+prepush-ci report --result passed|failed --tree TREE [--commit SHA] [--name NAME] [--duration SECONDS] [--tool NAME=VERSION] [--junit FILE] [--coverage FILE] [--ruff FILE] [--mypy FILE]
 ```
+
+With an app, each failing test case of a `--junit` file that names a file and a line, each error of a `--ruff` file (the output of `ruff check --output-format json`) and each error of a `--mypy` file (the output of mypy) becomes an annotation on its line of the check run, and the summary of a failed result lists them first. Run the tools at the top of the worktree: pytest writes the file and line of a test case only with `-o junit_family=xunit1`, and relative to its rootdir.
 
 ```sh
 prepush-ci report --result passed --tree "$(git rev-parse 'HEAD^{tree}')" --junit report.xml --coverage coverage.json

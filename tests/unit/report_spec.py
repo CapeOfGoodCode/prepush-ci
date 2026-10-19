@@ -7,25 +7,33 @@ from prepush_ci.core.report import (
     AppCredentials,
     Counts,
     Facts,
+    Failure,
     Malformed,
     ReportError,
     Repository,
     Target,
     TokenCredentials,
     Tool,
+    annotation,
+    annotations,
     check_run_body,
     code_span,
     contradiction,
     count_junit,
     coverage_display,
     credentials,
+    file_contradiction,
     format_duration,
+    junit_failures,
     jwt,
     jwt_signing_input,
+    mypy_failures,
     parse_duration,
     parse_name,
     parse_tool,
     redact,
+    relative_path,
+    ruff_failures,
     status_body,
     status_description,
     summary,
@@ -587,3 +595,301 @@ def test_redaction_cleans_a_secret_quoted_with_its_white_space_folded() -> None:
 
 def test_redaction_leaves_alone_a_secret_that_is_only_white_space() -> None:
     assert redact("a b", (" ", "")) == "a b"
+
+
+# --- Failures become annotations -----------------------------------------------------------------
+
+TOP = "/work/repo"
+
+
+def located(name: str, file: str, line: str, message: str = "boom") -> str:
+    return (
+        f"<testcase classname='a' name='{name}' file='{file}' line='{line}'>"
+        f"<failure message='{message}'/></testcase>"
+    )
+
+
+def test_a_failed_case_with_a_file_and_a_line_is_a_failure_on_that_line_plus_one() -> (
+    None
+):
+    data = junit(located("test_a", "tests/a_spec.py", "117", "assert 1 == 2"))
+
+    assert junit_failures(data, "r.xml", TOP) == [
+        Failure("pytest", "assert 1 == 2", "tests/a_spec.py", 118)
+    ]
+
+
+def test_a_failed_case_without_a_line_is_a_failure_named_by_the_case_and_without_a_place() -> (
+    None
+):
+    data = junit(
+        "<testcase classname='a' name='test_a' file='a.py'><failure message='x'/></testcase>",
+        "<testcase classname='a' name='test_b' line='4'><failure message='x'/></testcase>",
+        "<testcase classname='a' name='test_c' file='a.py' line='four'><error/></testcase>",
+        "<testcase classname='a' name='test_d' file='a.py' line='-1'><error/></testcase>",
+    )
+
+    assert junit_failures(data, "r.xml", TOP) == [
+        Failure("pytest", "test_a"),
+        Failure("pytest", "test_b"),
+        Failure("pytest", "test_c"),
+        Failure("pytest", "test_d"),
+    ]
+
+
+def test_a_passing_or_skipped_case_is_no_failure() -> None:
+    assert junit_failures(junit(PASSING, SKIPPED), "r.xml", TOP) == []
+
+
+def test_the_message_of_a_failed_case_falls_back_to_the_text_of_its_element_and_the_name() -> (
+    None
+):
+    data = junit(
+        "<testcase name='t1' file='a.py' line='0'><failure>detail</failure></testcase>",
+        "<testcase name='t2' file='a.py' line='0'><error/></testcase>",
+    )
+
+    assert junit_failures(data, "r.xml", TOP) == [
+        Failure("pytest", "detail", "a.py", 1),
+        Failure("pytest", "t2", "a.py", 1),
+    ]
+
+
+def test_the_file_of_a_failed_case_is_made_relative_to_the_top_of_the_worktree() -> (
+    None
+):
+    data = junit(located("t", "/work/repo/tests/a_spec.py", "1"))
+
+    assert junit_failures(data, "r.xml", TOP)[0].path == "tests/a_spec.py"
+
+
+def test_a_file_of_a_failed_case_outside_the_worktree_is_refused_and_named() -> None:
+    with pytest.raises(ReportError, match="/etc/a.py"):
+        junit_failures(junit(located("t", "/etc/a.py", "1")), "r.xml", TOP)
+
+
+def test_a_junit_failure_list_refuses_what_is_not_junit() -> None:
+    with pytest.raises(ReportError, match="notes.txt is not JUnit XML"):
+        junit_failures(b"plain", "notes.txt", TOP)
+
+
+RUFF_ENTRY = {
+    "filename": "/work/repo/src/a.py",
+    "location": {"row": 3, "column": 8},
+    "code": "F401",
+    "message": "`os` imported but unused",
+}
+
+
+def ruff_text(*entries: object) -> str:
+    return json.dumps(list(entries))
+
+
+def test_a_ruff_error_is_a_failure_on_its_row_with_its_code_and_message() -> None:
+    assert ruff_failures(ruff_text(RUFF_ENTRY), "ruff.json", TOP) == [
+        Failure("ruff", "F401 `os` imported but unused", "src/a.py", 3)
+    ]
+
+
+def test_a_ruff_file_without_errors_yields_none() -> None:
+    assert ruff_failures("[]", "ruff.json", TOP) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "not json",
+        "{}",
+        '"text"',
+        "[1]",
+        ruff_text({**RUFF_ENTRY, "filename": None}),
+        ruff_text({**RUFF_ENTRY, "location": None}),
+        ruff_text({**RUFF_ENTRY, "location": {"column": 1}}),
+        ruff_text({**RUFF_ENTRY, "location": {"row": "3"}}),
+        ruff_text({**RUFF_ENTRY, "location": {"row": True}}),
+        ruff_text({**RUFF_ENTRY, "code": None}),
+        ruff_text({**RUFF_ENTRY, "message": 7}),
+        ruff_text({k: v for k, v in RUFF_ENTRY.items() if k != "message"}),
+    ],
+)
+def test_a_file_that_is_not_ruff_json_is_refused_and_named(text: str) -> None:
+    with pytest.raises(ReportError, match="ruff.json"):
+        ruff_failures(text, "ruff.json", TOP)
+
+
+MYPY_ERROR = "src/a.py:42: error: Returning Any from function  [no-any-return]"
+MYPY_NOTE = 'src/a.py:43: note: Use "-> None" if function does not return a value'
+MYPY_FOUND = "Found 1 error in 1 file (checked 1 source file)"
+
+
+def test_a_mypy_error_is_a_failure_and_a_note_is_none() -> None:
+    text = "\n".join([MYPY_ERROR, MYPY_NOTE, MYPY_FOUND])
+
+    assert mypy_failures(text, "mypy.txt", TOP) == [
+        Failure("mypy", "Returning Any from function  [no-any-return]", "src/a.py", 42)
+    ]
+
+
+def test_a_mypy_error_with_a_column_is_on_its_line() -> None:
+    text = (
+        f'src/a.py:42:9: error: Name "x" is not defined  [name-defined]\n{MYPY_FOUND}'
+    )
+
+    assert mypy_failures(text, "mypy.txt", TOP)[0].line == 42
+
+
+def test_a_mypy_error_with_an_end_position_is_on_its_line() -> None:
+    text = (
+        f"src/a.py:42:10:44:12: error: Incompatible types  [assignment]\n{MYPY_FOUND}"
+    )
+
+    assert mypy_failures(text, "mypy.txt", TOP) == [
+        Failure("mypy", "Incompatible types  [assignment]", "src/a.py", 42)
+    ]
+
+
+def test_a_mypy_error_without_a_line_is_a_failure_without_a_place() -> None:
+    text = (
+        'b/x.py: error: Duplicate module named "x" (also at "a/x.py")\n'
+        "Found 1 error in 1 file (errors prevented further checking)"
+    )
+
+    assert mypy_failures(text, "mypy.txt", TOP) == [
+        Failure("mypy", 'b/x.py: Duplicate module named "x" (also at "a/x.py")')
+    ]
+
+
+def test_a_mypy_path_that_holds_a_colon_is_read_whole() -> None:
+    text = f'src/a:b.py:42: error: Name "x" is not defined\n{MYPY_FOUND}'
+
+    (failure,) = mypy_failures(text, "mypy.txt", TOP)
+
+    assert (failure.path, failure.line) == ("src/a:b.py", 42)
+
+
+def test_a_note_that_quotes_an_error_is_not_a_failure() -> None:
+    text = f"src/a.py:42: note: see the line: error: x\n{MYPY_FOUND}"
+
+    assert mypy_failures(text, "mypy.txt", TOP) == []
+
+
+def test_clean_mypy_output_yields_none() -> None:
+    text = "Success: no issues found in 12 source files\n"
+
+    assert mypy_failures(text, "mypy.txt", TOP) == []
+
+
+def test_a_mypy_path_with_backslashes_and_a_drive_letter_is_made_relative() -> None:
+    text = f'C:\\work\\repo\\src\\a.py:42: error: Name "x" is not defined\n{MYPY_FOUND}'
+
+    (failure,) = mypy_failures(text, "mypy.txt", "C:/work/repo")
+
+    assert (failure.path, failure.line) == ("src/a.py", 42)
+
+
+@pytest.mark.parametrize("text", ["plain text", "", MYPY_ERROR, "Found errors"])
+def test_a_file_that_is_not_mypy_output_is_refused_and_named(text: str) -> None:
+    with pytest.raises(ReportError, match="mypy.txt"):
+        mypy_failures(text, "mypy.txt", TOP)
+
+
+@pytest.mark.parametrize(
+    ("path", "top", "relative"),
+    [
+        ("src/a.py", TOP, "src/a.py"),
+        ("./src//a.py", TOP, "src/a.py"),
+        ("src/../lib/a.py", TOP, "lib/a.py"),
+        ("/work/repo/src/a.py", TOP, "src/a.py"),
+        ("/work/repo/src/a.py", "/work/repo/", "src/a.py"),
+        ("src\\a.py", TOP, "src/a.py"),
+        ("C:\\work\\repo\\src\\a.py", "C:/work/repo", "src/a.py"),
+        ("c:/work/repo/src/a.py", "C:/work/repo", "src/a.py"),
+        ("C:/work/repo/src/a.py", "c:/work/repo", "src/a.py"),
+    ],
+)
+def test_a_path_is_taken_from_the_top_of_the_worktree_with_slashes(
+    path: str, top: str, relative: str
+) -> None:
+    assert relative_path(path, top) == relative
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/etc/a.py",
+        "/work/repository/a.py",
+        "/work/a.py",
+        "../a.py",
+        "src/../../a.py",
+        "D:\\work\\repo\\a.py",
+        "",
+        ".",
+        "/work/repo",
+        "/work/repo/../repo/a.py",
+    ],
+)
+def test_a_path_outside_the_worktree_or_naming_no_file_is_refused(path: str) -> None:
+    with pytest.raises(ReportError, match="not a file inside the worktree"):
+        relative_path(path, TOP)
+
+
+def test_an_error_in_a_ruff_or_mypy_file_contradicts_a_passed_result() -> None:
+    failures = [Failure("ruff", "F401 x", "a.py", 1)]
+
+    problem = file_contradiction("passed", "ruff.json", failures)
+
+    assert problem is not None
+    assert "contradicts" in problem
+    assert "ruff.json" in problem
+
+
+def test_a_file_without_errors_or_a_failed_result_is_no_contradiction() -> None:
+    assert file_contradiction("passed", "ruff.json", []) is None
+    assert (
+        file_contradiction(
+            "failed", "ruff.json", [Failure("ruff", "F401 x", "a.py", 1)]
+        )
+        is None
+    )
+
+
+def test_an_annotation_sits_on_its_line_with_the_tool_as_title() -> None:
+    assert annotation(Failure("mypy", "bad  [code]", "src/a.py", 42)) == {
+        "path": "src/a.py",
+        "start_line": 42,
+        "end_line": 42,
+        "annotation_level": "failure",
+        "title": "mypy",
+        "message": "bad  [code]",
+    }
+
+
+def test_an_annotation_message_is_cut_below_what_github_accepts() -> None:
+    long = annotation(Failure("pytest", "x" * 100_000, "a.py", 1))
+
+    assert len(long["message"]) == 32_000  # type: ignore[arg-type]
+
+
+def test_a_failure_without_a_place_has_no_annotation() -> None:
+    assert annotations(
+        [Failure("pytest", "test_a"), Failure("ruff", "F", "a.py", 2)]
+    ) == [annotation(Failure("ruff", "F", "a.py", 2))]
+
+
+def test_a_check_run_carries_the_annotations_of_the_failures_that_have_a_place() -> (
+    None
+):
+    placed = Failure("ruff", "F401 x", "a.py", 3)
+    body = check_run_body(
+        "n", facts(failures=(placed, Failure("pytest", "test_a"))), "failed", None
+    )
+
+    assert body["output"]["annotations"] == [annotation(placed)]  # type: ignore[index]
+
+
+def test_a_check_run_without_a_failure_that_has_a_place_has_no_annotations() -> None:
+    body = check_run_body(
+        "n", facts(failures=(Failure("pytest", "t"),)), "failed", None
+    )
+
+    assert "annotations" not in body["output"]  # type: ignore[operator]
