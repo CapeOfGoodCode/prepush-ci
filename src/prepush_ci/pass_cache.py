@@ -9,6 +9,8 @@ from prepush_ci.core.run_cache import (
     IDENTITY,
     Head,
     Key,
+    lists_ref,
+    message_not_asked,
     message_not_cached,
     message_not_shared,
     passed_commit,
@@ -44,17 +46,37 @@ def record_pass(config: Config, root: Path, key: Key, sha: str) -> bool:
     return True
 
 
-def publish_pass(config: Config, root: Path, key: Key) -> None:
+def publish_pass(root: Path, key: Key) -> None:
     """Push the result ref of `key` to `origin`, without the repository's hooks: the push is the
     tool's own. Only the pre-push hook calls it, for a push to `origin`, so the tree the ref holds
     goes where the user is sending it anyway. A repository without `origin` shares nothing, and a
     remote that refuses is a warning, never a reason to refuse the push."""
-    if not config.cache or not _has_origin(root):
+    if not _has_origin(root):
         return
     ref = result_ref(key)
-    pushed = git(root, "push", "--no-verify", REMOTE, f"{ref}:{ref}")
+    # `+`: a pass made again is a new parentless commit, which never fast-forwards the old one
+    pushed = git(root, "push", "--no-verify", REMOTE, f"+{ref}:{ref}")
     if pushed.returncode != 0:
         print(message_not_shared(pushed.stderr.strip()), file=sys.stderr)
+
+
+def fetch_pass(config: Config, root: Path, key: Key) -> str | None:
+    """The commit that passed the check for `key` according to `origin`, or None. Called after a
+    local miss: the ref is asked for first (`git fetch` exits 128 for a missing ref and for an
+    unreachable remote alike), fetched into the same name, and `has_pass` decides whether it is a
+    result of the tree. A remote that fails is a warning and a miss."""
+    if not config.cache or not _has_origin(root):
+        return None
+    ref = result_ref(key)
+    asked = git(root, "ls-remote", REMOTE, ref)
+    if asked.returncode != 0:
+        print(message_not_asked(asked.stderr.strip()), file=sys.stderr)
+        return None
+    if not lists_ref(asked.stdout, ref):
+        return None
+    # A fetch that fails now (the ref went away since) leaves no ref: a miss, as it should.
+    git(root, "fetch", "--quiet", REMOTE, f"+{ref}:{ref}")
+    return has_pass(config, root, key)
 
 
 def _has_origin(root: Path) -> bool:

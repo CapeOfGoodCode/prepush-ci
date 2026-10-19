@@ -82,6 +82,23 @@ def message_skipped(tree: str, sha: str) -> str:
     )
 
 
+def message_skipped_from_origin(tree: str, sha: str) -> str:
+    return (
+        f"prepush-ci: {REMOTE} holds a result: the check passed earlier on tree {tree[:SHORT]} "
+        f"(commit {sha[:SHORT]}) with the same config, so it is not run again; the preflight ran"
+    )
+
+
+def lists_ref(listing: str, ref: str) -> bool:
+    """Whether `git ls-remote <remote> <ref>` printed `ref` itself: it also matches a longer ref
+    that ends with the name."""
+    return any(line.partition("\t")[2] == ref for line in listing.splitlines())
+
+
+def message_not_asked(reason: str) -> str:
+    return f"prepush-ci: {REMOTE} could not be asked for a result, so the check runs: {reason}"
+
+
 def message_not_cached(reason: str) -> str:
     return f"prepush-ci: the pass could not be cached, so a retry runs the check again: {reason}"
 
