@@ -2343,3 +2343,138 @@ def test_a_start_together_with_a_result_exits_2_and_names_both_flags(
     assert "--start" in result.stderr
     assert "--result" in result.stderr
     assert world.api.requests == []
+
+
+# --- The final report completes the run in progress ----------------------------------------------
+
+
+def run_in_progress(run_id: int, name: str = "prepush-ci / full") -> dict[str, object]:
+    return {"id": run_id, "name": name, "status": "in_progress", "app_id": APP_ID}
+
+
+@needs_openssl
+def test_the_final_report_completes_the_run_the_start_created_and_creates_none(
+    world: World,
+) -> None:
+    assert start(world, env=world.app_env()).returncode == 0
+    started = world.api.runs[0]["id"]
+
+    result = world.passed(env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert "check run" in result.stdout
+    assert len(creations(world)) == 1
+    (update,) = updates(world)
+    assert update.path == f"{RUN}/{started}"
+    assert update.json()["status"] == "completed"
+    assert update.json()["conclusion"] == "success"
+    assert world.api.runs[0]["status"] == "completed"
+    assert world.api.runs[0]["conclusion"] == "success"
+
+
+@needs_openssl
+def test_a_final_report_without_a_run_in_progress_creates_one_completed_and_updates_none(
+    world: World,
+) -> None:
+    result = world.passed(env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    (created,) = creations(world)
+    assert created.json()["status"] == "completed"
+    assert created.json()["conclusion"] == "success"
+    assert updates(world) == []
+
+
+@needs_openssl
+def test_the_final_report_looks_up_the_runs_in_progress_of_the_commit_name_and_app(
+    world: World,
+) -> None:
+    result = world.passed("--name", "prepush-ci / unit", env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    (lookup,) = [
+        r for r in world.api.requests if r.method == "GET" and "/commits/" in r.path
+    ]
+    assert (
+        urlsplit(lookup.path).path
+        == f"/repos/acme/widgets/commits/{world.sha}/check-runs"
+    )
+    assert parse_qs(urlsplit(lookup.path).query) == {
+        "check_name": ["prepush-ci / unit"],
+        "status": ["in_progress"],
+        "app_id": [APP_ID],
+    }
+
+
+@needs_openssl
+def test_a_run_in_progress_of_another_name_is_left_alone(world: World) -> None:
+    world.api.runs.append(run_in_progress(7))
+
+    result = world.passed("--name", "prepush-ci / unit", env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert updates(world) == []
+    assert creations(world)[0].json()["name"] == "prepush-ci / unit"
+    assert world.api.runs[0]["status"] == "in_progress"
+
+
+@needs_openssl
+def test_with_several_runs_in_progress_the_one_with_the_highest_id_is_completed(
+    world: World,
+) -> None:
+    world.api.runs.extend([run_in_progress(7), run_in_progress(9)])
+
+    result = world.passed(env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert [u.path for u in updates(world)] == [f"{RUN}/9"]
+    assert creations(world) == []
+    assert [r["status"] for r in world.api.runs] == ["in_progress", "completed"]
+
+
+@needs_openssl
+def test_a_lookup_that_is_refused_exits_1_names_the_status_and_creates_no_run(
+    world: World,
+) -> None:
+    world.api.answer("GET /repos/acme/widgets/commits/", 403, '{"message": "no"}')
+
+    result = world.passed(env=world.app_env())
+
+    assert result.returncode == 1
+    assert "403" in result.stderr
+    assert world.api.results() == []
+    assert updates(world) == []
+
+
+@needs_openssl
+def test_the_annotations_of_a_completed_run_go_to_the_run_in_batches_of_50(
+    world: World, tmp_path: Path
+) -> None:
+    world.api.runs.append(run_in_progress(7))
+    mypy = write_mypy(tmp_path / "mypy.txt", *(mypy_error(n) for n in range(1, 121)))
+
+    result = world.failed("--mypy", str(mypy), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert creations(world) == []
+    assert [u.path for u in updates(world)] == [f"{RUN}/7"] * 3
+    assert [len(u.json()["output"]["annotations"]) for u in updates(world)] == [  # type: ignore[index]
+        50,
+        50,
+        20,
+    ]
+    assert "head_sha" not in updates(world)[0].json()
+
+
+def test_without_an_app_the_final_status_replaces_the_pending_one_with_its_context(
+    world: World,
+) -> None:
+    assert start(world).returncode == 0
+
+    result = world.passed()
+
+    assert result.returncode == 0, result.stderr
+    pending, final = [r.json() for r in world.api.requests]
+    assert pending["state"] == "pending"
+    assert final["state"] == "success"
+    assert final["context"] == pending["context"]

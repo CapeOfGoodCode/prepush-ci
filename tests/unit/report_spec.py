@@ -19,6 +19,7 @@ from prepush_ci.core.report import (
     annotations,
     check_run_body,
     code_span,
+    completion_body,
     contradiction,
     count_junit,
     coverage_display,
@@ -1130,3 +1131,17 @@ def test_restarting_a_run_in_progress_updates_its_started_at_only() -> None:
         "status": "in_progress",
         "started_at": "1970-01-01T00:00:00Z",
     }
+
+
+# --- The final report completes the run in progress ----------------------------------------------
+
+
+def test_the_completion_of_a_run_is_the_body_of_a_new_run_without_the_commit() -> None:
+    created = check_run_body("n", facts(failures=tuple(many(60))), "failed", None)
+
+    completion = completion_body("n", facts(failures=tuple(many(60))), "failed", None)
+
+    assert completion == {k: v for k, v in created.items() if k != "head_sha"}
+    assert completion["status"] == "completed"
+    assert completion["conclusion"] == "failure"
+    assert len(completion["output"]["annotations"]) == 50  # type: ignore[index]

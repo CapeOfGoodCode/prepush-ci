@@ -250,18 +250,35 @@ def _post_check_run(
     result: str,
     secrets: list[str],
 ) -> None:
+    """Complete the run in progress of that name, or create the completed run; later batches of
+    annotations update the same run."""
     token = _installation_token(where, app, secrets)
-    created = github_api.post_check_run(
-        where.api_url,
-        where.repository,
-        token,
-        report.check_run_body(name, facts, result, facts.counts),
+    run_id = github_api.in_progress_run(
+        where.api_url, where.repository, token, facts.sha, name, app.app_id
     )
+    created = (
+        b""  # GitHub's answer to a creation; read only when a later batch needs the id
+    )
+    if run_id is None:
+        created = github_api.post_check_run(
+            where.api_url,
+            where.repository,
+            token,
+            report.check_run_body(name, facts, result, facts.counts),
+        )
+    else:
+        github_api.update_check_run(
+            where.api_url,
+            where.repository,
+            token,
+            run_id,
+            report.completion_body(name, facts, result, facts.counts),
+        )
     for body in report.later_batches_bodies(facts, result, facts.counts):
         github_api.update_check_run(
             where.api_url,
             where.repository,
             token,
-            github_api.check_run_id(created),
+            run_id or github_api.check_run_id(created),
             body,
         )
