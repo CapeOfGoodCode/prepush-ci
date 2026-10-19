@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from prepush_ci import (
+    app_setup_command,
     commit_msg_hook,
     doctor_command,
     init_command,
@@ -19,6 +20,11 @@ from prepush_ci import (
     strip_command,
     text_io,
     verify_command,
+)
+from prepush_ci.core.app_setup import (
+    DEFAULT_TIMEOUT,
+    parse_app_name,
+    parse_timeout,
 )
 from prepush_ci.core.doctor import MODES
 from prepush_ci.core.hook_managers import CHOICES
@@ -241,7 +247,37 @@ def main(argv: list[str] | None = None) -> int:
         action="append",
         help="the output of mypy (repeatable); its errors are annotated",
     )
+    app = commands.add_parser(
+        "app", help="the GitHub App that report posts check runs as"
+    )
+    apps = app.add_subparsers(required=True)
+    setup = apps.add_parser(
+        "setup",
+        help="create the app with one click in the browser and save its key outside the repository",
+    )
+    setup.add_argument(
+        "--org",
+        type=_parsed(parse_name),
+        help="the organization that owns the app (default: your account)",
+    )
+    setup.add_argument(
+        "--name",
+        type=_parsed(parse_app_name),
+        help="the name of the app (default: prepush-ci (<owner of origin>)); 34 characters at most",
+    )
+    setup.add_argument(
+        "--timeout",
+        type=_parsed(parse_timeout),
+        default=DEFAULT_TIMEOUT,
+        help="seconds to wait for GitHub's answer (default: %(default)s)",
+    )
     args = parser.parse_args(args_in)
+    if args.command == "app":
+        return app_setup_command.run(
+            app_setup_command.Options(args.org, args.name, args.timeout),
+            env,
+            Path.cwd(),
+        )
     if args.command == "report":
         problem = _report_problem(args)
         if problem is not None:

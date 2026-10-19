@@ -47,16 +47,17 @@ def _message(body: bytes) -> str:
 
 
 def send(
-    method: str, api_url: str, path: str, token: str, payload: object = None
+    method: str, api_url: str, path: str, token: str | None, payload: object = None
 ) -> bytes:
-    """One request; the answer's body, or an `ApiError` naming the status and GitHub's message."""
+    """One request, with no credential when `token` is None; the answer's body, or an `ApiError`
+    naming the status and GitHub's message."""
     try:
         request = urllib.request.Request(
             text_io.to_os(api_url + path),
             data=None if payload is None else text_io.encode(json.dumps(payload)),
             method=method,
             headers={
-                "Authorization": f"Bearer {token}",
+                **({} if token is None else {"Authorization": f"Bearer {token}"}),
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
                 "User-Agent": "prepush-ci",
@@ -135,6 +136,13 @@ def in_progress_run(
             "the answer to the check run lookup has no check_runs with an id each"
         ) from error
     return str(max(ids)) if ids else None
+
+
+def convert_manifest(api_url: str, code: str) -> str:
+    """The app GitHub made from a manifest (the answer's text): the one request that needs no
+    credential, since the single-use code proves the person who clicked."""
+    path = f"/app-manifests/{quote(code, safe='')}/conversions"
+    return text_io.decode(send("POST", api_url, path, None))
 
 
 def installation_token(api_url: str, repository: Repository, app_jwt: str) -> str:
