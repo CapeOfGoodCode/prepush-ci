@@ -6,11 +6,11 @@
 
 ## 2. Look up
 
-- [ ] 2.1 In the hook, when no local result matches, ask `origin` for the ref with `git ls-remote`, fetch it into the same name and let the local check of the tree decide whether it is a hit; print the skip line with `origin` in it; a remote that cannot be reached is a warning and a miss, a remote without the ref is a plain miss; verify with specs for a fresh clone, a ref of another tree on the remote, an unreachable remote, a remote without the ref, `cache = false` and a repository without `origin`
+- [x] 2.1 In the hook, when no local result matches, ask `origin` for the ref with `git ls-remote`, fetch it into the same name and let the local check of the tree decide whether it is a hit; print the skip line with `origin` in it; a remote that cannot be reached is a warning and a miss, a remote without the ref is a plain miss; verify with specs for a fresh clone, a ref of another tree on the remote, an unreachable remote, a remote without the ref, `cache = false` and a repository without `origin`
 
 ## 3. What the change says to readers
 
-- [ ] 3.1 Add to the README's step 5 that a pass in a push to `origin` is shared through `origin` (the tree goes up with the push; `run`, a push elsewhere, a push by url and lefthook share nothing), that a remote which refuses the ref costs a warning, and the `cache` row's reach; run each sentence against the head as `AGENTS.md` asks and put the commands and output into the PR
+- [x] 3.1 Add to the README's step 5 that a pass in a push to `origin` is shared through `origin` (the tree goes up with the push; `run`, a push elsewhere, a push by url and lefthook share nothing), that a remote which refuses the ref costs a warning, and the `cache` row's reach; run each sentence against the head as `AGENTS.md` asks and put the commands and output into the PR
 
 ## 4. A dry run and a declined push (spec round 2)
 

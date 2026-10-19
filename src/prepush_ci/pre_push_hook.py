@@ -22,10 +22,17 @@ from prepush_ci.core.run_cache import (
     Key,
     fingerprint,
     message_skipped,
+    message_skipped_from_origin,
     pushes_to_origin,
 )
 from prepush_ci.git import GitError, committed_config, git, trailers
-from prepush_ci.pass_cache import current_head, has_pass, publish_pass, record_pass
+from prepush_ci.pass_cache import (
+    current_head,
+    fetch_pass,
+    has_pass,
+    publish_pass,
+    record_pass,
+)
 from prepush_ci.preflight import PreflightRefused
 from prepush_ci.preflight import run as run_preflight
 from prepush_ci.repo_config import load_repository_config
@@ -105,11 +112,15 @@ def _enforce(
     if passed is not None:  # only the check is skipped: the preflight is never cached
         print(message_skipped(key.tree, passed), file=sys.stderr)
         if to_origin:  # a publish that failed once is retried by the next push
-            publish_pass(config, root, key)
+            publish_pass(root, key)
+        return 0
+    passed = fetch_pass(config, root, key)
+    if passed is not None:  # it came from `origin`: nothing to publish
+        print(message_skipped_from_origin(key.tree, passed), file=sys.stderr)
         return 0
     code = run_check(config, root)
     if code == 0 and record_pass(config, root, key, checked.sha) and to_origin:
-        publish_pass(config, root, key)
+        publish_pass(root, key)
     return code
 
 

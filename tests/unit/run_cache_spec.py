@@ -4,9 +4,12 @@ from prepush_ci.core.config import Config, Trailer
 from prepush_ci.core.run_cache import (
     Key,
     fingerprint,
+    lists_ref,
+    message_not_asked,
     message_not_cached,
     message_not_shared,
     message_skipped,
+    message_skipped_from_origin,
     passed_commit,
     pushes_to_origin,
     result_message,
@@ -200,3 +203,42 @@ def test_the_warning_for_a_result_that_was_not_shared_names_origin_and_the_reaso
     assert "origin" in text
     assert "remote said no" in text
     assert "not shared" in text
+
+
+def test_the_line_for_a_result_from_origin_names_origin_the_tree_and_the_commit() -> (
+    None
+):
+    text = message_skipped_from_origin("t" * 40, "c" * 40)
+
+    assert "origin" in text
+    assert "t" * 12 in text
+    assert "c" * 12 in text
+    assert "t" * 13 not in text
+
+
+def test_the_line_for_a_local_result_does_not_name_origin() -> None:
+    assert "origin" not in message_skipped("t" * 40, "c" * 40)
+
+
+def test_the_warning_for_a_lookup_that_failed_names_origin_and_the_reason() -> None:
+    text = message_not_asked("no route")
+
+    assert "origin" in text
+    assert "no route" in text
+    assert "could not be asked" in text
+
+
+def test_a_listing_that_holds_the_ref_lists_it() -> None:
+    ref = result_ref(KEY)
+
+    assert lists_ref(f"{'a' * 40}\t{ref}\n", ref)
+
+
+def test_an_empty_listing_does_not_list_the_ref() -> None:
+    assert not lists_ref("", result_ref(KEY))
+
+
+def test_a_ref_that_only_ends_like_the_ref_is_not_the_ref() -> None:
+    ref = result_ref(KEY)
+
+    assert not lists_ref(f"{'a' * 40}\trefs/heads/x/{ref}\n", ref)

@@ -17,6 +17,8 @@ Git = Callable[..., "subprocess.CompletedProcess[str]"]
 
 TRAILER = "\n\nPrepush-CI: full"
 NOT_SHARED = "not shared through origin"
+NOT_ASKED = "origin could not be asked"
+SKIPPED = "passed earlier"
 # A remote that takes branches and nothing else, as a Claude Code cloud session's proxy does.
 BRANCHES_ONLY = (
     "#!/bin/sh\n"
@@ -64,6 +66,7 @@ def pushing(repo: Path, tmp_path: Path, git: Git, log: Path) -> Path:
     to `log`, the pre-push hook, a bare `origin` and a bare `other`."""
     for name in ("remote", "other"):
         git(tmp_path, "init", "-q", "--bare", str(tmp_path / f"{name}.git"))
+        git(tmp_path / f"{name}.git", "symbolic-ref", "HEAD", "refs/heads/main")
     git(repo, "symbolic-ref", "HEAD", "refs/heads/main")
     (repo / ".git" / "info" / "exclude").write_text(".prepush-ci.toml\nready\n")
     write_config(repo, log)
@@ -186,6 +189,18 @@ def test_a_push_to_another_remote_publishes_nothing(
     assert shared(tmp_path / "other.git", git) == []
 
 
+def test_a_reused_local_result_is_not_published_by_a_push_to_another_remote(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    assert push(pushing, git).returncode == 0
+
+    result = push(pushing, git, "other", "main")
+
+    assert result.returncode == 0
+    assert runs(log) == 1
+    assert shared(tmp_path / "other.git", git) == []
+
+
 def test_run_publishes_nothing(pushing: Path, git: Git, tmp_path: Path) -> None:
     assert run_cli(pushing).returncode == 0
 
@@ -225,6 +240,20 @@ def test_without_an_origin_a_push_to_another_remote_succeeds_and_says_nothing(
     git(pushing, "remote", "remove", "origin")
 
     result = push(pushing, git, "other", "main")
+
+    assert result.returncode == 0
+    assert "prepush-ci:" not in result.stderr
+
+
+def test_without_an_origin_a_remote_name_origin_from_pre_commit_shares_nothing_and_says_nothing(
+    pushing: Path, git: Git
+) -> None:
+    git(pushing, "remote", "remove", "origin")
+    install_hook(pushing, arguments=False)
+
+    result = push(
+        pushing, git, "other", "main", env={"PRE_COMMIT_REMOTE_NAME": "origin"}
+    )
 
     assert result.returncode == 0
     assert "prepush-ci:" not in result.stderr
@@ -302,3 +331,204 @@ def test_a_hook_that_cannot_tell_the_remote_publishes_nothing_and_says_nothing(
     assert result.returncode == 0
     assert shared(tmp_path / "remote.git", git) == []
     assert "prepush-ci:" not in result.stderr
+
+
+# --- A result on the remote is reused ------------------------------------------------------------
+
+
+def fresh_clone(pushing: Path, git: Git, tmp_path: Path, log: Path) -> Path:
+    """A clone of `origin` with its own config and hook, and a tip of the same tree that carries
+    the trailer: what another session or a reviewer has."""
+    clone = tmp_path / "fresh"
+    git(tmp_path, "clone", "-q", str(tmp_path / "remote.git"), str(clone))
+    git(clone, "config", "user.name", "Other")
+    git(clone, "config", "user.email", "other@example.com")
+    git(clone, "config", "commit.gpgsign", "false")
+    (clone / ".git" / "info" / "exclude").write_text(".prepush-ci.toml\nready\n")
+    write_config(clone, log)
+    install_hook(clone)
+    git(clone, "commit", "--allow-empty", "-q", "--amend", "-m", "other" + TRAILER)
+    return clone
+
+
+def forget_locally(repo: Path, git: Git) -> None:
+    for ref in local_results(repo, git):
+        git(repo, "update-ref", "-d", ref)
+
+
+def skip_line(result: "subprocess.CompletedProcess[str]") -> str:
+    [line] = [line for line in result.stderr.splitlines() if SKIPPED in line]
+    return line
+
+
+def test_a_fresh_clone_reuses_the_result_from_origin_and_the_line_says_where_it_came_from(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    assert push(pushing, git).returncode == 0
+    passed = git(pushing, "rev-parse", "HEAD").stdout.strip()
+    clone = fresh_clone(pushing, git, tmp_path, log)
+    amended = git(clone, "rev-parse", "HEAD").stdout.strip()
+
+    result = push(clone, git, "origin", "main:refs/heads/second")
+
+    assert result.returncode == 0
+    assert runs(log) == 1
+    line = skip_line(result)
+    assert "origin" in line
+    assert tree_of_head(clone, git)[:12] in line
+    assert passed[:12] in line
+    assert amended[:12] not in line
+
+
+def test_a_result_reused_from_origin_is_kept_in_the_clone(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    assert push(pushing, git).returncode == 0
+    clone = fresh_clone(pushing, git, tmp_path, log)
+
+    assert push(clone, git, "origin", "main:refs/heads/second").returncode == 0
+
+    assert local_results(clone, git) == shared(tmp_path / "remote.git", git)
+
+
+def test_the_preflight_still_runs_for_a_result_from_origin(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    assert push(pushing, git).returncode == 0
+    clone = fresh_clone(pushing, git, tmp_path, log)
+    script = tmp_path / "ready_check.py"
+    script.write_text("import sys\nsys.exit(1)\n")
+    command = f"{Path(sys.executable).as_posix()} {script.as_posix()}"
+    write_config(clone, log, f"preflight = '{command}'")
+    forget_locally(clone, git)
+
+    result = push(clone, git, "origin", "main:refs/heads/second")
+
+    assert result.returncode != 0
+    assert "preflight" in result.stderr
+    assert runs(log) == 1
+
+
+def test_a_result_made_with_another_check_on_origin_runs_the_check(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    assert push(pushing, git).returncode == 0
+    clone = fresh_clone(pushing, git, tmp_path, log)
+    write_config(clone, log, check=f"echo other >> {log.as_posix()}")
+
+    result = push(clone, git, "origin", "main:refs/heads/second")
+
+    assert result.returncode == 0
+    assert runs(log) == 2
+    assert SKIPPED not in result.stderr
+
+
+def test_a_ref_of_another_tree_on_origin_is_a_miss_and_the_check_runs(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    remote = tmp_path / "remote.git"
+    assert push(pushing, git).returncode == 0
+    [ref] = shared(remote, git)
+    (pushing / "extra.txt").write_text("extra")
+    git(pushing, "add", "extra.txt")
+    git(pushing, "commit", "-q", "-m", "another tree")
+    other = git(pushing, "rev-parse", "HEAD").stdout.strip()
+    assert push(pushing, git, "origin", "HEAD:refs/heads/extra").returncode == 0
+    git(pushing, "reset", "-q", "--hard", "HEAD~1")
+    git(remote, "update-ref", ref, other)
+    forget_locally(pushing, git)
+
+    result = push(pushing, git, "origin", "main:refs/heads/second")
+
+    assert result.returncode == 0
+    assert runs(log) == 2
+    assert SKIPPED not in result.stderr
+    # the new pass replaces the ref of the other tree, which is no fast-forward
+    assert NOT_SHARED not in result.stderr
+    assert git(remote, "rev-parse", f"{ref}^{{tree}}").stdout.strip() == tree_of_head(
+        pushing, git
+    )
+
+
+def test_a_local_result_is_not_looked_up_and_the_line_does_not_name_origin(
+    pushing: Path, git: Git, log: Path
+) -> None:
+    assert push(pushing, git).returncode == 0
+
+    result = push(pushing, git, "origin", "main:refs/heads/second")
+
+    assert runs(log) == 1
+    assert "origin" not in skip_line(result)
+
+
+def test_an_origin_without_the_result_runs_the_check_and_warns_of_nothing(
+    pushing: Path, git: Git, log: Path
+) -> None:
+    result = push(pushing, git, "other", "main")
+
+    assert result.returncode == 0
+    assert runs(log) == 1
+    assert NOT_ASKED not in result.stderr
+    assert "prepush-ci:" not in result.stderr
+
+
+def test_with_the_cache_off_the_result_on_origin_is_ignored(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    assert push(pushing, git).returncode == 0
+    clone = fresh_clone(pushing, git, tmp_path, log)
+    write_config(clone, log, "cache = false")
+
+    result = push(clone, git, "origin", "main:refs/heads/second")
+
+    assert result.returncode == 0
+    assert runs(log) == 2
+
+
+def test_with_the_cache_off_origin_is_not_contacted_at_all(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    write_config(pushing, log, "cache = false")
+    git(pushing, "remote", "set-url", "origin", str(tmp_path / "nowhere"))
+
+    result = push(pushing, git, "other", "main")
+
+    assert result.returncode == 0
+    assert "prepush-ci:" not in result.stderr
+
+
+def test_run_does_not_read_the_result_on_origin(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    assert push(pushing, git).returncode == 0
+    clone = fresh_clone(pushing, git, tmp_path, log)
+
+    assert run_cli(clone).returncode == 0
+
+    assert runs(log) == 2
+
+
+def test_an_unreachable_origin_is_a_warning_and_a_miss_in_a_push_to_another_remote(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    git(pushing, "remote", "set-url", "origin", str(tmp_path / "nowhere"))
+
+    result = push(pushing, git, "other", "main")
+
+    assert result.returncode == 0
+    assert runs(log) == 1
+    assert NOT_ASKED in result.stderr
+
+
+def test_a_hook_that_cannot_tell_the_remote_still_reuses_the_result_from_origin(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    assert push(pushing, git).returncode == 0
+    clone = fresh_clone(pushing, git, tmp_path, log)
+    install_hook(clone, arguments=False)
+
+    result = push(clone, git, "origin", "main:refs/heads/second")
+
+    assert result.returncode == 0
+    assert runs(log) == 1
+    assert "origin" in skip_line(result)
