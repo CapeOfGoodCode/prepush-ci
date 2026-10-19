@@ -8,4 +8,4 @@
 ## 2. README and archive
 
 - [x] 2.1 Add the entry for `app setup` to the README's reference and the paragraph on setting the app up (design.md, "The README paragraph is not pinned by a requirement"); verify with the `readme` drift specs
-- [ ] 2.2 Run `sh scripts/ci` and verify it passes
+- [x] 2.2 Run `sh scripts/ci` and verify it passes
