@@ -15,6 +15,7 @@ from prepush_ci.core.report import (
     TokenCredentials,
     Tool,
     annotation,
+    annotation_batches,
     annotations,
     check_run_body,
     code_span,
@@ -27,6 +28,7 @@ from prepush_ci.core.report import (
     junit_failures,
     jwt,
     jwt_signing_input,
+    later_batches_bodies,
     mypy_failures,
     parse_duration,
     parse_name,
@@ -893,3 +895,181 @@ def test_a_check_run_without_a_failure_that_has_a_place_has_no_annotations() -> 
     )
 
     assert "annotations" not in body["output"]  # type: ignore[operator]
+
+
+# --- Annotations are sent in batches of 50 -------------------------------------------------------
+
+
+def many(count: int) -> list[Failure]:
+    return [Failure("mypy", f"error {n}", "a.py", n + 1) for n in range(count)]
+
+
+def test_annotations_are_batched_by_50_in_order_and_each_arrives_once() -> None:
+    batches = annotation_batches(many(120))
+
+    assert [len(batch) for batch in batches] == [50, 50, 20]
+    assert [a["start_line"] for batch in batches for a in batch] == list(range(1, 121))
+
+
+def test_exactly_50_annotations_are_one_batch_and_none_is_no_batch() -> None:
+    assert [len(batch) for batch in annotation_batches(many(50))] == [50]
+    assert annotation_batches(many(51))[1] == [annotation(many(51)[50])]
+    assert annotation_batches([]) == []
+
+
+def test_the_first_batch_is_in_the_body_that_creates_the_run_and_the_rest_follow() -> (
+    None
+):
+    given = facts(failures=tuple(many(120)))
+
+    body = check_run_body("n", given, "failed", None)
+    later = later_batches_bodies(given, "failed", None)
+
+    assert len(body["output"]["annotations"]) == 50  # type: ignore[index]
+    assert [len(b["output"]["annotations"]) for b in later] == [50, 20]  # type: ignore[index]
+    for patch in later:
+        assert set(patch) == {"output"}
+        assert patch["output"]["title"] == body["output"]["title"]  # type: ignore[index]
+        assert patch["output"]["summary"] == body["output"]["summary"]  # type: ignore[index]
+
+
+def test_a_run_of_50_annotations_has_no_later_batch() -> None:
+    assert later_batches_bodies(facts(failures=tuple(many(50))), "failed", None) == []
+
+
+# --- The summary of a red run lists the failures first -------------------------------------------
+
+
+def listed(text: str) -> list[str]:
+    return [line for line in text.splitlines() if line.startswith("- ")]
+
+
+def test_the_summary_of_a_red_run_begins_with_the_failures_and_then_names_what_ran() -> (
+    None
+):
+    text = summary(
+        facts(
+            failures=(
+                Failure("pytest", "assert 1 == 2", "tests/a_spec.py", 118),
+                Failure("mypy", "Name x is not defined", "src/a.py", 42),
+            )
+        )
+    )
+
+    assert text.startswith("### Failures\n\n")
+    assert listed(text) == [
+        "- pytest ` tests/a_spec.py:118 ` ` assert 1 == 2 `",
+        "- mypy ` src/a.py:42 ` ` Name x is not defined `",
+    ]
+    assert text.index("mypy") < text.index(SHA)
+    assert text.index("mypy") < text.index("sh scripts/ci")
+
+
+def test_a_failed_case_without_a_place_is_listed_by_its_name() -> None:
+    text = summary(facts(failures=(Failure("pytest", "test_a"),)))
+
+    assert listed(text) == ["- pytest ` test_a `"]
+
+
+def test_the_summary_lists_20_failures_then_the_number_of_the_others() -> None:
+    text = summary(facts(failures=tuple(many(25))))
+
+    assert len(listed(text)) == 21
+    assert listed(text)[-1] == "- and 5 more"
+    assert "error 19" in text
+    assert "error 20" not in text
+
+
+def test_the_summary_of_exactly_20_failures_says_nothing_of_others() -> None:
+    assert not any(
+        "more" in line for line in listed(summary(facts(failures=tuple(many(20)))))
+    )
+
+
+def test_a_summary_without_failures_has_no_section_of_failures() -> None:
+    assert "Failures" not in summary(facts())
+
+
+def test_a_listed_failure_is_the_first_line_of_its_message() -> None:
+    text = summary(
+        facts(
+            failures=(Failure("pytest", "AssertionError: a == b\n- a\n+ b", "a.py", 1),)
+        )
+    )
+
+    assert listed(text) == ["- pytest ` a.py:1 ` ` AssertionError: a == b `"]
+
+
+def test_a_listed_failure_skips_leading_empty_lines_of_its_message() -> None:
+    text = summary(facts(failures=(Failure("pytest", "\n \nsecond", "a.py", 1),)))
+
+    assert listed(text) == ["- pytest ` a.py:1 ` ` second `"]
+
+
+def test_a_failure_with_an_empty_message_is_listed_with_an_empty_text() -> None:
+    assert listed(summary(facts(failures=(Failure("pytest", "", "a.py", 1),)))) == [
+        "- pytest ` a.py:1 ` `  `"
+    ]
+
+
+@pytest.mark.parametrize("name", ["a" * 5000, "b " * 3000])
+def test_a_long_text_is_cut_to_200_characters_with_an_ellipsis_last(name: str) -> None:
+    (line,) = listed(summary(facts(failures=(Failure("pytest", name),))))
+
+    shown = line.removeprefix("- pytest ` ").removesuffix(" `")
+    assert len(shown) == 200
+    assert shown.endswith("…")
+    assert shown.startswith(" ".join(name.split())[:5])
+
+
+def test_a_text_of_exactly_200_characters_is_whole() -> None:
+    message = "x" * 200
+
+    (line,) = listed(summary(facts(failures=(Failure("pytest", message, "a.py", 1),))))
+
+    assert line == f"- pytest ` a.py:1 ` ` {message} `"
+
+
+def test_the_200_characters_are_counted_after_runs_of_white_space_are_merged() -> None:
+    spaced = "x" * 99 + "     " + "y" * 100
+    longer = "x" * 99 + "     " + "y" * 101
+
+    (whole,) = listed(summary(facts(failures=(Failure("pytest", spaced, "a.py", 1),))))
+    (cut,) = listed(summary(facts(failures=(Failure("pytest", longer, "a.py", 1),))))
+
+    assert whole.endswith("y" * 100 + " `")
+    assert "…" not in whole
+    assert cut.endswith("y" * 99 + "… `")
+
+
+def test_the_cut_counts_the_text_and_not_the_backticks_around_it() -> None:
+    whole = "`" * 200
+    cut = "`" * 250
+
+    (kept,) = listed(summary(facts(failures=(Failure("pytest", whole, "a.py", 1),))))
+    (shortened,) = listed(summary(facts(failures=(Failure("pytest", cut, "a.py", 1),))))
+
+    fence = "`" * 201
+    assert kept == f"- pytest ` a.py:1 ` {fence} {whole} {fence}"
+    fence = "`" * 200
+    assert shortened == f"- pytest ` a.py:1 ` {fence} {'`' * 199}… {fence}"
+
+
+def test_markdown_characters_of_a_text_are_in_a_code_span_as_typed() -> None:
+    text = summary(
+        facts(
+            failures=(
+                Failure("pytest", "assert 2*3 == 7*1", "a.py", 1),
+                Failure("pytest", "<built-in function len>", "a.py", 2),
+                Failure("pytest", "test_x[__init__]"),
+                Failure("mypy", "Name `x` is not defined | a|b", "a.py", 3),
+            )
+        )
+    )
+
+    assert listed(text) == [
+        "- pytest ` a.py:1 ` ` assert 2*3 == 7*1 `",
+        "- pytest ` a.py:2 ` ` <built-in function len> `",
+        "- pytest ` test_x[__init__] `",
+        "- mypy ` a.py:3 ` `` Name `x` is not defined | a|b ``",
+    ]

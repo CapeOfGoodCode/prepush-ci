@@ -73,14 +73,15 @@ class Request:
 class Api:
     url: str
     requests: list[Request] = field(default_factory=list)
-    answers: list[tuple[str, int, Callable[[Request], str]]] = field(
+    answers: list[tuple[str, int, Callable[[Request], str], int]] = field(
         default_factory=list
     )
     redirect_to: str | None = None
 
-    def answer(self, where: str, status: int, body: str = "{}") -> None:
-        """Answer a request whose `METHOD path` holds `where` with `status` and `body`."""
-        self.answers.append((where, status, lambda _request: body))
+    def answer(self, where: str, status: int, body: str = "{}", after: int = 0) -> None:
+        """Answer a request whose `METHOD path` holds `where` with `status` and `body`, once
+        `after` such requests came before it."""
+        self.answers.append((where, status, lambda _request: body, after))
 
     def echo_the_bearer(self, where: str, status: int) -> None:
         """Answer with an error that quotes the credential of the request, as a careless API would."""
@@ -89,14 +90,19 @@ class Api:
                 where,
                 status,
                 lambda request: json.dumps({"message": f"bad {request.bearer} here"}),
+                0,
             )
         )
 
     def respond(self, request: Request) -> tuple[int, str]:
-        for where, status, body in self.answers:
-            if where in f"{request.method} {request.path}":
-                return status, body(request)
         line = f"{request.method} {request.path}"
+        for where, status, body, after in self.answers:
+            if where in line:
+                before = sum(
+                    1 for r in self.requests[:-1] if where in f"{r.method} {r.path}"
+                )
+                if before >= after:
+                    return status, body(request)
         if line.endswith("/installation"):
             return 200, json.dumps({"id": 42})
         if line.endswith("/access_tokens"):
@@ -143,7 +149,7 @@ def _serve_api() -> Iterator[Api]:
             self.end_headers()
             self.wfile.write(data)
 
-        do_GET = do_POST = _serve  # noqa: N815
+        do_GET = do_POST = do_PATCH = _serve  # noqa: N815
 
         def log_message(self, format: str, *args: object) -> None:  # noqa: A002
             pass
@@ -1914,3 +1920,206 @@ def test_a_passed_result_with_any_form_of_mypy_error_exits_1(
     assert result.returncode == 1
     assert "contradicts" in result.stderr
     assert world.api.requests == []
+
+
+# --- Annotations are sent in batches of 50 -------------------------------------------------------
+
+RUN = "/repos/acme/widgets/check-runs"
+
+
+def run_requests(world: World) -> list[Request]:
+    """The requests that create the check run or update one, in order."""
+    return [r for r in world.api.requests if "/check-runs" in r.path]
+
+
+def batch_sizes(world: World) -> list[int]:
+    return [
+        len(r.json()["output"].get("annotations", []))  # type: ignore[attr-defined]
+        for r in run_requests(world)
+    ]
+
+
+@needs_openssl
+def test_exactly_50_annotations_go_in_one_request(world: World, tmp_path: Path) -> None:
+    mypy = write_mypy(tmp_path / "mypy.txt", *(mypy_error(n) for n in range(1, 51)))
+
+    result = world.failed("--mypy", str(mypy), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert [(r.method, r.path) for r in run_requests(world)] == [("POST", RUN)]
+    assert batch_sizes(world) == [50]
+
+
+@needs_openssl
+def test_120_annotations_go_in_requests_of_50_50_and_20_to_the_same_run(
+    world: World, tmp_path: Path
+) -> None:
+    world.api.answer(f"POST {RUN}", 201, '{"id": 99}')
+    mypy = write_mypy(tmp_path / "mypy.txt", *(mypy_error(n) for n in range(1, 121)))
+
+    result = world.failed("--mypy", str(mypy), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert [(r.method, r.path) for r in run_requests(world)] == [
+        ("POST", RUN),
+        ("PATCH", f"{RUN}/99"),
+        ("PATCH", f"{RUN}/99"),
+    ]
+    assert batch_sizes(world) == [50, 50, 20]
+    lines = [
+        a["start_line"]
+        for r in run_requests(world)
+        for a in r.json()["output"]["annotations"]  # type: ignore[attr-defined]
+    ]
+    assert lines == list(range(1, 121))
+    first, second = run_requests(world)[0].json(), run_requests(world)[1].json()
+    assert second["output"]["title"] == first["output"]["title"]  # type: ignore[index]
+    assert second["output"]["summary"] == first["output"]["summary"]  # type: ignore[index]
+
+
+@needs_openssl
+def test_a_failed_result_without_a_located_failure_is_sent_without_annotations(
+    world: World, tmp_path: Path
+) -> None:
+    junit = write_junit(tmp_path / "r.xml", FAILING)
+
+    result = world.failed("--junit", str(junit), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert batch_sizes(world) == [0]
+    assert "annotations" not in world.api.check_run()["output"]  # type: ignore[operator]
+
+
+@needs_openssl
+def test_a_rejected_second_batch_exits_1_names_the_status_and_sends_no_third(
+    world: World, tmp_path: Path
+) -> None:
+    world.api.answer(f"POST {RUN}", 201, '{"id": 99}')
+    world.api.answer(f"PATCH {RUN}/99", 422, '{"message": "Invalid"}', after=1)
+    mypy = write_mypy(tmp_path / "mypy.txt", *(mypy_error(n) for n in range(1, 131)))
+
+    result = world.failed("--mypy", str(mypy), env=world.app_env())
+
+    assert result.returncode == 1
+    assert "422" in result.stderr
+    assert [r.method for r in run_requests(world)] == ["POST", "PATCH", "PATCH"]
+
+
+@needs_openssl
+def test_an_answer_without_a_run_id_exits_1_when_later_batches_need_it(
+    world: World, tmp_path: Path
+) -> None:
+    mypy = write_mypy(tmp_path / "mypy.txt", *(mypy_error(n) for n in range(1, 52)))
+
+    result = world.failed("--mypy", str(mypy), env=world.app_env())
+
+    assert result.returncode == 1
+    assert "no id" in result.stderr
+    assert [r.method for r in run_requests(world)] == ["POST"]
+
+
+# --- The summary of a red run lists the failures first -------------------------------------------
+
+
+@needs_openssl
+def test_the_failures_come_before_the_table_of_what_ran(
+    world: World, tmp_path: Path
+) -> None:
+    junit = write_junit(tmp_path / "r.xml", located_case("tests/a_spec.py", 117))
+    mypy = write_mypy(tmp_path / "mypy.txt", mypy_error(42))
+
+    result = world.failed(
+        "--junit", str(junit), "--mypy", str(mypy), env=world.app_env()
+    )
+
+    assert result.returncode == 0, result.stderr
+    text = summary_of(world)
+    assert text.startswith("### Failures")
+    for failure in ("tests/a_spec.py:118", "assert 1 == 2", "src/a.py:42", "x42"):
+        assert text.index(failure) < text.index(world.sha)
+        assert text.index(failure) < text.index("sh scripts/ci")
+
+
+@needs_openssl
+def test_25_errors_list_20_and_the_number_of_the_others_and_all_25_are_annotated(
+    world: World, tmp_path: Path
+) -> None:
+    mypy = write_mypy(tmp_path / "mypy.txt", *(mypy_error(n) for n in range(1, 26)))
+
+    result = world.failed("--mypy", str(mypy), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    text = summary_of(world)
+    assert len([line for line in text.splitlines() if line.startswith("- mypy")]) == 20
+    assert "- and 5 more" in text
+    assert batch_sizes(world) == [25]
+
+
+@needs_openssl
+def test_a_failed_case_without_a_location_is_listed_with_its_name(
+    world: World, tmp_path: Path
+) -> None:
+    junit = write_junit(tmp_path / "r.xml", FAILING)
+
+    result = world.failed("--junit", str(junit), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert "- pytest ` bad `" in summary_of(world)
+
+
+@needs_openssl
+def test_a_green_run_has_no_section_of_failures(world: World, tmp_path: Path) -> None:
+    junit = write_junit(tmp_path / "r.xml", *passing(2))
+    mypy = write_mypy(tmp_path / "mypy.txt")
+
+    result = world.passed(
+        "--junit", str(junit), "--mypy", str(mypy), env=world.app_env()
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Failures" not in summary_of(world)
+
+
+@needs_openssl
+def test_a_message_of_several_lines_is_listed_by_its_first_line(
+    world: World, tmp_path: Path
+) -> None:
+    message = "AssertionError: assert a == b&#10;- a&#10;+ b"
+    junit = write_junit(tmp_path / "r.xml", located_case("a_spec.py", 3, message))
+
+    result = world.failed("--junit", str(junit), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    text = summary_of(world)
+    assert "` AssertionError: assert a == b `" in text
+    assert "+ b" not in text
+    assert "+ b" in str(annotations_of(world)[0]["message"])
+
+
+@needs_openssl
+def test_a_message_of_5000_characters_is_cut_to_200_in_the_summary(
+    world: World, tmp_path: Path
+) -> None:
+    junit = write_junit(tmp_path / "r.xml", located_case("a_spec.py", 3, "m" * 5000))
+
+    result = world.failed("--junit", str(junit), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert f"` {'m' * 199}… `" in summary_of(world)
+    assert "m" * 200 not in summary_of(world)
+
+
+@needs_openssl
+def test_a_pipe_and_markdown_characters_of_a_message_reach_the_summary_as_typed(
+    world: World, tmp_path: Path
+) -> None:
+    message = "assert 2*3 == 7*1 | &lt;built-in function len&gt; `tick`"
+    junit = write_junit(tmp_path / "r.xml", located_case("a_spec.py", 3, message))
+
+    result = world.failed("--junit", str(junit), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert (
+        "- pytest ` a_spec.py:4 ` `` assert 2*3 == 7*1 | <built-in function len> `tick` ``"
+        in summary_of(world)
+    )
