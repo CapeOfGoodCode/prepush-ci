@@ -7,7 +7,7 @@
 
 ## 2. Delete them from origin
 
-- [ ] 2.1 In the hook, for a push to `origin` that recorded a pass, delete the expired refs the clone holds from `origin` with `git push --no-verify origin :<ref> …` in batches of 100, then delete from the clone the refs `origin` dropped; a batch that fails is a warning that names `origin`, and its refs stay; a repository with `origin` deletes nothing in `run`, in a push to another remote or by url, or when the remote is unknown; verify with specs for an expired ref on both sides, a recent ref, a ref only on `origin`, a ref `origin` never held, `git push --dry-run origin`, a push that `origin` declines, a `pre-push` hook that must run once, `run`, another remote, a push by url, an unknown remote, 250 expired refs, a remote that declines the delete, a remote that cannot be reached, and the next push once it accepts
+- [x] 2.1 In the hook, for a push to `origin` that recorded a pass, delete the expired refs the clone holds from `origin` with `git push --no-verify origin :<ref> …` in batches of 100, then delete from the clone the refs `origin` dropped; a batch that fails is a warning that names `origin`, and its refs stay; a repository with `origin` deletes nothing in `run`, in a push to another remote or by url, or when the remote is unknown; verify with specs for an expired ref on both sides, a recent ref, a ref only on `origin`, a ref `origin` never held, `git push --dry-run origin`, a push that `origin` declines, a `pre-push` hook that must run once, `run`, another remote, a push by url, an unknown remote, 250 expired refs, a remote that declines the delete, a remote that cannot be reached, and the next push once it accepts
 
 ## 3. What the change says to readers
 

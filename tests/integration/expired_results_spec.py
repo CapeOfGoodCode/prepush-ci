@@ -36,12 +36,15 @@ def write_config(repo: Path, log: Path, *lines: str, check: str | None = None) -
     (repo / ".prepush-ci.toml").write_text("\n".join(body) + "\n")
 
 
-def install_hook(repo: Path, *, before: str = "") -> None:
+def install_hook(repo: Path, *, before: str = "", arguments: bool = True) -> None:
+    """The native pre-push hook; without `arguments` it does not pass the remote on, as lefthook
+    and pre-commit do not."""
+    passed = ' "$@"' if arguments else ""
     hook = repo / ".git" / "hooks" / "pre-push"
     hook.write_text(
         "#!/bin/sh\n"
         f"{before}"
-        f'exec "{Path(sys.executable).as_posix()}" -m prepush_ci hook pre-push "$@"\n'
+        f'exec "{Path(sys.executable).as_posix()}" -m prepush_ci hook pre-push{passed}\n'
     )
     hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
 
@@ -66,6 +69,11 @@ def pushing(local: Path, tmp_path: Path, git: Git) -> Path:
     git(tmp_path / "remote.git", "symbolic-ref", "HEAD", "refs/heads/main")
     git(local, "remote", "add", "origin", str(tmp_path / "remote.git"))
     return local
+
+
+@pytest.fixture
+def origin(tmp_path: Path) -> Path:
+    return tmp_path / "remote.git"
 
 
 def run_cli(
@@ -334,3 +342,321 @@ def test_a_clone_that_cannot_delete_is_a_warning_and_the_run_passes(
     assert result.returncode == 0
     assert "old results could not be removed" in result.stderr
     assert old in results(local, git)
+
+
+# --- A push to origin cleans origin too ----------------------------------------------------------
+
+
+def both_hold(repo: Path, git: Git, name: str, days: int) -> str:
+    """A result ref of `days` days ago held by the clone and by `origin`."""
+    ref = old_ref(repo, git, name, days)
+    git(repo, "push", "--no-verify", "origin", f"{ref}:{ref}")
+    return ref
+
+
+def push_main(repo: Path, git: Git, *words: str) -> "subprocess.CompletedProcess[str]":
+    return git(repo, "push", *(words or ("origin", "main")), check=False)
+
+
+def warnings_of_the_cleanup(stderr: str) -> list[str]:
+    return [
+        line
+        for line in stderr.splitlines()
+        if "old results could not be removed" in line
+    ]
+
+
+def test_an_expired_ref_leaves_both_sides_in_a_push_to_origin(
+    pushing: Path, git: Git, origin: Path
+) -> None:
+    old = both_hold(pushing, git, "old", 31)
+
+    result = push_main(pushing, git)
+
+    assert result.returncode == 0
+    for repo in (pushing, origin):
+        [new] = results(repo, git)
+        assert new != old
+
+
+def test_a_ref_whose_object_is_missing_does_not_stop_a_push_to_origin_from_cleaning(
+    pushing: Path, git: Git, origin: Path
+) -> None:
+    damaged = damage(pushing, "damaged")
+    old = both_hold(pushing, git, "old", 31)
+
+    result = push_main(pushing, git)
+
+    assert result.returncode == 0
+    assert old not in results(pushing, git)
+    assert old not in results(origin, git)
+    assert damaged in results(pushing, git)
+
+
+def test_a_ref_of_29_days_stays_on_both_sides(
+    pushing: Path, git: Git, origin: Path
+) -> None:
+    recent = both_hold(pushing, git, "recent", 29)
+
+    assert push_main(pushing, git).returncode == 0
+    for repo in (pushing, origin):
+        assert recent in results(repo, git)
+        assert len(results(repo, git)) == 2
+
+
+def test_a_ref_only_origin_holds_stays(pushing: Path, git: Git, origin: Path) -> None:
+    only = both_hold(pushing, git, "only", 31)
+    git(pushing, "update-ref", "-d", only)
+
+    assert push_main(pushing, git).returncode == 0
+    assert only in results(origin, git)
+
+
+def test_a_ref_origin_never_held_is_dropped_from_the_clone_without_a_warning(
+    pushing: Path, git: Git
+) -> None:
+    old_ref(pushing, git, "local-only", 31)
+
+    result = push_main(pushing, git)
+
+    assert result.returncode == 0
+    assert len(results(pushing, git)) == 1
+    assert "old results" not in result.stderr
+
+
+def test_cleaning_does_not_start_the_hook_again(
+    pushing: Path, git: Git, origin: Path, tmp_path: Path
+) -> None:
+    started = tmp_path / "hook-started.log"
+    install_hook(pushing, before=f'echo started >> "{started.as_posix()}"\n')
+    old = both_hold(pushing, git, "old", 31)
+
+    result = push_main(pushing, git)
+
+    assert result.returncode == 0
+    assert started.read_text().splitlines() == ["started"]
+    assert old not in results(origin, git)
+
+
+def expired_on_both_sides(pushing: Path, git: Git, origin: Path, count: int) -> None:
+    """`count` result refs of 31 days ago held by the clone and by `origin`."""
+    template = old_ref(pushing, git, "template", 31)
+    sha = git(pushing, "rev-parse", template).stdout.strip()
+    git(pushing, "update-ref", "-d", template)
+    folder = pushing / ".git" / RESULTS
+    folder.mkdir(parents=True, exist_ok=True)
+    for number in range(count):
+        (folder / f"old-{number}").write_text(sha + "\n")
+    git(pushing, "push", "--no-verify", "origin", f"{RESULTS}/*:{RESULTS}/*")
+    assert len(results(origin, git)) == count
+
+
+def test_two_hundred_and_fifty_expired_refs_leave_both_sides(
+    pushing: Path, git: Git, origin: Path
+) -> None:
+    expired_on_both_sides(pushing, git, origin, 250)
+
+    result = push_main(pushing, git)
+
+    assert result.returncode == 0
+    assert len(results(pushing, git)) == 1
+    assert len(results(origin, git)) == 1
+
+
+# --- A dry run or a declined push to origin still cleans -----------------------------------------
+
+
+def decline_main(remote: Path) -> None:
+    """A `pre-receive` hook that declines `refs/heads/main` and takes any other ref."""
+    hook = remote / "hooks" / "pre-receive"
+    hook.write_text(
+        "#!/bin/sh\n"
+        "while read old new ref; do\n"
+        '  [ "$ref" = refs/heads/main ] && { echo "main is closed" >&2; exit 1; }\n'
+        "done\n"
+        "exit 0\n"
+    )
+    hook.chmod(0o755)
+
+
+def test_a_dry_run_to_origin_cleans_and_main_does_not_move(
+    pushing: Path, git: Git, origin: Path
+) -> None:
+    old = both_hold(pushing, git, "old", 31)
+
+    result = push_main(pushing, git, "--dry-run", "origin", "main")
+
+    assert result.returncode == 0
+    for repo in (pushing, origin):
+        assert old not in results(repo, git)
+        assert len(results(repo, git)) == 1
+    assert git(origin, "rev-parse", "refs/heads/main", check=False).returncode != 0
+
+
+def test_a_push_that_origin_declines_cleans_and_main_does_not_move(
+    pushing: Path, git: Git, origin: Path
+) -> None:
+    old = both_hold(pushing, git, "old", 31)
+    decline_main(origin)
+
+    result = push_main(pushing, git)
+
+    assert result.returncode != 0
+    assert "main is closed" in result.stderr
+    for repo in (pushing, origin):
+        assert old not in results(repo, git)
+        assert len(results(repo, git)) == 1
+    assert git(origin, "rev-parse", "refs/heads/main", check=False).returncode != 0
+
+
+# --- A repository with origin cleans only in a push to origin ------------------------------------
+
+
+def test_run_cleans_nothing_in_a_repository_with_origin(
+    pushing: Path, git: Git, origin: Path
+) -> None:
+    old = both_hold(pushing, git, "old", 31)
+
+    result = run_cli(pushing)
+
+    assert result.returncode == 0
+    assert old in results(pushing, git)
+    assert old in results(origin, git)
+
+
+def test_a_push_to_another_remote_cleans_nothing(
+    pushing: Path, git: Git, origin: Path, tmp_path: Path
+) -> None:
+    git(tmp_path, "init", "-q", "--bare", str(tmp_path / "other.git"))
+    git(pushing, "remote", "add", "other", str(tmp_path / "other.git"))
+    old = both_hold(pushing, git, "old", 31)
+
+    result = push_main(pushing, git, "other", "main")
+
+    assert result.returncode == 0
+    assert old in results(pushing, git)
+    assert old in results(origin, git)
+
+
+def test_a_push_by_url_cleans_nothing(pushing: Path, git: Git, origin: Path) -> None:
+    old = both_hold(pushing, git, "old", 31)
+
+    result = push_main(pushing, git, str(origin), "main")
+
+    assert result.returncode == 0
+    assert old in results(pushing, git)
+    assert old in results(origin, git)
+
+
+def test_a_hook_that_cannot_tell_the_remote_cleans_nothing(
+    pushing: Path, git: Git, origin: Path
+) -> None:
+    install_hook(pushing, arguments=False)
+    old = both_hold(pushing, git, "old", 31)
+
+    result = push_main(pushing, git)
+
+    assert result.returncode == 0
+    assert old in results(pushing, git)
+    assert old in results(origin, git)
+
+
+# --- A cleanup of origin that fails costs a warning and nothing else -----------------------------
+
+
+def refuse_deletions(remote: Path) -> Path:
+    """A `pre-receive` hook that declines every deletion of a ref."""
+    hook = remote / "hooks" / "pre-receive"
+    hook.write_text(
+        "#!/bin/sh\n"
+        "while read old new ref; do\n"
+        '  case "$new" in 0000*) echo "no deletions" >&2; exit 1;; esac\n'
+        "done\n"
+        "exit 0\n"
+    )
+    hook.chmod(0o755)
+    return hook
+
+
+def test_an_origin_that_declines_the_delete_is_a_warning_and_the_push_goes_through(
+    pushing: Path, git: Git, origin: Path
+) -> None:
+    old = both_hold(pushing, git, "old", 31)
+    refuse_deletions(origin)
+
+    result = push_main(pushing, git)
+
+    assert result.returncode == 0
+    [warning] = warnings_of_the_cleanup(result.stderr)
+    assert "origin" in warning
+    assert old in results(pushing, git)
+    assert old in results(origin, git)
+    assert git(origin, "rev-parse", "refs/heads/main").returncode == 0
+
+
+def test_two_batches_that_origin_declines_are_one_warning_and_the_clone_keeps_the_refs(
+    pushing: Path, git: Git, origin: Path
+) -> None:
+    expired_on_both_sides(pushing, git, origin, 250)
+    refuse_deletions(origin)
+
+    result = push_main(pushing, git)
+
+    assert result.returncode == 0
+    [warning] = warnings_of_the_cleanup(result.stderr)
+    assert "no deletions" in warning
+    for side in (pushing, origin):
+        kept = [ref for ref in results(side, git) if "/old-" in ref]
+        assert len(kept) == 250
+
+
+def test_an_origin_that_cannot_be_reached_is_a_warning_and_the_clone_keeps_the_ref(
+    pushing: Path, git: Git, tmp_path: Path
+) -> None:
+    old = old_ref(pushing, git, "old", 31)
+    nowhere = tmp_path / "nowhere"
+    nowhere.mkdir()
+    git(pushing, "remote", "set-url", "origin", str(nowhere))
+    tip = git(pushing, "rev-parse", "HEAD").stdout.strip()
+    zeros = "0" * 40
+
+    hook = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "prepush_ci",
+            "hook",
+            "pre-push",
+            "origin",
+            str(nowhere),
+        ],
+        cwd=pushing,
+        input=f"refs/heads/main {tip} refs/heads/main {zeros}\n",
+        capture_output=True,
+        text=True,
+        check=False,
+        env={k: v for k, v in os.environ.items() if k != "PREPUSH_CI"},
+    )
+
+    assert hook.returncode == 0
+    [warning] = warnings_of_the_cleanup(hook.stderr)
+    assert "origin" in warning
+    assert old in results(pushing, git)
+
+
+def test_the_next_push_to_origin_tries_again(
+    pushing: Path, git: Git, origin: Path
+) -> None:
+    old = both_hold(pushing, git, "old", 31)
+    refusing = refuse_deletions(origin)
+    assert push_main(pushing, git).returncode == 0
+    refusing.unlink()
+    (pushing / "next.txt").write_text("next")
+    git(pushing, "add", "next.txt")
+    git(pushing, "commit", "-q", "-m", "next" + TRAILER)
+
+    result = push_main(pushing, git)
+
+    assert result.returncode == 0
+    assert old not in results(pushing, git)
+    assert old not in results(origin, git)

@@ -18,6 +18,7 @@ from prepush_ci.core.run_cache import (
     message_not_asked,
     message_not_cached,
     message_not_cleaned,
+    message_not_cleaned_from_origin,
     message_not_shared,
     passed_commit,
     result_message,
@@ -69,12 +70,15 @@ def publish_pass(root: Path, key: Key) -> None:
 def expire_passes(root: Path, to_origin: bool) -> None:
     """Delete the result refs older than 30 days, after a pass was recorded; `to_origin` is
     whether the push the hook checks goes to `origin`. A repository without `origin` shares
-    nothing and cleans its clone. A failure is a warning, for the pass it follows is recorded."""
-    if _has_origin(
-        root
-    ):  # a clone that deleted what `origin` keeps leaves no name to drop it by
+    nothing and cleans its clone. One with `origin` cleans only in a push to `origin`, from
+    `origin` first and then from the clone, for a clone that deleted what `origin` keeps would
+    leave no name to drop it by. A failure is a warning, for the pass it follows is recorded."""
+    has_origin = _has_origin(root)
+    if has_origin and not to_origin:
         return
     expired = expired_refs(_dated_results(root), int(time.time()))
+    if has_origin:
+        expired = _delete_from_origin(root, expired)
     if expired:
         _delete_local(root, expired)
 
@@ -105,6 +109,23 @@ def _dated(root: Path, patterns: list[str]) -> str | None:
         root, "for-each-ref", "--format=%(refname) %(committerdate:unix)", *patterns
     )
     return listing.stdout if listing.returncode == 0 else None
+
+
+def _delete_from_origin(root: Path, refs: list[str]) -> list[str]:
+    """Delete `refs` from `origin` and return the ones it dropped. A delete of a ref `origin` does
+    not hold succeeds, so none needs asking for first. The push is the tool's own, without the
+    repository's hooks; a batch that fails keeps its refs and the first reason is the one warning."""
+    dropped: list[str] = []
+    reason: str | None = None
+    for batch in batches(refs):
+        pushed = git(root, "push", "--no-verify", REMOTE, *(f":{ref}" for ref in batch))
+        if pushed.returncode == 0:
+            dropped += batch
+        elif reason is None:
+            reason = pushed.stderr.strip()
+    if reason is not None:
+        print(message_not_cleaned_from_origin(reason), file=sys.stderr)
+    return dropped
 
 
 def _delete_local(root: Path, refs: list[str]) -> None:
