@@ -9,6 +9,7 @@ import re
 import xml.etree.ElementTree as ET
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 DEFAULT_API = "https://api.github.com"
 # GitHub's own hosts: ssh.github.com is its ssh endpoint over the HTTPS port.
@@ -493,8 +494,16 @@ def _failures_section(failures: tuple[Failure, ...]) -> str:
     return "### Failures\n\n" + "\n".join(lines) + "\n\n"
 
 
-def summary(facts: Facts) -> str:
-    rows = [
+def _table(rows: list[tuple[str, str]]) -> str:
+    # A pipe ends a table cell, also inside a code span: GitHub reads `\|` as the pipe.
+    table = "\n".join(
+        f"| {label} | {text.replace('|', ESCAPED_PIPE)} |" for label, text in rows
+    )
+    return f"| Fact | Value |\n| --- | --- |\n{table}\n"
+
+
+def _what_ran(facts: Facts) -> list[tuple[str, str]]:
+    return [
         ("Commit", code_span(facts.sha)),
         ("Tree", code_span(facts.tree)),
         ("Check", code_span(facts.check)),
@@ -503,6 +512,10 @@ def summary(facts: Facts) -> str:
             "none" if facts.preflight is None else code_span(facts.preflight),
         ),
     ]
+
+
+def summary(facts: Facts) -> str:
+    rows = _what_ran(facts)
     if facts.tools:
         rows.append(("Tools", ", ".join(f"{t.name} {t.version}" for t in facts.tools)))
     rows.append(("System", facts.system))
@@ -512,16 +525,12 @@ def summary(facts: Facts) -> str:
         rows.append(("Tests", facts.counts.line()))
     if facts.coverage is not None:
         rows.append(("Coverage", f"{facts.coverage}%"))
-    # A pipe ends a table cell, also inside a code span: GitHub reads `\|` as the pipe.
-    table = "\n".join(
-        f"| {label} | {text.replace('|', ESCAPED_PIPE)} |" for label, text in rows
-    )
     failures = _failures_section(facts.failures) if facts.failures else ""
     return (
         f"{failures}"
         f"Result {FROM_A_SESSION}: `prepush-ci report` posted it for the tree below, "
         "which the session says it checked. GitHub did not run the check.\n\n"
-        f"| Fact | Value |\n| --- | --- |\n{table}\n"
+        f"{_table(rows)}"
     )
 
 
@@ -568,6 +577,43 @@ def later_batches_bodies(
         {"output": _output(facts, result, counts, batch)}
         for batch in annotation_batches(list(facts.failures))[1:]
     ]
+
+
+STARTED = "started"
+
+
+def started_at(now: int) -> str:
+    """`now`, in seconds since the epoch, as the `started_at` GitHub reads."""
+    return datetime.fromtimestamp(now, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def started_body(name: str, facts: Facts, now: int) -> dict[str, object]:
+    """The request that creates a check run in progress."""
+    text = (
+        f"The check is running; the result will be {FROM_A_SESSION} with "
+        "`prepush-ci report` for the tree below. GitHub is not running the check.\n\n"
+        f"{_table(_what_ran(facts))}"
+    )
+    return {
+        "name": name,
+        "head_sha": facts.sha,
+        "status": "in_progress",
+        "started_at": started_at(now),
+        "output": {"title": "Running", "summary": text},
+    }
+
+
+def started_update_body(now: int) -> dict[str, object]:
+    """The request that restarts a run already in progress."""
+    return {"status": "in_progress", "started_at": started_at(now)}
+
+
+def started_status_body(name: str, facts: Facts) -> dict[str, object]:
+    return {
+        "state": "pending",
+        "context": name,
+        "description": status_description(facts),
+    }
 
 
 def status_body(name: str, facts: Facts, result: str) -> dict[str, object]:

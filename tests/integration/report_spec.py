@@ -15,6 +15,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -77,6 +78,9 @@ class Api:
         default_factory=list
     )
     redirect_to: str | None = None
+    runs: list[dict[str, object]] = field(default_factory=list)
+    """The check runs of the commit, as GitHub keeps them: a lookup filters them by its query,
+    a creation adds one, an update changes one. An answer given by `answer` comes first."""
 
     def answer(self, where: str, status: int, body: str = "{}", after: int = 0) -> None:
         """Answer a request whose `METHOD path` holds `where` with `status` and `body`, once
@@ -103,11 +107,35 @@ class Api:
                 )
                 if before >= after:
                     return status, body(request)
+        if request.method == "GET" and "/commits/" in request.path:
+            return 200, json.dumps(self._lookup(request))
+        if request.method == "POST" and request.path.endswith("/check-runs"):
+            self.runs.append(
+                {**request.json(), "id": 100 + len(self.runs), "app_id": APP_ID}
+            )
+            return 201, json.dumps({"id": self.runs[-1]["id"]})
+        if request.method == "PATCH" and "/check-runs/" in request.path:
+            run_id = request.path.rsplit("/", 1)[1]
+            (run,) = [r for r in self.runs if str(r["id"]) == run_id]
+            run.update(request.json())
+            return 200, json.dumps(run)
         if line.endswith("/installation"):
             return 200, json.dumps({"id": 42})
         if line.endswith("/access_tokens"):
             return 201, json.dumps({"token": INSTALLATION_TOKEN})
         return 201, "{}"
+
+    def _lookup(self, request: Request) -> dict[str, object]:
+        query = parse_qs(urlsplit(request.path).query)
+        keys = {"check_name": "name", "status": "status", "app_id": "app_id"}
+        found = [
+            run
+            for run in self.runs
+            if all(
+                str(run.get(keys[key])) == values[0] for key, values in query.items()
+            )
+        ]
+        return {"total_count": len(found), "check_runs": found}
 
     def results(self) -> list[Request]:
         """The requests that create a check run or a status."""
@@ -461,6 +489,7 @@ def test_help_exits_0_and_lists_every_flag(world: World) -> None:
         "--coverage",
         "--ruff",
         "--mypy",
+        "--start",
     ):
         assert flag in result.stdout
     assert world.api.requests == []
@@ -1929,7 +1958,9 @@ RUN = "/repos/acme/widgets/check-runs"
 
 def run_requests(world: World) -> list[Request]:
     """The requests that create the check run or update one, in order."""
-    return [r for r in world.api.requests if "/check-runs" in r.path]
+    return [
+        r for r in world.api.requests if "/check-runs" in r.path and r.method != "GET"
+    ]
 
 
 def batch_sizes(world: World) -> list[int]:
@@ -1954,7 +1985,6 @@ def test_exactly_50_annotations_go_in_one_request(world: World, tmp_path: Path) 
 def test_120_annotations_go_in_requests_of_50_50_and_20_to_the_same_run(
     world: World, tmp_path: Path
 ) -> None:
-    world.api.answer(f"POST {RUN}", 201, '{"id": 99}')
     mypy = write_mypy(tmp_path / "mypy.txt", *(mypy_error(n) for n in range(1, 121)))
 
     result = world.failed("--mypy", str(mypy), env=world.app_env())
@@ -1962,8 +1992,8 @@ def test_120_annotations_go_in_requests_of_50_50_and_20_to_the_same_run(
     assert result.returncode == 0, result.stderr
     assert [(r.method, r.path) for r in run_requests(world)] == [
         ("POST", RUN),
-        ("PATCH", f"{RUN}/99"),
-        ("PATCH", f"{RUN}/99"),
+        ("PATCH", f"{RUN}/{world.api.runs[0]['id']}"),
+        ("PATCH", f"{RUN}/{world.api.runs[0]['id']}"),
     ]
     assert batch_sizes(world) == [50, 50, 20]
     lines = [
@@ -1994,8 +2024,7 @@ def test_a_failed_result_without_a_located_failure_is_sent_without_annotations(
 def test_a_rejected_second_batch_exits_1_names_the_status_and_sends_no_third(
     world: World, tmp_path: Path
 ) -> None:
-    world.api.answer(f"POST {RUN}", 201, '{"id": 99}')
-    world.api.answer(f"PATCH {RUN}/99", 422, '{"message": "Invalid"}', after=1)
+    world.api.answer(f"PATCH {RUN}/", 422, '{"message": "Invalid"}', after=1)
     mypy = write_mypy(tmp_path / "mypy.txt", *(mypy_error(n) for n in range(1, 131)))
 
     result = world.failed("--mypy", str(mypy), env=world.app_env())
@@ -2009,6 +2038,7 @@ def test_a_rejected_second_batch_exits_1_names_the_status_and_sends_no_third(
 def test_an_answer_without_a_run_id_exits_1_when_later_batches_need_it(
     world: World, tmp_path: Path
 ) -> None:
+    world.api.answer(f"POST {RUN}", 201)
     mypy = write_mypy(tmp_path / "mypy.txt", *(mypy_error(n) for n in range(1, 52)))
 
     result = world.failed("--mypy", str(mypy), env=world.app_env())
@@ -2123,3 +2153,193 @@ def test_a_pipe_and_markdown_characters_of_a_message_reach_the_summary_as_typed(
         "- pytest ` a_spec.py:4 ` `` assert 2*3 == 7*1 | <built-in function len> `tick` ``"
         in summary_of(world)
     )
+
+
+# --- A run can be shown as in progress -----------------------------------------------------------
+
+
+def start(
+    world: World, *args: str, env: dict[str, str | None] | None = None
+) -> "subprocess.CompletedProcess[str]":
+    return world.run("--start", "--tree", world.tree, *args, env=env)
+
+
+def creations(world: World) -> list[Request]:
+    return [r for r in world.api.requests if r.method == "POST" and r.path == RUN]
+
+
+def updates(world: World) -> list[Request]:
+    return [r for r in world.api.requests if r.method == "PATCH"]
+
+
+@needs_openssl
+def test_a_start_creates_one_check_run_in_progress_that_names_the_commit_and_the_check(
+    world: World,
+) -> None:
+    result = start(world, env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert len(lines) == 1
+    assert world.sha in lines[0]
+    assert "started" in lines[0]
+    assert "check run" in lines[0]
+    (created,) = creations(world)
+    body = created.json()
+    assert body["status"] == "in_progress"
+    assert body["name"] == "prepush-ci / full"
+    assert body["head_sha"] == world.sha
+    assert body["output"]["title"] == "Running"  # type: ignore[index]
+    for part in (world.sha, world.tree, "sh scripts/ci", "reported from a session"):
+        assert part in body["output"]["summary"]  # type: ignore[index]
+    assert "conclusion" not in body
+
+
+@needs_openssl
+def test_a_start_takes_the_name_it_is_given(world: World) -> None:
+    result = start(world, "--name", "prepush-ci / unit", env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert creations(world)[0].json()["name"] == "prepush-ci / unit"
+
+
+@needs_openssl
+def test_a_second_start_updates_the_started_at_of_the_run_and_creates_none(
+    world: World,
+) -> None:
+    assert start(world, env=world.app_env()).returncode == 0
+
+    result = start(world, env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert len(creations(world)) == 1
+    (update,) = updates(world)
+    assert update.path == f"{RUN}/{world.api.runs[0]['id']}"
+    assert "started_at" in update.json()
+    assert world.api.runs[0]["status"] == "in_progress"
+
+
+@needs_openssl
+def test_a_start_leaves_a_completed_run_of_the_app_alone(world: World) -> None:
+    world.api.runs.append(
+        {"id": 7, "name": "prepush-ci / full", "status": "completed", "app_id": APP_ID}
+    )
+
+    result = start(world, env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert len(creations(world)) == 1
+    assert updates(world) == []
+    assert world.api.runs[0]["status"] == "completed"
+
+
+@needs_openssl
+def test_a_start_looks_for_a_run_in_progress_of_its_name_and_app(world: World) -> None:
+    assert start(world, env=world.app_env()).returncode == 0
+
+    (lookup,) = [
+        r for r in world.api.requests if r.method == "GET" and "/commits/" in r.path
+    ]
+
+    assert (
+        urlsplit(lookup.path).path
+        == f"/repos/acme/widgets/commits/{world.sha}/check-runs"
+    )
+    assert parse_qs(urlsplit(lookup.path).query) == {
+        "check_name": ["prepush-ci / full"],
+        "status": ["in_progress"],
+        "app_id": [APP_ID],
+    }
+
+
+@needs_openssl
+def test_a_start_whose_lookup_is_refused_exits_1_and_creates_nothing(
+    world: World,
+) -> None:
+    world.api.answer("GET /repos/acme/widgets/commits/", 403, '{"message": "no"}')
+
+    result = start(world, env=world.app_env())
+
+    assert result.returncode == 1
+    assert "403" in result.stderr
+    assert world.api.results() == []
+
+
+@pytest.mark.parametrize(
+    "answer", ["{}", '{"check_runs": [{"name": "x"}]}', "[]", "text"]
+)
+@needs_openssl
+def test_a_lookup_answered_without_runs_or_ids_exits_1_and_creates_nothing(
+    world: World, answer: str
+) -> None:
+    world.api.answer("GET /repos/acme/widgets/commits/", 200, answer)
+
+    result = start(world, env=world.app_env())
+
+    assert result.returncode == 1
+    assert "lookup" in result.stderr
+    assert world.api.results() == []
+
+
+def test_a_start_with_a_tree_that_is_not_the_commits_exits_1_and_sends_no_request(
+    world: World,
+) -> None:
+    other = "0" * 40
+
+    result = world.run("--start", "--tree", other)
+
+    assert result.returncode == 1
+    assert other in result.stderr
+    assert world.tree in result.stderr
+    assert world.api.requests == []
+
+
+def test_a_start_without_an_app_posts_a_pending_status_and_nothing_else(
+    world: World,
+) -> None:
+    result = start(world)
+
+    assert result.returncode == 0, result.stderr
+    assert world.sha in result.stdout
+    assert "started" in result.stdout
+    assert "commit status" in result.stdout
+    assert [r.path for r in world.api.requests] == [
+        f"/repos/acme/widgets/statuses/{world.sha}"
+    ]
+    body = world.api.status()
+    assert body["state"] == "pending"
+    assert body["context"] == "prepush-ci/full"
+    assert world.tree[:7] in str(body["description"])
+    assert "reported from a session" in str(body["description"])
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        ("--junit", "r.xml"),
+        ("--coverage", "c.json"),
+        ("--ruff", "r.json"),
+        ("--mypy", "m.txt"),
+        ("--duration", "5"),
+        ("--tool", "ruff=1.0"),
+    ],
+)
+def test_a_start_with_a_flag_of_a_result_exits_2_and_names_it(
+    world: World, flag: tuple[str, str]
+) -> None:
+    result = start(world, *flag)
+
+    assert result.returncode == 2
+    assert flag[0] in result.stderr
+    assert world.api.requests == []
+
+
+def test_a_start_together_with_a_result_exits_2_and_names_both_flags(
+    world: World,
+) -> None:
+    result = start(world, "--result", "passed")
+
+    assert result.returncode == 2
+    assert "--start" in result.stderr
+    assert "--result" in result.stderr
+    assert world.api.requests == []

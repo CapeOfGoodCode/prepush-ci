@@ -4,7 +4,7 @@ import platform
 import sys
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from prepush_ci import github_api, signing, text_io
@@ -89,14 +89,6 @@ def _report(
     problem = report.tree_problem(options.tree, tree)
     if problem is not None:
         raise ReportError(problem)
-    counts, failures = _junit(options.junit, cwd, top)
-    contradiction = report.contradiction(options.result, counts)
-    if contradiction is not None:
-        raise ReportError(contradiction)
-    failures += _tool_failures(options, cwd, top)
-    coverage = None if options.coverage is None else _coverage(options.coverage, cwd)
-    where = report.target(_origin(cwd), env)
-    credentials = report.credentials(env)
     facts = Facts(
         sha=sha,
         tree=tree,
@@ -105,10 +97,20 @@ def _report(
         tools=options.tools,
         system=platform.system() or sys.platform,
         duration=options.duration,
-        counts=counts,
-        coverage=coverage,
-        failures=tuple(failures),
+        counts=None,
+        coverage=None,
     )
+    if options.result == report.STARTED:
+        return _started(options, env, cwd, secrets, facts)
+    counts, failures = _junit(options.junit, cwd, top)
+    contradiction = report.contradiction(options.result, counts)
+    if contradiction is not None:
+        raise ReportError(contradiction)
+    failures += _tool_failures(options, cwd, top)
+    coverage = None if options.coverage is None else _coverage(options.coverage, cwd)
+    facts = replace(facts, counts=counts, coverage=coverage, failures=tuple(failures))
+    where = report.target(_origin(cwd), env)
+    credentials = report.credentials(env)
     if isinstance(credentials, AppCredentials):
         name = options.name or report.CHECK_RUN_NAME
         _post_check_run(where, credentials, name, facts, options.result, secrets)
@@ -124,6 +126,51 @@ def _report(
         )
         how = "commit status"
     return f"reported {sha} {options.result} as a {how}"
+
+
+def _started(
+    options: Options,
+    env: Mapping[str, str],
+    cwd: Path,
+    secrets: list[str],
+    facts: Facts,
+) -> str:
+    """Show the check as in progress: a check run, or a `pending` status without an app."""
+    where = report.target(_origin(cwd), env)
+    credentials = report.credentials(env)
+    if isinstance(credentials, AppCredentials):
+        name = options.name or report.CHECK_RUN_NAME
+        token = _installation_token(where, credentials, secrets)
+        running = github_api.in_progress_run(
+            where.api_url, where.repository, token, facts.sha, name, credentials.app_id
+        )
+        now = int(time.time())
+        if running is None:
+            github_api.post_check_run(
+                where.api_url,
+                where.repository,
+                token,
+                report.started_body(name, facts, now),
+            )
+        else:
+            github_api.update_check_run(
+                where.api_url,
+                where.repository,
+                token,
+                running,
+                report.started_update_body(now),
+            )
+        how = "check run"
+    else:
+        github_api.post_status(
+            where.api_url,
+            where.repository,
+            facts.sha,
+            credentials.token,
+            report.started_status_body(options.name or report.STATUS_CONTEXT, facts),
+        )
+        how = "commit status"
+    return f"reported {facts.sha} {report.STARTED} as a {how}"
 
 
 def _tree_of(sha: str, cwd: Path) -> str:
@@ -186,6 +233,15 @@ def _coverage(path_text: str, cwd: Path) -> str:
     return report.coverage_display(text, name)
 
 
+def _installation_token(where: Target, app: AppCredentials, secrets: list[str]) -> str:
+    signing_input = report.jwt_signing_input(app.app_id, int(time.time()))
+    app_jwt = report.jwt(signing_input, signing.sign(signing_input, app.key))
+    secrets.append(app_jwt)
+    token = github_api.installation_token(where.api_url, where.repository, app_jwt)
+    secrets.append(token)
+    return token
+
+
 def _post_check_run(
     where: Target,
     app: AppCredentials,
@@ -194,11 +250,7 @@ def _post_check_run(
     result: str,
     secrets: list[str],
 ) -> None:
-    signing_input = report.jwt_signing_input(app.app_id, int(time.time()))
-    app_jwt = report.jwt(signing_input, signing.sign(signing_input, app.key))
-    secrets.append(app_jwt)
-    token = github_api.installation_token(where.api_url, where.repository, app_jwt)
-    secrets.append(token)
+    token = _installation_token(where, app, secrets)
     created = github_api.post_check_run(
         where.api_url,
         where.repository,

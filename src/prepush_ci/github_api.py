@@ -114,6 +114,29 @@ def update_check_run(
     send("PATCH", api_url, path, token, body)
 
 
+def in_progress_run(
+    api_url: str, repository: Repository, token: str, sha: str, name: str, app_id: str
+) -> str | None:
+    """The id of the check run of that name and app that is in progress on the commit, the highest
+    when there are several; None when there is none."""
+    query = f"check_name={quote(name, safe='')}&status=in_progress&app_id={quote(app_id, safe='')}"
+    found = send(
+        "GET",
+        api_url,
+        f"{_repo_path(repository)}/commits/{sha}/check-runs?{query}",
+        token,
+    )
+    try:
+        ids = [
+            int(run["id"]) for run in json.loads(text_io.decode(found))["check_runs"]
+        ]
+    except (ValueError, KeyError, TypeError) as error:
+        raise ReportError(
+            "the answer to the check run lookup has no check_runs with an id each"
+        ) from error
+    return str(max(ids)) if ids else None
+
+
 def installation_token(api_url: str, repository: Repository, app_jwt: str) -> str:
     """The token of the app's installation on the repository; the JSON Web Token proves the app."""
     try:
