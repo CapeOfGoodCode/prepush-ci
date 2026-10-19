@@ -568,6 +568,16 @@ def check_run_body(
     }
 
 
+def completion_body(
+    name: str, facts: Facts, result: str, counts: Counts | None
+) -> dict[str, object]:
+    """The request that completes a run in progress: the body of a new run, without the commit
+    the run already has."""
+    body = check_run_body(name, facts, result, counts)
+    del body["head_sha"]
+    return body
+
+
 def later_batches_bodies(
     facts: Facts, result: str, counts: Counts | None
 ) -> list[dict[str, object]]:
