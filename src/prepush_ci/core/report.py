@@ -270,6 +270,9 @@ class Facts:
     coverage: str | None
 
 
+ESCAPED_PIPE = "\\|"
+
+
 def code_span(text: str) -> str:
     """`text` as one Markdown code span, whatever backticks and line ends it holds."""
     one_line = " ".join(text.split())
@@ -303,7 +306,10 @@ def summary(facts: Facts) -> str:
         rows.append(("Tests", facts.counts.line()))
     if facts.coverage is not None:
         rows.append(("Coverage", f"{facts.coverage}%"))
-    table = "\n".join(f"| {label} | {text} |" for label, text in rows)
+    # A pipe ends a table cell, also inside a code span: GitHub reads `\|` as the pipe.
+    table = "\n".join(
+        f"| {label} | {text.replace('|', ESCAPED_PIPE)} |" for label, text in rows
+    )
     return (
         f"Result {FROM_A_SESSION}: `prepush-ci report` posted it for the tree below, "
         "which the session says it checked. GitHub did not run the check.\n\n"
