@@ -2,6 +2,7 @@
 
 import os
 import sys
+import time
 from pathlib import Path
 
 from prepush_ci.core.config import REMOTE, Config
@@ -93,9 +94,13 @@ def current_head(root: Path) -> Head:
 
 def _commit_of(root: Path, tree: str, sha: str) -> str:
     """A parentless commit of `tree` that names `sha`, made with a fixed identity so it needs no
-    `user.name` and no signing."""
+    `user.name` and no signing, and dated now: the environment cannot date it, for the date is
+    what a cleanup ages the result by."""
     name, email = IDENTITY
+    now = f"{int(time.time())} +0000"
     identity = {
+        "GIT_AUTHOR_DATE": now,
+        "GIT_COMMITTER_DATE": now,
         "GIT_AUTHOR_NAME": name,
         "GIT_AUTHOR_EMAIL": email,
         "GIT_COMMITTER_NAME": name,
