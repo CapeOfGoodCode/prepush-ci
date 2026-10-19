@@ -301,6 +301,42 @@ def write_coverage(path: Path, shown: str = "94.5") -> Path:
     return path
 
 
+def located_case(file: str, line: int, message: str = "assert 1 == 2") -> str:
+    return (
+        f"<testcase classname='a' name='test_a' file='{file}' line='{line}'>"
+        f"<failure message='{message}'/></testcase>"
+    )
+
+
+def write_ruff(path: Path, *entries: tuple[str, int, str, str]) -> Path:
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "filename": filename,
+                    "location": {"row": row, "column": 1},
+                    "code": code,
+                    "message": message,
+                }
+                for filename, row, code, message in entries
+            ]
+        )
+    )
+    return path
+
+
+def write_mypy(path: Path, *errors: str) -> Path:
+    found = f"Found {len(errors)} errors in 1 file (checked 1 source file)"
+    path.write_text(
+        "\n".join([*errors, found if errors else "Success: no issues found"])
+    )
+    return path
+
+
+def mypy_error(number: int, path: str = "src/a.py") -> str:
+    return f'{path}:{number}: error: Name "x{number}" is not defined  [name-defined]'
+
+
 def in_the_output(result: "subprocess.CompletedProcess[str]") -> str:
     return result.stdout + result.stderr
 
@@ -417,6 +453,8 @@ def test_help_exits_0_and_lists_every_flag(world: World) -> None:
         "--tool",
         "--junit",
         "--coverage",
+        "--ruff",
+        "--mypy",
     ):
         assert flag in result.stdout
     assert world.api.requests == []
@@ -1547,3 +1585,332 @@ def test_a_secret_cut_by_the_length_limit_would_still_be_found_whole(
     result = world.passed(env={"GITHUB_TOKEN": secret})
 
     assert "ssss" not in result.stderr
+
+
+# --- Failures become annotations ---------------------------------------------------------------
+
+
+def annotations_of(world: World) -> list[dict[str, object]]:
+    output = world.api.check_run()["output"]
+    assert isinstance(output, dict)
+    found = output.get("annotations", [])
+    assert isinstance(found, list)
+    return found
+
+
+def top_of(world: World) -> str:
+    """The top of the worktree as the command sees it (a path the tools would write)."""
+    return world.git(world.repo, "rev-parse", "--show-toplevel").stdout.strip()
+
+
+@needs_openssl
+def test_a_failing_test_sits_on_its_line_plus_one_with_the_title_pytest(
+    world: World, tmp_path: Path
+) -> None:
+    junit = write_junit(tmp_path / "r.xml", located_case("tests/a_spec.py", 117))
+
+    result = world.failed("--junit", str(junit), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert annotations_of(world) == [
+        {
+            "path": "tests/a_spec.py",
+            "start_line": 118,
+            "end_line": 118,
+            "annotation_level": "failure",
+            "title": "pytest",
+            "message": "assert 1 == 2",
+        }
+    ]
+
+
+@needs_openssl
+def test_a_failing_test_without_a_location_has_no_annotation_and_still_counts_as_failed(
+    world: World, tmp_path: Path
+) -> None:
+    junit = write_junit(tmp_path / "r.xml", FAILING)
+
+    result = world.failed("--junit", str(junit), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert annotations_of(world) == []
+    assert "output" in world.api.check_run()
+    assert "1 failed" in world.api.check_run()["output"]["title"]  # type: ignore[index]
+
+
+@needs_openssl
+def test_a_ruff_error_is_an_annotation_with_its_code_and_message(
+    world: World, tmp_path: Path
+) -> None:
+    ruff = write_ruff(
+        tmp_path / "ruff.json",
+        (f"{top_of(world)}/src/a.py", 3, "F401", "`os` imported but unused"),
+    )
+
+    result = world.failed("--ruff", str(ruff), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    (found,) = annotations_of(world)
+    assert found["path"] == "src/a.py"
+    assert found["start_line"] == found["end_line"] == 3
+    assert found["title"] == "ruff"
+    assert "F401" in str(found["message"])
+    assert "`os` imported but unused" in str(found["message"])
+
+
+@needs_openssl
+def test_a_mypy_error_is_an_annotation_and_a_note_is_none(
+    world: World, tmp_path: Path
+) -> None:
+    mypy = tmp_path / "mypy.txt"
+    mypy.write_text(
+        'src/a.py:42: error: Returning Any from function declared to return "Mode"  [no-any-return]\n'
+        'src/a.py:42: note: Use "-> None" if function does not return a value\n'
+        "Found 1 error in 1 file (checked 1 source file)\n"
+    )
+
+    result = world.failed("--mypy", str(mypy), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    (found,) = annotations_of(world)
+    assert (found["path"], found["start_line"], found["title"]) == (
+        "src/a.py",
+        42,
+        "mypy",
+    )
+
+
+@needs_openssl
+@pytest.mark.parametrize("flag", ["--ruff", "--mypy"])
+def test_a_file_that_starts_with_a_byte_order_mark_is_read_as_without_one(
+    world: World, tmp_path: Path, flag: str
+) -> None:
+    text = (
+        write_ruff(
+            tmp_path / "found.txt", (f"{top_of(world)}/src/a.py", 3, "F401", "x")
+        )
+        if flag == "--ruff"
+        else write_mypy(tmp_path / "found.txt", mypy_error(42))
+    )
+    text.write_bytes(b"\xef\xbb\xbf" + text.read_bytes())
+
+    result = world.failed(flag, str(text), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    (found,) = annotations_of(world)
+    assert found["path"] == "src/a.py"
+
+
+@needs_openssl
+def test_a_mypy_error_with_a_column_is_on_its_line(
+    world: World, tmp_path: Path
+) -> None:
+    mypy = tmp_path / "mypy.txt"
+    mypy.write_text(
+        'src/a.py:42:9: error: Name "x" is not defined  [name-defined]\n'
+        "Found 1 error in 1 file (checked 1 source file)\n"
+    )
+
+    result = world.failed("--mypy", str(mypy), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    (found,) = annotations_of(world)
+    assert (found["path"], found["start_line"]) == ("src/a.py", 42)
+
+
+@needs_openssl
+def test_the_annotations_of_several_files_are_all_on_the_check_run(
+    world: World, tmp_path: Path
+) -> None:
+    first = write_ruff(tmp_path / "r1.json", (f"{top_of(world)}/a.py", 1, "F401", "x"))
+    second = write_ruff(tmp_path / "r2.json", (f"{top_of(world)}/b.py", 2, "E501", "y"))
+
+    result = world.failed(
+        "--ruff", str(first), "--ruff", str(second), env=world.app_env()
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert [a["path"] for a in annotations_of(world)] == ["a.py", "b.py"]
+
+
+@needs_openssl
+def test_a_relative_path_is_taken_from_the_top_of_the_worktree_whatever_the_directory(
+    world: World, tmp_path: Path
+) -> None:
+    deeper = world.repo / "src" / "deeper"
+    deeper.mkdir(parents=True)
+    mypy = write_mypy(tmp_path / "mypy.txt", mypy_error(42))
+
+    result = world.run(
+        "--result",
+        "failed",
+        "--tree",
+        world.tree,
+        "--mypy",
+        str(mypy),
+        env=world.app_env(),
+        cwd=deeper,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert [a["path"] for a in annotations_of(world)] == ["src/a.py"]
+
+
+@needs_openssl
+def test_a_path_outside_the_worktree_exits_1_names_it_and_sends_no_request(
+    world: World, tmp_path: Path
+) -> None:
+    outside = (tmp_path / "elsewhere" / "a.py").as_posix()
+    ruff = write_ruff(tmp_path / "ruff.json", (outside, 1, "F401", "x"))
+
+    result = world.failed("--ruff", str(ruff), env=world.app_env())
+
+    assert result.returncode == 1
+    assert "elsewhere" in result.stderr
+    assert world.api.requests == []
+
+
+@needs_openssl
+def test_a_path_with_backslashes_is_taken_with_slashes(
+    world: World, tmp_path: Path
+) -> None:
+    mypy = tmp_path / "mypy.txt"
+    mypy.write_text(
+        'src\\a.py:42: error: Name "x" is not defined  [name-defined]\n'
+        "Found 1 error in 1 file (checked 1 source file)\n"
+    )
+
+    result = world.failed("--mypy", str(mypy), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert [a["path"] for a in annotations_of(world)] == ["src/a.py"]
+
+
+def test_without_an_app_the_failure_files_are_read_and_not_posted(
+    world: World, tmp_path: Path
+) -> None:
+    ruff = write_ruff(
+        tmp_path / "ruff.json", (f"{top_of(world)}/src/a.py", 3, "F401", "x")
+    )
+
+    result = world.failed("--ruff", str(ruff))
+
+    assert result.returncode == 0, result.stderr
+    assert [r.path for r in world.api.requests] == [
+        f"/repos/acme/widgets/statuses/{world.sha}"
+    ]
+    assert "annotations" not in world.api.requests[0].body
+
+
+# --- Failure files that cannot be trusted are refused --------------------------------------------
+
+
+@pytest.mark.parametrize("flag", ["--ruff", "--mypy"])
+def test_a_failure_file_that_does_not_exist_exits_1_and_names_it(
+    world: World, tmp_path: Path, flag: str
+) -> None:
+    result = world.failed(flag, str(tmp_path / "missing.out"))
+
+    assert result.returncode == 1
+    assert "missing.out" in result.stderr
+    assert world.api.requests == []
+
+
+def test_a_ruff_file_of_plain_text_exits_1_and_names_it(
+    world: World, tmp_path: Path
+) -> None:
+    text = tmp_path / "ruff.txt"
+    text.write_text("All checks passed!")
+
+    result = world.failed("--ruff", str(text))
+
+    assert result.returncode == 1
+    assert "ruff.txt" in result.stderr
+    assert world.api.requests == []
+
+
+def test_a_mypy_file_without_a_summary_line_exits_1_and_names_it(
+    world: World, tmp_path: Path
+) -> None:
+    text = tmp_path / "mypy.txt"
+    text.write_text("hello")
+
+    result = world.failed("--mypy", str(text))
+
+    assert result.returncode == 1
+    assert "mypy.txt" in result.stderr
+    assert world.api.requests == []
+
+
+@pytest.mark.parametrize("flag", ["--ruff", "--mypy"])
+def test_a_failure_file_that_is_not_utf8_exits_1_and_names_it(
+    world: World, tmp_path: Path, flag: str
+) -> None:
+    text = tmp_path / "bytes.out"
+    text.write_bytes(b"\xff\xfe")
+
+    result = world.failed(flag, str(text))
+
+    assert result.returncode == 1
+    assert "bytes.out" in result.stderr
+    assert world.api.requests == []
+
+
+@needs_openssl
+def test_clean_mypy_output_with_a_passed_result_is_a_success_without_annotations(
+    world: World, tmp_path: Path
+) -> None:
+    mypy = write_mypy(tmp_path / "mypy.txt")
+
+    result = world.passed("--mypy", str(mypy), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert world.api.check_run()["conclusion"] == "success"
+    assert annotations_of(world) == []
+
+
+def test_a_passed_result_with_a_lint_error_exits_1_and_sends_no_request(
+    world: World, tmp_path: Path
+) -> None:
+    ruff = write_ruff(
+        tmp_path / "ruff.json", (f"{top_of(world)}/src/a.py", 3, "F401", "x")
+    )
+
+    result = world.passed("--ruff", str(ruff))
+
+    assert result.returncode == 1
+    assert "contradicts" in result.stderr
+    assert world.api.requests == []
+
+
+def test_a_passed_result_with_a_type_error_exits_1_and_sends_no_request(
+    world: World, tmp_path: Path
+) -> None:
+    mypy = write_mypy(tmp_path / "mypy.txt", mypy_error(42))
+
+    result = world.passed("--mypy", str(mypy))
+
+    assert result.returncode == 1
+    assert "contradicts" in result.stderr
+    assert world.api.requests == []
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "src/b.py:1:10:1:12: error: Incompatible types  [assignment]",
+        'b/x.py: error: Duplicate module named "x" (also at "a/x.py")',
+        'src/a:b.py:3: error: Name "x" is not defined  [name-defined]',
+    ],
+    ids=["with an end position", "without a line", "with a colon in the path"],
+)
+def test_a_passed_result_with_any_form_of_mypy_error_exits_1(
+    world: World, tmp_path: Path, error: str
+) -> None:
+    mypy = write_mypy(tmp_path / "mypy.txt", error)
+
+    result = world.passed("--mypy", str(mypy))
+
+    assert result.returncode == 1
+    assert "contradicts" in result.stderr
+    assert world.api.requests == []

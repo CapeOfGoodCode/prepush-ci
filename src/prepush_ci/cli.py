@@ -197,6 +197,16 @@ def main(argv: list[str] | None = None) -> int:
     report.add_argument(
         "--coverage", help="the coverage.json of coverage.py; its total is shown"
     )
+    report.add_argument(
+        "--ruff",
+        action="append",
+        help="the output of `ruff check --output-format json` (repeatable); its errors are annotated",
+    )
+    report.add_argument(
+        "--mypy",
+        action="append",
+        help="the output of mypy (repeatable); its errors are annotated",
+    )
     args = parser.parse_args(args_in)
     if args.command == "report":
         return report_command.run(
@@ -209,6 +219,8 @@ def main(argv: list[str] | None = None) -> int:
                 tuple(args.tool or ()),
                 tuple(args.junit or ()),
                 args.coverage,
+                tuple(args.ruff or ()),
+                tuple(args.mypy or ()),
             ),
             env,
             Path.cwd(),

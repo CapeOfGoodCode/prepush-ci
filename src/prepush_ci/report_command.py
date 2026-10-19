@@ -14,6 +14,7 @@ from prepush_ci.core.report import (
     AppCredentials,
     Counts,
     Facts,
+    Failure,
     ReportError,
     Target,
     Tool,
@@ -38,6 +39,8 @@ class Options:
     tools: tuple[Tool, ...]
     junit: tuple[str, ...]
     coverage: str | None
+    ruff: tuple[str, ...] = ()
+    mypy: tuple[str, ...] = ()
 
 
 MAX_MESSAGE = 500
@@ -68,10 +71,12 @@ def run(options: Options, env: Mapping[str, str], cwd: Path) -> int:
 def _report(
     options: Options, env: Mapping[str, str], cwd: Path, secrets: list[str]
 ) -> str:
-    if git(cwd, "rev-parse", "--show-toplevel").returncode != 0:
+    toplevel = git(cwd, "rev-parse", "--show-toplevel")
+    if toplevel.returncode != 0:
         raise ReportError(
             "not inside a git worktree, so there is no commit to report on"
         )
+    top = answer(toplevel)
     sha = resolve_commit(options.commit, cwd)
     if sha is None:
         raise ReportError(f"--commit {options.commit!r} names no commit")
@@ -84,10 +89,11 @@ def _report(
     problem = report.tree_problem(options.tree, tree)
     if problem is not None:
         raise ReportError(problem)
-    counts = _counts(options.junit, cwd)
+    counts, failures = _junit(options.junit, cwd, top)
     contradiction = report.contradiction(options.result, counts)
     if contradiction is not None:
         raise ReportError(contradiction)
+    failures += _tool_failures(options, cwd, top)
     coverage = None if options.coverage is None else _coverage(options.coverage, cwd)
     where = report.target(_origin(cwd), env)
     credentials = report.credentials(env)
@@ -101,6 +107,7 @@ def _report(
         duration=options.duration,
         counts=counts,
         coverage=coverage,
+        failures=tuple(failures),
     )
     if isinstance(credentials, AppCredentials):
         name = options.name or report.CHECK_RUN_NAME
@@ -140,22 +147,47 @@ def _read(path_text: str, cwd: Path) -> tuple[str, bytes]:
         raise ReportError(f"cannot read {path_text}: {error.strerror}") from error
 
 
-def _counts(paths: tuple[str, ...], cwd: Path) -> Counts | None:
+def _junit(
+    paths: tuple[str, ...], cwd: Path, top: str
+) -> tuple[Counts | None, list[Failure]]:
     if not paths:
-        return None
+        return None, []
     total = Counts()
+    failures: list[Failure] = []
     for path_text in paths:
         name, data = _read(path_text, cwd)
         total += report.count_junit(data, name)
-    return total
+        failures += report.junit_failures(data, name, top)
+    return total, failures
+
+
+def _text(path_text: str, cwd: Path) -> tuple[str, str]:
+    name, data = _read(path_text, cwd)
+    try:
+        return name, text_io.decode_utf8(data, name).removeprefix("\ufeff")
+    except text_io.NotUtf8 as error:
+        raise ReportError(str(error)) from error
+
+
+def _tool_failures(options: Options, cwd: Path, top: str) -> list[Failure]:
+    """The errors of the ruff and mypy files; a `passed` result they contradict is refused."""
+    failures: list[Failure] = []
+    for paths, parse in (
+        (options.ruff, report.ruff_failures),
+        (options.mypy, report.mypy_failures),
+    ):
+        for path_text in paths:
+            name, text = _text(path_text, cwd)
+            found = parse(text, name, top)
+            contradiction = report.file_contradiction(options.result, name, found)
+            if contradiction is not None:
+                raise ReportError(contradiction)
+            failures += found
+    return failures
 
 
 def _coverage(path_text: str, cwd: Path) -> str:
-    name, data = _read(path_text, cwd)
-    try:
-        text = text_io.decode_utf8(data, name)
-    except text_io.NotUtf8 as error:
-        raise ReportError(str(error)) from error
+    name, text = _text(path_text, cwd)
     return report.coverage_display(text, name)
 
 
