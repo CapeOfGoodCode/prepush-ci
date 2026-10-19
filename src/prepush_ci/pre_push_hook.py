@@ -28,6 +28,7 @@ from prepush_ci.core.run_cache import (
 from prepush_ci.git import GitError, committed_config, git, trailers
 from prepush_ci.pass_cache import (
     current_head,
+    expire_passes,
     fetch_pass,
     has_pass,
     publish_pass,
@@ -119,8 +120,10 @@ def _enforce(
         print(message_skipped_from_origin(key.tree, passed), file=sys.stderr)
         return 0
     code = run_check(config, root)
-    if code == 0 and record_pass(config, root, key, checked.sha) and to_origin:
-        publish_pass(root, key)
+    if code == 0 and record_pass(config, root, key, checked.sha):
+        if to_origin:
+            publish_pass(root, key)
+        expire_passes(root, to_origin)
     return code
 
 

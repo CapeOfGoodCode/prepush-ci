@@ -3,10 +3,14 @@ import dataclasses
 from prepush_ci.core.config import Config, Trailer
 from prepush_ci.core.run_cache import (
     Key,
+    batches,
+    expired_refs,
     fingerprint,
     lists_ref,
     message_not_asked,
     message_not_cached,
+    message_not_cleaned,
+    message_not_cleaned_from_origin,
     message_not_shared,
     message_skipped,
     message_skipped_from_origin,
@@ -242,3 +246,73 @@ def test_a_ref_that_only_ends_like_the_ref_is_not_the_ref() -> None:
     ref = result_ref(KEY)
 
     assert not lists_ref(f"{'a' * 40}\trefs/heads/x/{ref}\n", ref)
+
+
+NOW = 1_800_000_000
+DAY = 24 * 60 * 60
+
+
+def listed(**ages: int) -> str:
+    """What `git for-each-ref --format='%(refname) %(committerdate:unix)'` prints, for refs whose
+    commits are `ages` days old."""
+    return "".join(f"{name} {NOW - days * DAY}\n" for name, days in ages.items())
+
+
+def test_a_result_older_than_30_days_is_expired() -> None:
+    assert expired_refs(listed(old=31), NOW) == ["old"]
+
+
+def test_a_result_of_exactly_30_days_is_kept() -> None:
+    assert expired_refs(listed(edge=30), NOW) == []
+
+
+def test_a_result_of_29_days_is_kept() -> None:
+    assert expired_refs(listed(recent=29), NOW) == []
+
+
+def test_a_result_dated_in_the_future_is_kept() -> None:
+    assert expired_refs(listed(future=-1), NOW) == []
+
+
+def test_only_the_old_results_of_a_listing_are_expired() -> None:
+    listing = listed(a=40, b=3, c=31)
+
+    assert expired_refs(listing, NOW) == ["a", "c"]
+
+
+def test_a_line_without_a_date_is_kept() -> None:
+    assert expired_refs(f"refs/x \n{listed(old=31)}refs/y\nrefs/z nan\n", NOW) == [
+        "old"
+    ]
+
+
+def test_an_empty_listing_expires_nothing() -> None:
+    assert expired_refs("", NOW) == []
+
+
+def test_refs_are_split_into_batches_of_a_hundred() -> None:
+    refs = [f"r{number}" for number in range(250)]
+
+    assert [len(batch) for batch in batches(refs)] == [100, 100, 50]
+
+
+def test_no_refs_make_no_batch() -> None:
+    assert batches([]) == []
+
+
+def test_the_warning_for_a_cleanup_that_failed_gives_the_reason() -> None:
+    text = message_not_cleaned("locked")
+
+    assert "old results could not be removed" in text
+    assert "locked" in text
+    assert "origin" not in text
+
+
+def test_the_warning_for_a_cleanup_of_origin_that_failed_names_origin_and_the_reason() -> (
+    None
+):
+    text = message_not_cleaned_from_origin("declined")
+
+    assert "origin" in text
+    assert "old results could not be removed" in text
+    assert "declined" in text
