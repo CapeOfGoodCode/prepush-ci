@@ -1,7 +1,7 @@
 # pre-push-hook Specification
 
 ## Purpose
-The `pre-push` hook that enforces the trailer: a pushed branch tip that carries it reaches the remote only if it is the checked-out `HEAD`, the worktree is clean and the full check passed on it, so a trailer commit on the remote implies the check passed on exactly that commit.
+The `pre-push` hook that enforces the trailer: a pushed branch tip that carries it reaches the remote only if it is the checked-out `HEAD`, the worktree is clean and the full check passed on its tree with the current inputs, so a trailer commit on the remote implies the check passed on exactly that tree. The check may have run on another commit of that tree; what it reads from the commit and not from the tree (the message, the author, the history) is not covered, and `cache = false` turns the reuse off.
 
 ## Requirements
 
