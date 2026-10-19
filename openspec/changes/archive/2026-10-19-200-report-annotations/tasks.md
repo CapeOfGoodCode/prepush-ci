@@ -13,4 +13,4 @@
 ## 3. Reference and archive
 
 - [x] 3.1 Name `--start`, `--ruff` and `--mypy` in the README's reference of `report`, with `-o junit_family=xunit1` for pytest locations only if a spec or a run on the head backs the sentence (design.md, "Run the tools"; pytest's paths follow its rootdir); verify with the `readme` drift specs
-- [ ] 3.2 Run `sh scripts/ci` and verify it passes
+- [x] 3.2 Run `sh scripts/ci` and verify it passes
