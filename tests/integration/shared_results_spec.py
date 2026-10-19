@@ -276,6 +276,60 @@ def test_a_remote_that_refuses_the_ref_is_a_warning_and_the_push_goes_through(
     assert git(remote, "rev-parse", "refs/heads/main", check=False).returncode == 0
 
 
+def decline_main(remote: Path) -> Path:
+    """A `pre-receive` hook that declines `refs/heads/main` and takes any other ref."""
+    hook = remote / "hooks" / "pre-receive"
+    hook.write_text(
+        "#!/bin/sh\n"
+        "while read old new ref; do\n"
+        '  [ "$ref" = refs/heads/main ] && { echo "main is closed" >&2; exit 1; }\n'
+        "done\n"
+        "exit 0\n"
+    )
+    hook.chmod(0o755)
+    return hook
+
+
+def push_the_first_commit(repo: Path, git: Git) -> str:
+    """Put the commit before the tip (no trailer, so the hook leaves it alone) on `origin`'s
+    `main`, and return its id: the id a push of the tip must not move `main` from."""
+    first = git(repo, "rev-parse", "HEAD~1").stdout.strip()
+    assert git(repo, "push", "origin", "HEAD~1:refs/heads/main").returncode == 0
+    return first
+
+
+def test_a_dry_run_to_origin_publishes_the_result_and_main_does_not_move(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    remote = tmp_path / "remote.git"
+    first = push_the_first_commit(pushing, git)
+
+    result = push(pushing, git, "--dry-run", "origin", "main")
+
+    assert result.returncode == 0
+    assert runs(log) == 1
+    [ref] = shared(remote, git)
+    assert ref.startswith(f"refs/prepush-ci/results/{tree_of_head(pushing, git)}-")
+    assert git(remote, "rev-parse", "refs/heads/main").stdout.strip() == first
+
+
+def test_a_push_that_origin_declines_publishes_the_result_and_main_does_not_move(
+    pushing: Path, git: Git, log: Path, tmp_path: Path
+) -> None:
+    remote = tmp_path / "remote.git"
+    first = push_the_first_commit(pushing, git)
+    decline_main(remote)
+
+    result = push(pushing, git)
+
+    assert result.returncode != 0
+    assert "main is closed" in result.stderr
+    assert runs(log) == 1
+    [ref] = shared(remote, git)
+    assert ref.startswith(f"refs/prepush-ci/results/{tree_of_head(pushing, git)}-")
+    assert git(remote, "rev-parse", "refs/heads/main").stdout.strip() == first
+
+
 # --- The hook reads the remote of the push from its arguments or pre-commit ----------------------
 
 
