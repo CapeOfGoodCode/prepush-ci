@@ -110,7 +110,7 @@ What each role needs to know about prepush-ci in particular; the rest of its job
 
 ### robocop
 
-- The invariant to protect: a commit with the trailer on the remote implies the full check passed on exactly that commit, as long as every push path runs the hook.
+- The invariant to protect: a commit with the trailer on the remote implies the full check passed on exactly that tree with the current inputs (the commit may differ: a message, author or history the check reads is not covered unless `cache = false`), as long as every push path runs the hook.
 - No runtime dependencies without an OpenSpec change that argues for one.
 - **Structural limits are a cue for review, not a gate.** Run `uv run ruff check --select C901,PLR0912,PLR0913,PLR0915 --output-format concise <the Python files the pull request changes>` (information only, not part of `scripts/ci`) and judge every changed function over a limit. A parameter object used by a single function, or helpers called once that only lower a number, are findings: the fix splits what the function does, or finds an abstraction the call sites already share. A long function that reads clearly may stay, with a sentence in the verdict. `PLR0911` (return statements) stays out: early returns are the style of this code base.
 
