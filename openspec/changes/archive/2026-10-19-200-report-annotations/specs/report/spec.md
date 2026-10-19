@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Report posts the result of a run
-`prepush-ci report --result passed|failed --tree <hash>` SHALL, from any directory inside a worktree, post the result of a run of the check for the commit named by `--commit` (default `HEAD`), as the next requirements say; `prepush-ci report --start --tree <hash>` SHALL mark the run as started instead (see "A run can be shown as in progress"). It SHALL print one line on standard output that names the full sha of the commit, the result (`started` for `--start`) and how it was posted (`check run` or `commit status`).
+`prepush-ci report --result passed|failed --tree <hash>` SHALL, from any directory inside a worktree, post the result of a run of the check for the commit named by `--commit` (default `HEAD`), as the next requirements say; with `--start` in place of `--result` it SHALL mark the run as started. It SHALL print one line on standard output that names the full sha of the commit, the result (`started` for `--start`) and how it was posted (`check run` or `commit status`).
 
 #### Scenario: Result posted
 - **WHEN** `prepush-ci report --result passed --tree <the tree of HEAD>` runs with a token and the API accepts the request
