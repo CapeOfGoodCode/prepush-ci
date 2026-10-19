@@ -471,6 +471,12 @@ def test_the_summary_names_the_commit_the_tree_the_check_and_the_session() -> No
     assert "Linux" in text
 
 
+def test_the_summary_table_has_a_header_that_names_its_columns() -> None:
+    table = [line for line in summary(facts()).splitlines() if line.startswith("|")]
+
+    assert table[:2] == ["| Fact | Value |", "| --- | --- |"]
+
+
 def test_the_summary_says_none_for_a_missing_preflight() -> None:
     assert "| Preflight | none |" in summary(facts())
 
