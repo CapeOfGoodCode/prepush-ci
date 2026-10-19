@@ -166,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
         help="refuse to push a commit with the trailer unless the check passes",
     )
     pre_push.add_argument(
-        "git_args", nargs="*", help="the remote name and url git passes (unused)"
+        "git_args", nargs="*", help="the remote name and url git passes"
     )
     strip = commands.add_parser(
         "strip",
@@ -292,7 +292,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "install":
         return install_command.run(Path.cwd(), args.hooks)
     if args.command == "hook" and args.hook == "pre-push":
-        return pre_push_hook.run(text_io.stdin_text, env, Path.cwd())
+        return pre_push_hook.run(text_io.stdin_text, env, Path.cwd(), args.git_args)
     if args.command == "hook":
         return commit_msg_hook.run(args.file, env, Path.cwd())
     parser.print_help()

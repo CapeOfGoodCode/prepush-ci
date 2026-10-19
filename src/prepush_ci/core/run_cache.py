@@ -2,9 +2,10 @@
 
 import hashlib
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from prepush_ci.core.config import Config
+from prepush_ci.core.config import REMOTE, Config
 
 SHORT = 12
 # 128 bits of the hash keep a ref file name short: Windows limits a path to 260 characters
@@ -66,6 +67,14 @@ def passed_commit(log: str, key: Key) -> str | None:
     return body.removeprefix(NAMES)
 
 
+def pushes_to_origin(args: Sequence[str], env: Mapping[str, str]) -> bool:
+    """Whether the push the hook checks goes to the remote named `origin`: git passes the name
+    (or the url, for `git push <url>`) as the first argument, pre-commit passes none and sets
+    `PRE_COMMIT_REMOTE_NAME`. A hook that is told neither (lefthook) does not know, which is no."""
+    name = args[0] if args else env.get("PRE_COMMIT_REMOTE_NAME")
+    return name == REMOTE
+
+
 def message_skipped(tree: str, sha: str) -> str:
     return (
         f"prepush-ci: the check passed earlier on tree {tree[:SHORT]} "
@@ -75,3 +84,10 @@ def message_skipped(tree: str, sha: str) -> str:
 
 def message_not_cached(reason: str) -> str:
     return f"prepush-ci: the pass could not be cached, so a retry runs the check again: {reason}"
+
+
+def message_not_shared(reason: str) -> str:
+    return (
+        f"prepush-ci: the result was not shared through {REMOTE}, so another clone "
+        f"runs the check again: {reason}"
+    )
