@@ -66,14 +66,17 @@ def test_a_command_the_cli_lacks_is_reported_as_unknown_in_a_readme(
 
 
 def command_names(invocations: Any) -> list[str]:
-    """Every command of the CLI as the reference names it: `hook` by its two hooks."""
+    """Every command of the CLI as the reference names it: `hook` by its two hooks, `app` by
+    its one command."""
+    groups = ("hook", "app")
     top = invocations.choices(invocations.help_of(())[1])
-    names = sorted(top - {"hook"})
+    names = sorted(top - set(groups))
     if invocations.top_level_lists_verify():
         names.append("verify")
     names += [
-        f"hook {hook}"
-        for hook in sorted(invocations.choices(invocations.help_of(("hook",))[1]))
+        f"{group} {command}"
+        for group in groups
+        for command in sorted(invocations.choices(invocations.help_of((group,))[1]))
     ]
     return names
 
@@ -186,7 +189,13 @@ def test_an_entry_without_a_synopsis_is_reported(invocations: Any) -> None:
     assert reference_problems(text, invocations) == ["strip has no synopsis"]
 
 
-def test_the_reference_lists_the_ten_commands(invocations: Any) -> None:
+def test_a_readme_without_an_entry_for_app_setup_is_reported(invocations: Any) -> None:
+    text = reference(invocations, without="app setup")
+
+    assert reference_problems(text, invocations) == ["app setup has no entry"]
+
+
+def test_the_reference_lists_the_eleven_commands(invocations: Any) -> None:
     assert command_names(invocations) == [
         "doctor",
         "init",
@@ -198,6 +207,7 @@ def test_the_reference_lists_the_ten_commands(invocations: Any) -> None:
         "verify",
         "hook commit-msg",
         "hook pre-push",
+        "app setup",
     ]
 
 
@@ -240,6 +250,16 @@ def test_the_entry_of_report_says_zero_means_posted_one_refused_and_two_rejected
     entry = flat(entries(shipped())["report"])
 
     assert "0 means the result was posted" in entry
+    assert "1 means it refused or failed" in entry
+    assert "2 means the parser rejected the command line" in entry
+
+
+def test_the_entry_of_app_setup_says_zero_means_created_one_refused_and_two_rejected() -> (
+    None
+):
+    entry = flat(entries(shipped())["app setup"])
+
+    assert "0 means the app was created and its key saved" in entry
     assert "1 means it refused or failed" in entry
     assert "2 means the parser rejected the command line" in entry
 

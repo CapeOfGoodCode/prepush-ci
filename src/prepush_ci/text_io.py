@@ -121,6 +121,14 @@ def write_text(path: Path, text: str) -> None:
     path.write_bytes(encode(text))
 
 
+def create_private(path: Path, text: str) -> None:
+    """Create `path` holding `text`, readable by its owner only from the first byte; a file that
+    exists is never touched (`FileExistsError`)."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    with os.fdopen(os.open(path, flags, 0o600), "wb") as stream:
+        stream.write(encode(text))
+
+
 def packaged_text(package: str, *parts: str) -> str:
     """The text of a file shipped inside `package`."""
     return _universal(decode(resources.files(package).joinpath(*parts).read_bytes()))

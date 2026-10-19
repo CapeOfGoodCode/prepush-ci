@@ -82,7 +82,7 @@ Add a first job to pull request CI that reads the trailer of the head commit wit
 
 ## Command reference
 
-A command line the parser rejects makes `init`, `install`, `run`, `doctor`, `report` and `hook` exit 2; `verify` and `strip` check their own arguments and exit 1.
+A command line the parser rejects makes `init`, `install`, `run`, `doctor`, `report`, `app setup` and `hook` exit 2; `verify` and `strip` check their own arguments and exit 1.
 
 ### `init`
 
@@ -209,6 +209,22 @@ prepush-ci report --result passed --tree "$(git rev-parse 'HEAD^{tree}')" --juni
 ```
 
 **Exit status:** 0 means the result was posted, 1 means it refused or failed, 2 means the parser rejected the command line.
+
+### `app setup`
+
+Creates the GitHub App that `report` posts check runs as (named "prepush-ci / full", or by `--name` of `report`; without an app, `report` posts a commit status named `prepush-ci/full`). Your browser opens a page that sends GitHub the app already filled in: private, with the permission to write checks and no other, and one confirmation there creates it. Nothing of ours is hosted: the command listens on the loopback address of your machine until GitHub answers, or until `--timeout` seconds have passed (default 300).
+
+The app is named "prepush-ci (<owner of origin>)" unless you pass `--name` (34 characters at most); `--org` creates it in an organization instead of your account. The private key is saved outside the repository, in `~/.config/prepush-ci/apps/<id>.pem` (`XDG_CONFIG_HOME` replaces `~/.config`), readable by you only, and an existing file is never overwritten. The command prints the app's id, the address where you install the app on your repositories, the path of the key file and the names of the two variables `report` reads: `PREPUSH_CI_APP_ID`, and `PREPUSH_CI_APP_KEY`, which holds the text of the key file. It prints neither the key nor the app's secrets.
+
+```
+prepush-ci app setup [--org ORG] [--name NAME] [--timeout TIMEOUT]
+```
+
+```sh
+prepush-ci app setup --org acme
+```
+
+**Exit status:** 0 means the app was created and its key saved, 1 means it refused or failed, 2 means the parser rejected the command line.
 
 ### `skill`
 
