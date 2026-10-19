@@ -307,7 +307,7 @@ def summary(facts: Facts) -> str:
     return (
         f"Result {FROM_A_SESSION}: `prepush-ci report` posted it for the tree below, "
         "which the session says it checked. GitHub did not run the check.\n\n"
-        f"| | |\n| --- | --- |\n{table}\n"
+        f"| Fact | Value |\n| --- | --- |\n{table}\n"
     )
 
 
