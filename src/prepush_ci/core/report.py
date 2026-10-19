@@ -446,10 +446,51 @@ def annotations(failures: list[Failure]) -> list[dict[str, object]]:
     return [annotation(failure) for failure in failures if failure.path is not None]
 
 
+ANNOTATIONS_PER_REQUEST = 50
+
+
+def annotation_batches(failures: list[Failure]) -> list[list[dict[str, object]]]:
+    """The annotations in requests of at most 50 each (GitHub's limit), in order."""
+    placed = annotations(failures)
+    return [
+        placed[start : start + ANNOTATIONS_PER_REQUEST]
+        for start in range(0, len(placed), ANNOTATIONS_PER_REQUEST)
+    ]
+
+
 def title(result: str, counts: Counts | None) -> str:
     if counts is not None:
         return counts.line()
     return "Passed" if result == "passed" else "Failed"
+
+
+MAX_LISTED = 20
+MAX_TEXT = 200
+
+
+def _listed_text(text: str) -> str:
+    """The first line of a message with its white space merged, cut at 200 characters with `…`
+    as the 200th."""
+    first = next((line for line in text.splitlines() if line.strip()), "")
+    merged = " ".join(first.split())
+    return merged if len(merged) <= MAX_TEXT else merged[: MAX_TEXT - 1] + "…"
+
+
+def _failure_line(failure: Failure) -> str:
+    where = (
+        ""
+        if failure.path is None
+        else f" {code_span(f'{failure.path}:{failure.line}')}"
+    )
+    return f"- {failure.tool}{where} {code_span(_listed_text(failure.text))}"
+
+
+def _failures_section(failures: tuple[Failure, ...]) -> str:
+    """A list, not a table: a `|` in a message would split the cell of a table."""
+    lines = [_failure_line(failure) for failure in failures[:MAX_LISTED]]
+    if len(failures) > MAX_LISTED:
+        lines.append(f"- and {len(failures) - MAX_LISTED} more")
+    return "### Failures\n\n" + "\n".join(lines) + "\n\n"
 
 
 def summary(facts: Facts) -> str:
@@ -475,7 +516,9 @@ def summary(facts: Facts) -> str:
     table = "\n".join(
         f"| {label} | {text.replace('|', ESCAPED_PIPE)} |" for label, text in rows
     )
+    failures = _failures_section(facts.failures) if facts.failures else ""
     return (
+        f"{failures}"
         f"Result {FROM_A_SESSION}: `prepush-ci report` posted it for the tree below, "
         "which the session says it checked. GitHub did not run the check.\n\n"
         f"| Fact | Value |\n| --- | --- |\n{table}\n"
@@ -490,23 +533,41 @@ def status_description(facts: Facts) -> str:
     return f"{', '.join(parts)} ({FROM_A_SESSION})"
 
 
-def check_run_body(
-    name: str, facts: Facts, result: str, counts: Counts | None
+def _output(
+    facts: Facts, result: str, counts: Counts | None, batch: list[dict[str, object]]
 ) -> dict[str, object]:
     output: dict[str, object] = {
         "title": title(result, counts),
         "summary": summary(facts),
     }
-    placed = annotations(list(facts.failures))
-    if placed:
-        output["annotations"] = placed
+    if batch:
+        output["annotations"] = batch
+    return output
+
+
+def check_run_body(
+    name: str, facts: Facts, result: str, counts: Counts | None
+) -> dict[str, object]:
+    """The request that creates the completed check run, with the first 50 annotations."""
+    batches = annotation_batches(list(facts.failures))
     return {
         "name": name,
         "head_sha": facts.sha,
         "status": "completed",
         "conclusion": "success" if result == "passed" else "failure",
-        "output": output,
+        "output": _output(facts, result, counts, batches[0] if batches else []),
     }
+
+
+def later_batches_bodies(
+    facts: Facts, result: str, counts: Counts | None
+) -> list[dict[str, object]]:
+    """The updates of the same run that carry the annotations after the first 50, each with the
+    same title and summary."""
+    return [
+        {"output": _output(facts, result, counts, batch)}
+        for batch in annotation_batches(list(facts.failures))[1:]
+    ]
 
 
 def status_body(name: str, facts: Facts, result: str) -> dict[str, object]:

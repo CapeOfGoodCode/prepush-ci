@@ -98,8 +98,20 @@ def post_status(
 
 def post_check_run(
     api_url: str, repository: Repository, token: str, body: object
+) -> bytes:
+    """Create a check run; GitHub's answer, which names its id (see `check_run_id`)."""
+    return send("POST", api_url, f"{_repo_path(repository)}/check-runs", token, body)
+
+
+def check_run_id(created: bytes) -> str:
+    return _field(created, "id", "the check run request")
+
+
+def update_check_run(
+    api_url: str, repository: Repository, token: str, run_id: str, body: object
 ) -> None:
-    send("POST", api_url, f"{_repo_path(repository)}/check-runs", token, body)
+    path = f"{_repo_path(repository)}/check-runs/{quote(run_id, safe='')}"
+    send("PATCH", api_url, path, token, body)
 
 
 def installation_token(api_url: str, repository: Repository, app_jwt: str) -> str:

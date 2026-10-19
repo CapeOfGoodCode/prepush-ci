@@ -111,12 +111,7 @@ def _report(
     )
     if isinstance(credentials, AppCredentials):
         name = options.name or report.CHECK_RUN_NAME
-        _post_check_run(
-            where,
-            credentials,
-            report.check_run_body(name, facts, options.result, counts),
-            secrets,
-        )
+        _post_check_run(where, credentials, name, facts, options.result, secrets)
         how = "check run"
     else:
         name = options.name or report.STATUS_CONTEXT
@@ -192,11 +187,29 @@ def _coverage(path_text: str, cwd: Path) -> str:
 
 
 def _post_check_run(
-    where: Target, app: AppCredentials, body: object, secrets: list[str]
+    where: Target,
+    app: AppCredentials,
+    name: str,
+    facts: Facts,
+    result: str,
+    secrets: list[str],
 ) -> None:
     signing_input = report.jwt_signing_input(app.app_id, int(time.time()))
     app_jwt = report.jwt(signing_input, signing.sign(signing_input, app.key))
     secrets.append(app_jwt)
     token = github_api.installation_token(where.api_url, where.repository, app_jwt)
     secrets.append(token)
-    github_api.post_check_run(where.api_url, where.repository, token, body)
+    created = github_api.post_check_run(
+        where.api_url,
+        where.repository,
+        token,
+        report.check_run_body(name, facts, result, facts.counts),
+    )
+    for body in report.later_batches_bodies(facts, result, facts.counts):
+        github_api.update_check_run(
+            where.api_url,
+            where.repository,
+            token,
+            github_api.check_run_id(created),
+            body,
+        )
