@@ -1,5 +1,6 @@
 """The preflight of the pre-push hook: variables, the default branch, the `preflight` command."""
 
+import os
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -52,7 +53,18 @@ def _up_to_date(ref: str, root: Path) -> None:
     remote, branch = parts
     if remote not in git(root, "remote").stdout.split():
         raise PreflightRefused(message_no_remote(remote, ref))
-    fetched = git(root, "fetch", "--quiet", "--", remote, fetch_refspec(remote, branch))
+    # A damaged ref of the result cache must not refuse a push: git dies on it unless told to look
+    # away, and while it looks away its housekeeping would prune what only that ref holds.
+    fetched = git(
+        root,
+        "fetch",
+        "--quiet",
+        "--no-auto-maintenance",
+        "--",
+        remote,
+        fetch_refspec(remote, branch),
+        env={**os.environ, "GIT_REF_PARANOIA": "0"},
+    )
     if fetched.returncode != 0:
         raise PreflightRefused(message_fetch_failed(ref, fetched.stderr.strip()))
     compared = git(
