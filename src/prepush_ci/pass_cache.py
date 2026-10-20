@@ -153,8 +153,19 @@ def fetch_pass(config: Config, root: Path, key: Key) -> str | None:
         return None
     if not lists_ref(asked.stdout, ref):
         return None
-    # A fetch that fails now (the ref went away since) leaves no ref: a miss, as it should.
-    git(root, "fetch", "--quiet", REMOTE, f"+{ref}:{ref}")
+    # A fetch that fails now (the ref went away since, or the clone's ref of this very name is
+    # damaged) leaves no ref: a miss, as it should. A damaged ref of another name must not fail it:
+    # git dies on one unless told to look away, and while it looks away its housekeeping would
+    # prune what only that ref holds.
+    git(
+        root,
+        "fetch",
+        "--quiet",
+        "--no-auto-maintenance",
+        REMOTE,
+        f"+{ref}:{ref}",
+        env={**os.environ, "GIT_REF_PARANOIA": "0"},
+    )
     return has_pass(config, root, key)
 
 
