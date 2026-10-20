@@ -11,4 +11,4 @@
 
 ## 3. What the change says to readers
 
-- [ ] 3.1 Add to the README's step 5 that a result is kept for 30 days and when it is deleted (after a pass recorded in a push to `origin`, even a dry run, from `origin` and the clone; in a repository without `origin`, from the clone); run each sentence against the head as `AGENTS.md` asks and put the commands and output into the PR
+- [x] 3.1 Add to the README's step 5 that a result is kept for 30 days and when it is deleted (after a pass recorded in a push to `origin`, even a dry run, from `origin` and the clone; in a repository without `origin`, from the clone); run each sentence against the head as `AGENTS.md` asks and put the commands and output into the PR
