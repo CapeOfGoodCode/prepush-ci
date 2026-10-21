@@ -24,7 +24,7 @@
 | src/prepush\_ci/core/post\_push.py     |       91 |        0 |       44 |        0 |     100% |           |
 | src/prepush\_ci/core/pre\_push.py      |       87 |        0 |       30 |        0 |     100% |           |
 | src/prepush\_ci/core/preflight.py      |       25 |        0 |        2 |        0 |     100% |           |
-| src/prepush\_ci/core/report.py         |      321 |        0 |      102 |        0 |     100% |           |
+| src/prepush\_ci/core/report.py         |      321 |        0 |      104 |        0 |     100% |           |
 | src/prepush\_ci/core/run\_cache.py     |       58 |        0 |        6 |        0 |     100% |           |
 | src/prepush\_ci/core/skill.py          |       17 |        0 |        6 |        0 |     100% |           |
 | src/prepush\_ci/core/strip.py          |       81 |        0 |       32 |        0 |     100% |           |
@@ -48,7 +48,7 @@
 | src/prepush\_ci/text\_io.py            |      124 |        0 |        8 |        0 |     100% |           |
 | src/prepush\_ci/verify\_command.py     |       44 |        0 |       12 |        0 |     100% |           |
 | src/prepush\_ci/version\_line.py       |       18 |        0 |        0 |        0 |     100% |           |
-| **TOTAL**                              | **3575** |    **0** | **1018** |    **0** | **100%** |           |
+| **TOTAL**                              | **3575** |    **0** | **1020** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
