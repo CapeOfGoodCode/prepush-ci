@@ -534,6 +534,25 @@ def summary(facts: Facts) -> str:
     )
 
 
+def markdown_name_problem(name: str) -> str | None:
+    """Why `name` cannot go into the hidden marker, or None: `--` or a line break would end the
+    comment early."""
+    if "--" in name or "\n" in name or "\r" in name:
+        return "--name must not hold `--` or a line break with --markdown"
+    return None
+
+
+def markdown(name: str, facts: Facts, result: str) -> str:
+    """The summary of the check run under a hidden marker that names the check, a title and a
+    line that names the commit, without a final newline."""
+    head = (
+        f"<!-- prepush-ci:{name} -->\n"
+        f"### {name}: {title(result, facts.counts)}\n"
+        f"Commit {facts.sha}\n\n"
+    )
+    return (head + summary(facts)).rstrip("\n")
+
+
 def status_description(facts: Facts) -> str:
     parts = [] if facts.counts is None else [facts.counts.line()]
     if facts.coverage is not None:

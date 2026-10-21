@@ -1,4 +1,5 @@
-"""`prepush-ci report`: post the result of a run of the check as a check run or a commit status."""
+"""`prepush-ci report`: post the result of a run of the check as a check run or a commit status, or
+print it as Markdown."""
 
 import platform
 import sys
@@ -41,14 +42,15 @@ class Options:
     coverage: str | None
     ruff: tuple[str, ...] = ()
     mypy: tuple[str, ...] = ()
+    markdown: bool = False
 
 
 MAX_MESSAGE = 500
 
 
 def run(options: Options, env: Mapping[str, str], cwd: Path) -> int:
-    """Return 0 when the result was posted, 1 when `report` refused or failed; it prints one line
-    on standard output, or the reason on standard error."""
+    """Return 0 when the result was posted or printed, 1 when `report` refused or failed; it prints
+    one line on standard output (the Markdown with `--markdown`), or the reason on standard error."""
     secrets = [
         secret
         for name in ("GITHUB_TOKEN", "GH_TOKEN", "PREPUSH_CI_APP_KEY")
@@ -109,6 +111,10 @@ def _report(
     failures += _tool_failures(options, cwd, top)
     coverage = None if options.coverage is None else _coverage(options.coverage, cwd)
     facts = replace(facts, counts=counts, coverage=coverage, failures=tuple(failures))
+    if options.markdown:
+        return report.markdown(
+            options.name or report.CHECK_RUN_NAME, facts, options.result
+        )
     where = report.target(_origin(cwd), env)
     credentials = report.credentials(env)
     if isinstance(credentials, AppCredentials):

@@ -490,6 +490,7 @@ def test_help_exits_0_and_lists_every_flag(world: World) -> None:
         "--ruff",
         "--mypy",
         "--start",
+        "--markdown",
     ):
         assert flag in result.stdout
     assert world.api.requests == []
@@ -2478,3 +2479,194 @@ def test_without_an_app_the_final_status_replaces_the_pending_one_with_its_conte
     assert pending["state"] == "pending"
     assert final["state"] == "success"
     assert final["context"] == pending["context"]
+
+
+# --- Report prints the result as Markdown ------------------------------------------------------
+
+
+def markdown(
+    world: World, *args: str, env: dict[str, str | None] | None = None
+) -> "subprocess.CompletedProcess[str]":
+    return world.passed("--markdown", *args, env={} if env is None else env)
+
+
+def test_the_markdown_is_printed_without_a_remote_and_without_credentials(
+    world: World,
+) -> None:
+    world.git(world.repo, "remote", "remove", "origin")
+
+    result = markdown(world)
+
+    assert result.returncode == 0, result.stderr
+    assert world.sha in result.stdout
+    assert "sh scripts/ci" in result.stdout
+    assert result.stderr == ""
+    assert world.api.requests == []
+
+
+def test_the_markdown_sends_no_request_whatever_the_environment_holds(
+    world: World,
+) -> None:
+    result = markdown(world, env={"GITHUB_TOKEN": "tok"})
+
+    assert result.returncode == 0, result.stderr
+    assert world.api.requests == []
+
+
+@needs_openssl
+def test_the_markdown_sends_no_request_even_with_an_app_whose_key_is_bad(
+    world: World,
+) -> None:
+    result = markdown(
+        world, env={"PREPUSH_CI_APP_ID": APP_ID, "PREPUSH_CI_APP_KEY": "not a key"}
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert world.api.requests == []
+
+
+def test_the_markdown_of_a_tree_that_is_not_the_commits_exits_1_with_nothing_printed(
+    world: World,
+) -> None:
+    other = world.tree
+    world.commit("later.txt", "more\n", "a later commit")
+
+    result = world.run("--markdown", "--result", "passed", "--tree", other, env={})
+
+    assert result.returncode == 1
+    assert other in result.stderr and world.tree in result.stderr
+    assert result.stdout == ""
+
+
+def test_the_markdown_reads_the_inputs_of_a_failed_result(
+    world: World, tmp_path: Path
+) -> None:
+    junit = write_junit(
+        tmp_path / "junit.xml",
+        "<testcase classname='a' name='first'><failure message='x'/></testcase>",
+        "<testcase classname='a' name='second'><failure message='y'/></testcase>",
+    )
+
+    result = world.failed("--markdown", "--junit", str(junit), env={})
+
+    assert result.returncode == 0, result.stderr
+    assert "2 failed" in result.stdout
+    assert "first" in result.stdout and "second" in result.stdout
+
+
+def test_the_markdown_refuses_a_missing_input_as_a_post_does(world: World) -> None:
+    result = markdown(world, "--junit", "nowhere.xml")
+
+    assert result.returncode == 1
+    assert "nowhere.xml" in result.stderr
+    assert result.stdout == ""
+
+
+def test_the_markdown_with_a_name_still_needs_a_result(world: World) -> None:
+    result = world.run("--markdown", "--name", "foo", "--tree", world.tree, env={})
+
+    assert result.returncode == 2
+    assert "--result is required" in result.stderr
+    assert result.stdout == ""
+
+
+def test_the_first_line_of_the_markdown_is_the_marker_of_the_default_name(
+    world: World,
+) -> None:
+    result = markdown(world)
+
+    assert result.stdout.splitlines()[0] == "<!-- prepush-ci:prepush-ci / full -->"
+
+
+def test_the_marker_and_the_title_line_hold_a_chosen_name(world: World) -> None:
+    lines = markdown(world, "--name", "prepush-ci / unit").stdout.splitlines()
+
+    assert lines[0] == "<!-- prepush-ci:prepush-ci / unit -->"
+    assert "prepush-ci / unit" in lines[1]
+
+
+def test_the_third_line_of_the_markdown_names_the_commit_it_reports(
+    world: World,
+) -> None:
+    earlier_sha, earlier_tree = world.sha, world.tree
+    world.commit("later.txt", "more\n", "a later commit")
+
+    result = world.run(
+        "--markdown",
+        "--result",
+        "passed",
+        "--tree",
+        earlier_tree,
+        "--commit",
+        earlier_sha,
+        env={},
+    )
+
+    third = result.stdout.splitlines()[2]
+    assert re.search(r"\b[0-9a-f]{40}\b", third)
+    assert earlier_sha in third and world.sha not in third
+
+
+@needs_openssl
+def test_the_markdown_holds_the_summary_that_the_check_run_holds(
+    world: World, tmp_path: Path
+) -> None:
+    junit = write_junit(tmp_path / "junit.xml", *passing(3))
+    coverage = write_coverage(tmp_path / "coverage.json", "94.5")
+    inputs = ("--junit", str(junit), "--coverage", str(coverage), "--duration", "5")
+    posted = world.passed(*inputs, env=world.app_env())
+    assert posted.returncode == 0, posted.stderr
+    output = world.api.check_run()["output"]
+    assert isinstance(output, dict)
+
+    result = markdown(world, *inputs)
+
+    lines = result.stdout.splitlines()
+    assert "3 passed" in lines[1] and "94.5%" in result.stdout
+    assert "\n".join(lines[4:]) == str(output["summary"]).rstrip("\n")
+
+
+def test_the_failures_of_a_red_markdown_come_before_the_table(
+    world: World, tmp_path: Path
+) -> None:
+    mypy = write_mypy(tmp_path / "mypy.txt", mypy_error(7))
+
+    result = world.failed("--markdown", "--mypy", str(mypy), env={})
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.index("x7") < result.stdout.index("| Check |")
+
+
+def test_the_markdown_does_not_combine_with_start(world: World) -> None:
+    result = world.run("--markdown", "--start", "--tree", world.tree, env={})
+
+    assert result.returncode == 2
+    assert "--markdown" in result.stderr and "--start" in result.stderr
+    assert result.stdout == ""
+
+
+def test_a_name_that_closes_the_marker_is_refused_with_the_markdown(
+    world: World,
+) -> None:
+    result = markdown(world, "--name", "a-->b")
+
+    assert result.returncode == 2
+    assert "--name" in result.stderr
+    assert result.stdout == ""
+
+
+def test_a_name_with_a_line_break_is_refused_with_the_markdown(world: World) -> None:
+    result = markdown(world, "--name", "a\nb")
+
+    assert result.returncode == 2
+    assert "--name" in result.stderr
+    assert result.stdout == ""
+
+
+def test_a_name_that_closes_the_marker_is_still_posted_without_the_markdown(
+    world: World,
+) -> None:
+    result = world.passed("--name", "a-->b")
+
+    assert result.returncode == 0, result.stderr
+    assert world.api.status()["context"] == "a-->b"

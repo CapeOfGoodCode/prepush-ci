@@ -32,6 +32,7 @@ from prepush_ci.core.init import CI_CHOICES, ConfigFlags
 from prepush_ci.core.report import (
     STARTED,
     Malformed,
+    markdown_name_problem,
     parse_duration,
     parse_name,
     parse_tool,
@@ -66,6 +67,11 @@ _RESULT_FLAGS = (
 
 def _report_problem(args: argparse.Namespace) -> str | None:
     """Why the flags of `report` do not go together, or None."""
+    if args.markdown:
+        if args.start:
+            return "--markdown cannot be combined with --start"
+        if args.name is not None and (problem := markdown_name_problem(args.name)):
+            return problem
     given = [flag for flag, name in _RESULT_FLAGS if getattr(args, name) is not None]
     if not args.start:
         return (
@@ -206,6 +212,11 @@ def main(argv: list[str] | None = None) -> int:
         help="show the check as in progress instead; --result completes it later",
     )
     report.add_argument(
+        "--markdown",
+        action="store_true",
+        help="print the summary as Markdown instead of posting it; needs no token, app or network",
+    )
+    report.add_argument(
         "--tree",
         required=True,
         help="the full hash of the tree the check ran on; refused when it is not the commit's",
@@ -294,6 +305,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.coverage,
                 tuple(args.ruff or ()),
                 tuple(args.mypy or ()),
+                args.markdown,
             ),
             env,
             Path.cwd(),

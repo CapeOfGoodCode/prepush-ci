@@ -200,6 +200,7 @@ Posts the result of a run of the check for a commit: as a check run when `PREPUS
 ```
 prepush-ci report --result passed|failed --tree TREE [--commit SHA] [--name NAME] [--duration SECONDS] [--tool NAME=VERSION] [--junit FILE] [--coverage FILE] [--ruff FILE] [--mypy FILE]
 prepush-ci report --start --tree TREE [--commit SHA] [--name NAME]
+prepush-ci report --markdown --result passed|failed --tree TREE [--commit SHA] [--name NAME] [--duration SECONDS] [--tool NAME=VERSION] [--junit FILE] [--coverage FILE] [--ruff FILE] [--mypy FILE]
 ```
 
 `--start` shows the check as in progress before it runs (a check run in progress, or a `pending` status without an app); the `--result` report that follows completes that run. With an app, each failing test case of a `--junit` file that names a file and a line, each error of a `--ruff` file (the output of `ruff check --output-format json`) and each error of a `--mypy` file (the output of mypy) becomes an annotation on its line of the check run, and the summary of a failed result lists them first. Run the tools at the top of the worktree: pytest writes the file and line of a test case only with `-o junit_family=xunit1`, and relative to its rootdir.
@@ -208,7 +209,9 @@ prepush-ci report --start --tree TREE [--commit SHA] [--name NAME]
 prepush-ci report --result passed --tree "$(git rev-parse 'HEAD^{tree}')" --junit report.xml --coverage coverage.json
 ```
 
-**Exit status:** 0 means the result was posted, 1 means it refused or failed, 2 means the parser rejected the command line.
+`--markdown` posts nothing: it prints the same summary as Markdown on standard output, for a session that cannot reach the API to put into a comment on the pull request with the tools it has. It needs no token, no app, no `origin` and no network, takes the inputs of `--result`, and does not combine with `--start`. The text starts with a hidden marker `<!-- prepush-ci:NAME -->` that names the check (`NAME` is `--name`, default prepush-ci / full; a name with `--` or a line break is refused), a title line, and a line with the full sha of the commit it reports; whoever posts it finds the comment of that check by the marker and updates it.
+
+**Exit status:** 0 means the result was posted (with `--markdown`, printed), 1 means it refused or failed, 2 means the parser rejected the command line.
 
 ### `app setup`
 

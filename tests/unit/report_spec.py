@@ -30,6 +30,8 @@ from prepush_ci.core.report import (
     jwt,
     jwt_signing_input,
     later_batches_bodies,
+    markdown,
+    markdown_name_problem,
     mypy_failures,
     parse_duration,
     parse_name,
@@ -1145,3 +1147,54 @@ def test_the_completion_of_a_run_is_the_body_of_a_new_run_without_the_commit() -
     assert completion["status"] == "completed"
     assert completion["conclusion"] == "failure"
     assert len(completion["output"]["annotations"]) == 50  # type: ignore[index]
+
+
+# --- The Markdown of a result ---------------------------------------------------------------------
+
+
+def test_the_markdown_starts_with_the_marker_the_title_and_the_commit_then_the_summary() -> (
+    None
+):
+    shown = facts(counts=Counts(passed=3))
+
+    lines = markdown("prepush-ci / unit", shown, "passed").split("\n")
+
+    assert lines[0] == "<!-- prepush-ci:prepush-ci / unit -->"
+    assert "prepush-ci / unit" in lines[1] and "3 passed" in lines[1]
+    assert SHA in lines[2] and lines[3] == ""
+    assert "\n".join(lines[4:]) == summary(shown).rstrip("\n")
+
+
+def test_the_markdown_title_is_passed_or_failed_without_counts() -> None:
+    assert "Passed" in markdown("n", facts(), "passed").split("\n")[1]
+    assert "Failed" in markdown("n", facts(), "failed").split("\n")[1]
+
+
+def test_the_markdown_ends_without_a_newline_so_that_printing_adds_exactly_one() -> (
+    None
+):
+    assert not markdown("n", facts(), "passed").endswith("\n")
+
+
+def test_the_failures_come_before_the_table_in_the_markdown() -> None:
+    shown = facts(failures=(Failure("mypy", "bad type", "a.py", 1),))
+
+    text = markdown("n", shown, "failed")
+
+    assert text.index("bad type") < text.index("| Check |")
+
+
+@pytest.mark.parametrize("name", ["prepush-ci / full", "a - b", "-", "a-"])
+def test_a_name_without_two_hyphens_in_a_row_or_a_line_break_fits_the_marker(
+    name: str,
+) -> None:
+    assert markdown_name_problem(name) is None
+
+
+@pytest.mark.parametrize("name", ["a-->b", "--", "a\nb", "a\rb"])
+def test_a_name_that_would_end_the_marker_early_is_a_problem_that_names_the_flag(
+    name: str,
+) -> None:
+    problem = markdown_name_problem(name)
+
+    assert problem is not None and "--name" in problem and "--markdown" in problem
