@@ -13,4 +13,4 @@
 ## 3. Docs and check
 
 - [x] 3.1 Add one sentence to the reference of `report` in the README and verify with a spec that reads it
-- [ ] 3.2 Run `sh scripts/ci` and verify it passes
+- [x] 3.2 Run `sh scripts/ci` and verify it passes
