@@ -99,6 +99,7 @@ Add a short section to `CLAUDE.md` (or `AGENTS.md`, whichever the repository use
 - What `Prepush-CI: full` means: the commit can only be pushed after the full check passed on it.
 - Never use `--no-verify`. To push session commits from a machine that cannot run the full check, run `prepush-ci strip <base>`; CI then runs normally.
 - Push one branch at a time (pre-commit hooks see only the first ref).
+- After a push of a commit with the trailer to a branch that has a pull request, show the result on it: run `prepush-ci report --markdown --result passed --tree "$(git rev-parse 'HEAD^{tree}')"` and put its output into the one comment of that check. Find the comment whose body holds the marker line `<!-- prepush-ci:` followed by the check's name (the first line of the output) and update it; create a comment only when none holds the marker. Never use `--edit-last`: it edits the last comment of the user, whatever it says. If the branch has no pull request, post nothing.
 
 Also add a sentence to the README for humans: how to opt in locally (`export PREPUSH_CI=full`) and that nothing changes for them otherwise.
 

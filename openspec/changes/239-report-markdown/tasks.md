@@ -7,5 +7,5 @@
 
 ## 2. Tell the agent to post it
 
-- [ ] 2.1 Add the instruction to the list of the documentation step of `SKILL.md` (the section later sessions read), with the command written as an agent runs it, the marker and the ban of `--edit-last`; verify with specs that read the skill, and with "Every command in the skill exists" passing
+- [x] 2.1 Add the instruction to the list of the documentation step of `SKILL.md` (the section later sessions read), with the command written as an agent runs it, the marker and the ban of `--edit-last`; verify with specs that read the skill, and with "Every command in the skill exists" passing
 - [ ] 2.2 Run `sh scripts/ci` and verify it passes

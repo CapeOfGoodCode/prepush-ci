@@ -540,3 +540,48 @@ def test_a_missing_service_fails_the_check_and_the_tests_are_never_skipped_for_i
     step = flat(section("Services and preflight"))
     assert "A missing service must fail the full check, never skip tests" in step
     assert "--require-env" in step and "--preflight" in step
+
+
+# --- The documentation section has every session show its result on the pull request ----------
+
+REPORT_COMMAND = (
+    "`prepush-ci report --markdown --result passed "
+    "--tree \"$(git rev-parse 'HEAD^{tree}')\"`"
+)
+
+
+def test_the_documentation_section_has_the_command_that_prints_the_result_after_a_push() -> (
+    None
+):
+    step = flat(section("Documentation"))
+    assert "after a push" in step.lower()
+    assert "trailer" in step
+    assert REPORT_COMMAND in step
+
+
+def test_the_documentation_section_says_to_post_nothing_without_a_pull_request() -> (
+    None
+):
+    step = flat(section("Documentation"))
+    assert "has no pull request" in step
+    assert "post nothing" in step
+
+
+def test_the_markdown_invocation_of_the_documentation_section_exists(
+    invocations: Any,
+) -> None:
+    assert invocations.problems(REPORT_COMMAND) == []
+    assert REPORT_COMMAND in section("Documentation")
+
+
+def test_the_documentation_section_updates_the_comment_that_holds_the_marker() -> None:
+    step = flat(section("Documentation"))
+    assert "`<!-- prepush-ci:`" in step
+    assert "update it" in step
+    assert "create a comment only when none holds the marker" in step
+
+
+def test_the_documentation_section_bans_edit_last_and_says_why() -> None:
+    step = flat(section("Documentation"))
+    assert "`--edit-last`" in step
+    assert "whatever it says" in step
