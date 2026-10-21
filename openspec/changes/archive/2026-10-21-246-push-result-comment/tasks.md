@@ -13,4 +13,4 @@
 ## 3. The skill proposes the hook
 
 - [x] 3.1 Add the step to `SKILL.md`: explain the hook, ask for the user's yes, add the group to `.claude/settings.json` and keep the `CLAUDE.md` rule as the fallback; the command runs the hook only where `prepush-ci` is installed, and the step tells the user that `uv tool install prepush-ci` turns it on; verify with specs that read the skill, run the command of the group in `sh -c` with and without the tool and with and without `uv` on the `PATH`, and with "Every command in the skill exists" passing
-- [ ] 3.2 Give the new capability `post-push-hook` its Purpose when archiving, run `sh scripts/ci` and verify it passes
+- [x] 3.2 Give the new capability `post-push-hook` its Purpose when archiving, run `sh scripts/ci` and verify it passes
