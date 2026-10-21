@@ -242,6 +242,17 @@ def _junit_root(data: bytes, name: str) -> ET.Element:
     return root
 
 
+def _zero_based_line(line: str | None) -> int | None:
+    """The number in a case's `line` attribute, or None when it is no whole number `int` takes:
+    a value past Python's limit on the digits of an integer (4300) is garbled, not a place."""
+    if line is None or not (line.isascii() and line.isdigit()):
+        return None
+    try:
+        return int(line)
+    except ValueError:
+        return None
+
+
 def junit_failures(data: bytes, name: str, top: str) -> list[Failure]:
     """The failed cases of a JUnit file. A case with a `file` and a `line` sits on that file at
     `line` + 1: pytest writes the line 0-based. Any other case has the text of its name only."""
@@ -252,15 +263,15 @@ def junit_failures(data: bytes, name: str, top: str) -> list[Failure]:
             found = case.find("error")
         if found is None:
             continue
-        file, line = case.get("file"), case.get("line")
-        if file and line is not None and line.isascii() and line.isdigit():
+        file, line = case.get("file"), _zero_based_line(case.get("line"))
+        if file and line is not None:
             text = found.get("message") or (found.text or "").strip()
             failures.append(
                 Failure(
                     "pytest",
                     text or case.get("name", ""),
                     relative_path(file, top),
-                    int(line) + 1,
+                    line + 1,
                 )
             )
         else:
