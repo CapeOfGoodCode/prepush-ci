@@ -267,7 +267,7 @@ def test_a_push_through_pre_commit_is_refused_without_the_tool_and_says_so(
     assert git(pushing, "ls-remote", "origin").stdout == ""
 
 
-def test_pre_commit_shows_the_output_of_the_commit_msg_hook_and_of_no_other(
+def test_pre_commit_shows_the_output_of_both_hooks(
     pushing: Path, env: dict[str, str]
 ) -> None:
     path = pushing / PRE_COMMIT_CONFIG
@@ -281,7 +281,70 @@ def test_pre_commit_shows_the_output_of_the_commit_msg_hook_and_of_no_other(
         for hook in repo_entry["hooks"]
     }
     assert hooks["prepush-ci-commit-msg"]["verbose"] is True
-    assert "verbose" not in hooks["prepush-ci-pre-push"]
+    assert hooks["prepush-ci-pre-push"]["verbose"] is True
+
+
+def test_a_pre_commit_block_without_verbose_on_the_pre_push_hook_is_updated(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    path = pushing / PRE_COMMIT_CONFIG
+    path.write_text("repos:\n  - repo: local\n    hooks: []\n")
+    install(pushing, env, "--hooks", "pre-commit")
+    block = path.read_text()
+    old_block = block.replace(
+        "        always_run: true\n        verbose: true\n",
+        "        always_run: true\n",
+    )
+    assert old_block != block
+    after = (
+        "  - repo: local\n    hooks:\n      - id: mine\n        name: mine\n"
+        "        entry: true\n        language: system\n"
+    )
+    path.write_text(old_block + after)
+
+    result = install(pushing, env, "--hooks", "pre-commit")
+
+    written = path.read_text()
+    assert "updated" in result.stdout
+    assert written == block + after
+
+
+def test_a_push_through_pre_commit_shows_why_the_check_was_not_run(
+    pushing: Path,
+    git: Git,
+    env: dict[str, str],
+    ran: Path,
+    pre_commit_locale: Locale,
+) -> None:
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+    install(pushing, env)
+    pre_commit_install(pushing, env, pre_commit_locale)
+    git(pushing, "add", PRE_COMMIT_CONFIG)
+    commit(pushing, git, pre_commit_locale(env))
+    git(pushing, "push", "origin", "main", env=pre_commit_locale(env))
+    git(
+        pushing,
+        "commit",
+        "-q",
+        "--amend",
+        "-m",
+        "reworded",
+        env={**pre_commit_locale(env), "PREPUSH_CI": "full"},
+    )
+
+    pushed = git(
+        pushing,
+        "push",
+        "--force",
+        "origin",
+        "main",
+        env=pre_commit_locale(env),
+        check=False,
+    )
+
+    assert pushed.returncode == 0, pushed.stderr
+    assert "not run again" in pushed.stdout + pushed.stderr
+    assert lines(ran) == ["ran"]
 
 
 def test_an_existing_pre_commit_hook_runs_on_commit_and_never_on_push(

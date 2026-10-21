@@ -103,11 +103,16 @@ def pre_commit_block(indent: str) -> list[str]:
     """The `local` repo with the two hooks, its list item at `indent`."""
     lines = [BEGIN, "- repo: local", "  hooks:"]
     for hook, extra in (
-        # pre-commit hides the output of a hook that passes, and with it the warning
+        # pre-commit hides the output of a hook that passes, and with it what the hook says
         ("commit-msg", ["stages: [commit-msg]", "verbose: true"]),
         (
             "pre-push",
-            ["stages: [pre-push]", "pass_filenames: false", "always_run: true"],
+            [
+                "stages: [pre-push]",
+                "pass_filenames: false",
+                "always_run: true",
+                "verbose: true",
+            ],
         ),
     ):
         lines += [
