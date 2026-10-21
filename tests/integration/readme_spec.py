@@ -271,6 +271,15 @@ def test_the_entry_of_report_advises_running_mypy_without_pretty() -> None:
     assert "without `--pretty`" in entry
 
 
+def test_the_entry_of_report_says_a_failed_case_sits_on_the_line_its_failure_names() -> (
+    None
+):
+    entry = flat(entries(shipped())["report"])
+
+    assert "on the line its failure text names" in entry
+    assert "begins with the name of the case" in entry
+
+
 # --- PREPUSH_CI ------------------------------------------------------------------------------
 
 

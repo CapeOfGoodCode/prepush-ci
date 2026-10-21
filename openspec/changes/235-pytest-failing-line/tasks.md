@@ -7,10 +7,10 @@
 
 ## 2. The name of the case
 
-- [ ] 2.1 Add specs for "The annotation of a failed case names the case" and make them pass in `annotation`
-- [ ] 2.2 Verify the summary's list of failures is unchanged
+- [x] 2.1 Add specs for "The annotation of a failed case names the case" and make them pass in `annotation`
+- [x] 2.2 Verify the summary's list of failures is unchanged
 
 ## 3. Docs and check
 
-- [ ] 3.1 Add one sentence to the reference of `report` in the README and verify with a spec that reads it
+- [x] 3.1 Add one sentence to the reference of `report` in the README and verify with a spec that reads it
 - [ ] 3.2 Run `sh scripts/ci` and verify it passes
