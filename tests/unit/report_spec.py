@@ -628,6 +628,17 @@ def test_a_failed_case_with_a_file_and_a_line_is_a_failure_on_that_line_plus_one
     ]
 
 
+def test_a_failed_case_with_a_line_too_long_to_read_is_a_failure_without_a_place() -> (
+    None
+):
+    huge = "9" * 4400
+    data = junit(
+        f"<testcase classname='a' name='test_a' file='a.py' line='{huge}'><failure message='x'/></testcase>"
+    )
+
+    assert junit_failures(data, "r.xml", TOP) == [Failure("pytest", "test_a")]
+
+
 def test_a_failed_case_without_a_line_is_a_failure_named_by_the_case_and_without_a_place() -> (
     None
 ):
