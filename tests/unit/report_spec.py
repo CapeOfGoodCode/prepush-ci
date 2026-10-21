@@ -639,6 +639,31 @@ def test_a_failed_case_with_a_line_too_long_to_read_is_a_failure_without_a_place
     assert junit_failures(data, "r.xml", TOP) == [Failure("pytest", "test_a")]
 
 
+@pytest.mark.parametrize("digits", [4299, 4300, 4301])
+def test_a_failed_case_with_a_line_whose_successor_cannot_be_printed_is_reported_without_a_place(
+    digits: int,
+) -> None:
+    data = junit(
+        f"<testcase classname='a' name='test_a' file='a.py' line='{'9' * digits}'>"
+        "<failure message='x'/></testcase>"
+    )
+
+    failures = junit_failures(data, "r.xml", TOP)
+
+    assert failures == [Failure("pytest", "test_a")]
+    assert "test_a" in markdown("n", facts(failures=tuple(failures)), "failed")
+
+
+def test_a_failed_case_with_a_line_of_nine_digits_is_a_failure_on_that_line_plus_one() -> (
+    None
+):
+    data = junit(located("test_a", "a.py", "999999998", "x"))
+
+    assert junit_failures(data, "r.xml", TOP) == [
+        Failure("pytest", "x", "a.py", 999999999)
+    ]
+
+
 def test_a_failed_case_without_a_line_is_a_failure_named_by_the_case_and_without_a_place() -> (
     None
 ):
