@@ -682,6 +682,110 @@ def test_a_failed_case_without_a_line_is_a_failure_named_by_the_case_and_without
     ]
 
 
+def with_text(name: str, file: str, line: str, text: str, message: str = "boom") -> str:
+    """A failed case the way pytest writes it: the message, then the traceback as the text."""
+    return (
+        f"<testcase classname='a' name='{name}' file='{file}' line='{line}'>"
+        f"<failure message='{message}'>{text}</failure></testcase>"
+    )
+
+
+def placed_on(text: str, line: str = "3") -> int | None:
+    data = junit(with_text("test_a", "test_demo.py", line, text))
+    (failure,) = junit_failures(data, "r.xml", TOP)
+    return failure.line
+
+
+def test_a_decorated_test_is_annotated_on_the_line_its_failure_names() -> None:
+    text = "@pytest.mark.parametrize\ndef test_a(n):\n>   assert n\n\ntest_demo.py:7: AssertionError"
+
+    assert placed_on(text) == 7
+
+
+def test_a_failure_raised_by_a_helper_in_the_same_file_is_annotated_on_the_raising_line() -> (
+    None
+):
+    text = "test_demo.py:15: \n    helper()\ntest_demo.py:11: ValueError"
+
+    assert placed_on(text, line="13") == 11
+
+
+def test_a_call_into_another_file_is_annotated_on_the_deepest_frame_in_the_file_of_the_case() -> (
+    None
+):
+    text = "test_demo.py:9: \ntest_demo.py:5: in helper\nhelpers.py:2: ValueError"
+
+    assert placed_on(text, line="7") == 5
+
+
+def test_every_frame_printed_in_the_short_style_gives_the_same_line() -> None:
+    text = "test_demo.py:9: in test_chain\ntest_demo.py:5: in helper\nhelpers.py:2: in boom"
+
+    assert placed_on(text, line="7") == 5
+
+
+def test_a_failure_that_names_only_another_file_stays_on_the_line_plus_one() -> None:
+    assert placed_on("helpers.py:4: ValueError", line="13") == 14
+
+
+def test_a_line_of_code_that_only_looks_like_a_frame_is_no_frame() -> None:
+    assert placed_on("    test_demo.py:9: oops") == 4
+
+
+def test_a_line_that_continues_or_extends_the_name_of_the_file_is_no_frame() -> None:
+    assert (
+        placed_on(
+            "my_test_demo.py:9: oops\ntest_demo.pyc:9: oops\ntest_demo.py:x: oops"
+        )
+        == 4
+    )
+
+
+def test_a_line_number_of_ten_digits_is_no_frame() -> None:
+    text = "test_demo.py:5: in helper\ntest_demo.py:1234567890: boom"
+
+    assert placed_on(text, line="7") == 5
+
+
+def test_a_line_number_too_long_to_read_is_no_frame() -> None:
+    assert placed_on(f"test_demo.py:{'9' * 4400}: boom", line="13") == 14
+
+
+def test_a_line_number_of_0_is_no_frame() -> None:
+    text = "test_demo.py:5: in helper\ntest_demo.py:0: boom"
+
+    assert placed_on(text, line="7") == 5
+
+
+def test_a_line_number_of_000_is_no_frame_either() -> None:
+    text = "test_demo.py:5: in helper\ntest_demo.py:000: boom"
+
+    assert placed_on(text, line="7") == 5
+
+
+def test_the_only_frame_has_the_line_number_0() -> None:
+    assert placed_on("test_demo.py:0: boom", line="7") == 8
+
+
+def test_the_name_of_the_file_of_a_case_is_taken_literally() -> None:
+    data = junit(with_text("t", "a+b.py", "3", "aab.py:9: no\na+b.py:6: yes"))
+
+    (failure,) = junit_failures(data, "r.xml", TOP)
+
+    assert failure.line == 6
+
+
+def test_the_message_is_read_when_the_element_holds_no_text() -> None:
+    data = junit(
+        "<testcase name='t' file='test_demo.py' line='3'>"
+        "<failure message='boom&#10;test_demo.py:8: Boom'/></testcase>"
+    )
+
+    (failure,) = junit_failures(data, "r.xml", TOP)
+
+    assert failure.line == 8
+
+
 def test_a_passing_or_skipped_case_is_no_failure() -> None:
     assert junit_failures(junit(PASSING, SKIPPED), "r.xml", TOP) == []
 

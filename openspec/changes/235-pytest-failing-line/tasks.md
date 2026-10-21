@@ -2,8 +2,8 @@
 
 ## 1. The failing line
 
-- [ ] 1.1 Add specs for the scenarios of "A failed case sits on the line its failure names" and make them pass in `junit_failures`
-- [ ] 1.2 Verify the existing scenarios of "A failed case sits on its line plus one" still pass
+- [x] 1.1 Add specs for the scenarios of "A failed case sits on the line its failure names" and make them pass in `junit_failures`
+- [x] 1.2 Verify the existing scenarios of "A failed case sits on its line plus one" still pass
 
 ## 2. The name of the case
 

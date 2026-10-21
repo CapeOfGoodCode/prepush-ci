@@ -1661,6 +1661,24 @@ def test_a_failing_test_sits_on_its_line_plus_one_with_the_title_pytest(
 
 
 @needs_openssl
+def test_a_decorated_failing_test_sits_on_the_line_its_failure_names(
+    world: World, tmp_path: Path
+) -> None:
+    case = (
+        "<testcase classname='a' name='test_double[1]' file='test_demo.py' line='3'>"
+        "<failure message='assert 2 == 1'>def test_double(n):\n"
+        ">       assert double(n) == n\n\ntest_demo.py:7: AssertionError</failure></testcase>"
+    )
+    junit = write_junit(tmp_path / "r.xml", case)
+
+    result = world.failed("--junit", str(junit), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    (found,) = annotations_of(world)
+    assert found["start_line"] == found["end_line"] == 7
+
+
+@needs_openssl
 def test_a_failing_test_without_a_location_has_no_annotation_and_still_counts_as_failed(
     world: World, tmp_path: Path
 ) -> None:

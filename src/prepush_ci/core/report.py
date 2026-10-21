@@ -256,9 +256,21 @@ def _zero_based_line(line: str | None) -> int | None:
     return int(line)
 
 
+def _failing_line(file: str, text: str) -> int | None:
+    """The line number of the last line of `text` that begins, at its first column, with
+    `<file>:<n>:`: the deepest frame of the traceback in the file of the case. A number of more
+    than nine digits (`int` refuses it past 4300) or a number of 0 is no line of a traceback."""
+    numbers = re.findall(
+        rf"^{re.escape(file)}:([0-9]{{1,9}}):", text, flags=re.MULTILINE
+    )
+    frames = [int(number) for number in numbers if int(number) > 0]
+    return frames[-1] if frames else None
+
+
 def junit_failures(data: bytes, name: str, top: str) -> list[Failure]:
-    """The failed cases of a JUnit file. A case with a `file` and a `line` sits on that file at
-    `line` + 1: pytest writes the line 0-based. Any other case has the text of its name only."""
+    """The failed cases of a JUnit file. A case with a `file` and a `line` sits on that file, on
+    the last line its failure text names in that file (see `_failing_line`), else at `line` + 1:
+    pytest writes the line 0-based. Any other case has the text of its name only."""
     failures = []
     for case in _junit_root(data, name).iter("testcase"):
         found = case.find("failure")
@@ -268,13 +280,13 @@ def junit_failures(data: bytes, name: str, top: str) -> list[Failure]:
             continue
         file, line = case.get("file"), _zero_based_line(case.get("line"))
         if file and line is not None:
-            text = found.get("message") or (found.text or "").strip()
+            message, detail = found.get("message") or "", found.text or ""
             failures.append(
                 Failure(
                     "pytest",
-                    text or case.get("name", ""),
+                    message or detail.strip() or case.get("name", ""),
                     relative_path(file, top),
-                    line + 1,
+                    _failing_line(file, f"{message}\n{detail}") or line + 1,
                 )
             )
         else:
