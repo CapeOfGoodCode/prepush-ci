@@ -17,7 +17,7 @@
 | src/prepush\_ci/core/config\_source.py |       31 |        0 |        8 |        0 |     100% |           |
 | src/prepush\_ci/core/doctor.py         |       92 |        0 |       34 |        0 |     100% |           |
 | src/prepush\_ci/core/doctor\_hooks.py  |       86 |        0 |       34 |        0 |     100% |           |
-| src/prepush\_ci/core/hook\_managers.py |      194 |        0 |       74 |        0 |     100% |           |
+| src/prepush\_ci/core/hook\_managers.py |      203 |        0 |       76 |        0 |     100% |           |
 | src/prepush\_ci/core/init.py           |      187 |        0 |       70 |        0 |     100% |           |
 | src/prepush\_ci/core/install.py        |       54 |        0 |        8 |        0 |     100% |           |
 | src/prepush\_ci/core/pre\_push.py      |       87 |        0 |       30 |        0 |     100% |           |
@@ -44,7 +44,7 @@
 | src/prepush\_ci/strip\_command.py      |      103 |        0 |       38 |        0 |     100% |           |
 | src/prepush\_ci/text\_io.py            |      118 |        0 |        8 |        0 |     100% |           |
 | src/prepush\_ci/verify\_command.py     |       44 |        0 |       12 |        0 |     100% |           |
-| **TOTAL**                              | **3267** |    **0** |  **940** |    **0** | **100%** |           |
+| **TOTAL**                              | **3276** |    **0** |  **942** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
