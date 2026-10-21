@@ -67,6 +67,13 @@ The rulebook for everyone who changes this repository, human or agent. `README.m
 - End-to-end use of the released tool (`uvx` in throwaway repositories) is not part of the suite; terminator does it (`LOOP.md`).
 - **Never weaken a test to make it pass**, never skip one silently. A test that cannot run fails.
 - **Coverage** (branch, gated in `scripts/ci`): `src/prepush_ci/core/` at **100% from `tests/unit` alone** (a branch only an integration test reaches does not count), everything at **100%** overall on Linux (**95%** on Windows, which skips the specs that need the executable bit or an `sh` stub), including code the tests start as a subprocess through git. `core/` does no I/O (a unit spec enforces it). Every `# pragma: no cover` carries a comment saying why.
+- **Windows traps.** The Windows job is the slowest, so a red that only it shows costs a whole round. Before `gh pr ready`, check new code and specs against the traps this suite has already hit:
+  - a subprocess's output is UTF-8 on Windows only when the spec sets `PYTHONIOENCODING=utf-8` for it; otherwise it is the ANSI code page;
+  - a spec that runs an `sh` script or needs the executable bit is `POSIX_ONLY`;
+  - paths and test ids stay short: Windows refuses a path over 260 characters, and a long parameter needs `pytest.param(..., id=...)`;
+  - a printed path is compared in the form the tool prints (`as_posix()`), not with `/` written into the test;
+  - a file that git commits is written with `\n` line endings (`newline="\n"`);
+  - deleting a file that a child process may still hold open tolerates `PermissionError`.
 
 ## Versioning
 
