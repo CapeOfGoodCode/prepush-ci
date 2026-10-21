@@ -215,7 +215,7 @@ The lines `install` writes for a manager SHALL start the tool as `prepush-ci`, f
 - **THEN** the file contains no `scripts/ci` and no `args:` line in the block
 
 ### Requirement: pre-commit entries
-For pre-commit, `install` SHALL add to the end of the `repos:` list a `- repo: local` entry with a hook for the `commit-msg` stage that runs `prepush-ci hook commit-msg` (pre-commit appends the message file) and a hook for the `pre-push` stage that runs `prepush-ci hook pre-push` with `pass_filenames: false` and `always_run: true`. Both hooks SHALL use `language: system`. `repos:` SHALL be a block list; otherwise `install` SHALL exit 1, naming `repos`, and change nothing.
+For pre-commit, `install` SHALL add to the end of the `repos:` list a `- repo: local` entry with a hook for the `commit-msg` stage that runs `prepush-ci hook commit-msg` (pre-commit appends the message file) and a hook for the `pre-push` stage that runs `prepush-ci hook pre-push` with `pass_filenames: false` and `always_run: true`. Both hooks SHALL use `language: system`. `repos:` SHALL be a block list or `[]`; otherwise `install` SHALL exit 1, naming `repos`, and change nothing.
 
 #### Scenario: Trailer written through pre-commit
 - **WHEN** `install` ran for a `.pre-commit-config.yaml` that lists another hook, `pre-commit install` ran, and `git commit -m "add x"` runs with `PREPUSH_CI=full`
@@ -234,8 +234,16 @@ For pre-commit, `install` SHALL add to the end of the `repos:` list a `- repo: l
 - **THEN** the block follows the second repo and precedes `exclude`, with the indentation of the other `- repo:` lines, and both repos and `exclude` are unchanged
 
 #### Scenario: Repos is not a block list
-- **WHEN** `.pre-commit-config.yaml` contains `repos: []` and `install` runs
+- **WHEN** `.pre-commit-config.yaml` contains `repos: [{repo: local}]` and `install` runs
 - **THEN** it exits 1, the message names `repos` and the file has the same contents as before
+
+#### Scenario: Repos is an empty list
+- **WHEN** `.pre-commit-config.yaml` contains `repos: []` and `install` runs, then `pre-commit validate-config` runs on the file
+- **THEN** `install` exits 0, the file has the line `repos:` followed by the block, its entries indented by two spaces, and `pre-commit validate-config` exits 0
+
+#### Scenario: An empty list with a comment
+- **WHEN** `.pre-commit-config.yaml` contains `repos: [] # none` and `install` runs
+- **THEN** `install` exits 0 and the file has the line `repos: # none` followed by the block
 
 ### Requirement: pre-commit installs both hook types
 For pre-commit, `install` SHALL make `default_install_hook_types` contain `commit-msg` and `pre-push`. When the key is absent it SHALL add `default_install_hook_types: [pre-commit, commit-msg, pre-push]` before `repos:`. When it is a one-line flow list or a block list it SHALL append the missing ones and keep the others in order. When it has another form it SHALL exit 1, name the key and change nothing.
