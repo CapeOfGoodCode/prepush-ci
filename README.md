@@ -137,6 +137,16 @@ prepush-ci hook pre-push [GIT_ARGS ...]
 prepush-ci hook pre-push origin
 ```
 
+### `hook post-push`
+
+Puts the result of the check on the pull request after a push. Claude Code runs this hook after each command of an agent, not a person: it reads the payload on standard input, and when the command was a `git push` that landed a commit with the trailer and a recorded pass of the check, it creates or updates the one comment of the check on the pull request of the branch, with the text `report --markdown` prints. In every other case it does nothing. It uses `GITHUB_TOKEN` or `GH_TOKEN` when one is set and sends no credentials otherwise, which is what a Claude Code cloud session needs. The setup skill proposes it.
+
+```
+prepush-ci hook post-push
+```
+
+**Exit status:** always 0, so the agent's command is never blocked; a comment that could not be written costs one line on standard error, and the hook gives up after 15 seconds.
+
 ### `run`
 
 Runs the preflight and the check on `HEAD` as the pre-push hook would. Run it to see why a push is refused.

@@ -70,6 +70,15 @@ def run(options: Options, env: Mapping[str, str], cwd: Path) -> int:
     return 1
 
 
+def passed_markdown(sha: str, tree: str, cwd: Path) -> str:
+    """What `report --markdown --result passed --tree <tree> --commit <sha>` prints, in the
+    repository that contains `cwd`: no result files, the default name."""
+    options = Options("passed", tree, sha, None, None, (), (), None, markdown=True)
+    return _report(
+        options, {}, cwd, []
+    )  # the Markdown reads nothing from the environment
+
+
 def _report(
     options: Options, env: Mapping[str, str], cwd: Path, secrets: list[str]
 ) -> str:
