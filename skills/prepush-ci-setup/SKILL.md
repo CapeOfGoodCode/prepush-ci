@@ -103,7 +103,34 @@ Add a short section to `CLAUDE.md` (or `AGENTS.md`, whichever the repository use
 
 Also add a sentence to the README for humans: how to opt in locally (`export PREPUSH_CI=full`) and that nothing changes for them otherwise.
 
-## 9. Prove it
+## 9. Show the result after every push
+
+The rule above depends on the agent remembering it. A Claude Code hook can do it after every successful `git push`: `prepush-ci hook post-push` runs after each command of the agent and, when the command pushed a commit with the trailer that passed the check, creates or updates the one comment of the check on the pull request of the branch; it does nothing when the branch has none. Tell the user in a sentence what the hook does and ask the user for a yes. Without a yes, change no file; the rule above stays for agents without hooks, and stays when the hook is added.
+
+With the yes, add this group to `hooks.PostToolUse` of `.claude/settings.json`; keep every other setting, and add nothing when a command there already runs `hook post-push`:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=$(uv tool dir --bin 2>/dev/null) && [ -n \"$d\" ] && PATH=\"$d:$PATH\"; command -v prepush-ci >/dev/null 2>&1 && prepush-ci hook post-push || true",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The command is `d=$(uv tool dir --bin 2>/dev/null) && [ -n "$d" ] && PATH="$d:$PATH"; command -v prepush-ci >/dev/null 2>&1 && prepush-ci hook post-push || true`: it puts the directory `uv tool install` uses in front of `PATH` only when `uv` prints one (an empty entry in `PATH` is the current directory, where a cloned repository could plant a `prepush-ci`), runs the hook only when `prepush-ci` is found, and exits 0 whatever happens. The settings file is committed, so every teammate gets the hook, and the hook does nothing until the tool is installed (`uv tool install prepush-ci`): tell the user so. The hook gives up by itself after 15 seconds and always exits 0; the `timeout` is the backstop.
+
+## 10. Prove it
 
 The SessionStart hook did not run for the current session. Then:
 

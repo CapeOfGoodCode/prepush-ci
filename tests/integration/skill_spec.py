@@ -5,6 +5,7 @@ The checks read the file as an agent would: every `prepush-ci` invocation is hel
 invocation is run in a scratch repository.
 """
 
+import json
 import re
 import shlex
 import subprocess
@@ -12,6 +13,8 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 SKILL = Path(__file__).resolve().parents[2] / "skills" / "prepush-ci-setup" / "SKILL.md"
 
@@ -45,6 +48,10 @@ def test_a_command_the_cli_lacks_is_reported_as_unknown(invocations: Any) -> Non
 
 def test_a_nested_command_is_accepted(invocations: Any) -> None:
     assert invocations.problems("Run `prepush-ci hook pre-push`.") == []
+
+
+def test_a_redirection_after_the_name_is_not_a_command(invocations: Any) -> None:
+    assert invocations.problems("Run `command -v prepush-ci >/dev/null 2>&1`.") == []
 
 
 def test_a_command_with_its_options_in_a_fenced_block_is_accepted(
@@ -585,3 +592,158 @@ def test_the_documentation_section_bans_edit_last_and_says_why() -> None:
     step = flat(section("Documentation"))
     assert "`--edit-last`" in step
     assert "whatever it says" in step
+
+
+# --- The hook that shows the result after every push is proposed, never imposed -----------------
+
+HOOK_COMMAND = (
+    'd=$(uv tool dir --bin 2>/dev/null) && [ -n "$d" ] && PATH="$d:$PATH"; '
+    "command -v prepush-ci >/dev/null 2>&1 && prepush-ci hook post-push || true"
+)
+
+
+def hook_group() -> dict[str, Any]:
+    """The group the step shows for `hooks.PostToolUse`, from its JSON block."""
+    block = re.search(r"```json\n(.*?)```", section("Show the result"), re.DOTALL)
+    assert block is not None
+    settings = json.loads(block.group(1))
+    (group,) = settings["hooks"]["PostToolUse"]
+    assert isinstance(group, dict)
+    return group
+
+
+def test_the_hook_step_follows_the_documentation_step() -> None:
+    assert position("Show the result") == position("Documentation") + 1
+
+
+def test_the_hook_step_says_what_the_hook_does_and_asks_for_a_yes() -> None:
+    step = flat(section("Show the result"))
+    assert "after every successful `git push`" in step
+    assert "ask the user for a yes" in step
+    assert "`.claude/settings.json`" in step
+
+
+def test_the_hook_step_changes_no_file_without_the_yes() -> None:
+    step = flat(section("Show the result"))
+    assert "Without a yes, change no file" in step
+
+
+def test_the_rule_of_the_documentation_step_stays_as_the_fallback() -> None:
+    assert REPORT_COMMAND in section("Documentation")
+    step = flat(section("Show the result"))
+    assert "stays for agents without hooks" in step
+
+
+def test_the_hook_step_shows_the_group_for_post_tool_use() -> None:
+    group = hook_group()
+    assert group["matcher"] == "Bash"
+    assert group["hooks"] == [
+        {"type": "command", "command": HOOK_COMMAND, "timeout": 30}
+    ]
+
+
+def test_the_hook_step_keeps_every_other_setting_and_adds_nothing_twice() -> None:
+    step = flat(section("Show the result"))
+    assert "keep every other setting" in step
+    assert "add nothing when a command there already runs `hook post-push`" in step
+
+
+def test_the_invocation_of_the_hook_step_exists(invocations: Any) -> None:
+    step = section("Show the result")
+    assert f"`{HOOK_COMMAND}`" in step
+    assert invocations.problems(step) == []
+
+
+def test_the_hook_step_says_that_uv_tool_install_turns_the_hook_on() -> None:
+    step = flat(section("Show the result"))
+    assert "`uv tool install prepush-ci`" in step
+    assert "does nothing until" in step
+
+
+# --- The command of the hook is silent where the tool is not installed ------------------------
+
+POSIX_ONLY = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the command of the hook is run by /bin/sh, and its stubs are sh scripts",
+)
+PUSH_PAYLOAD = '{"tool_input": {"command": "git push"}}'
+
+
+def stub(path: Path, body: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
+def run_hook_command(
+    tmp_path: Path, *, uv: str | None, tool_dir: Path | None = None
+) -> "subprocess.CompletedProcess[str]":
+    """The command of the skill's group through `sh -c`, with a `PATH` of the stubs alone.
+
+    `uv` is the body of a `uv` stub (none: there is no `uv`); `tool_dir` is the directory
+    `uv tool dir --bin` prints. The working directory holds a `prepush-ci` that a clone could plant.
+    """
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    if uv is not None:
+        stub(bin_dir / "uv", uv.replace("TOOL_DIR", str(tool_dir or "")))
+    work = tmp_path / "work"
+    stub(work / "prepush-ci", "echo PLANTED RAN; exit 9")
+    return subprocess.run(
+        ["/bin/sh", "-c", hook_group()["hooks"][0]["command"]],
+        cwd=work,
+        env={"PATH": str(bin_dir)},
+        input=PUSH_PAYLOAD,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@POSIX_ONLY
+def test_the_tool_is_not_installed_and_the_command_exits_0_and_prints_nothing(
+    tmp_path: Path,
+) -> None:
+    empty = tmp_path / "tools"
+    empty.mkdir()
+    result = run_hook_command(tmp_path, uv='echo "TOOL_DIR"', tool_dir=empty)
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+@POSIX_ONLY
+def test_the_tool_is_installed_and_the_command_runs_it_and_exits_0_whatever_its_status(
+    tmp_path: Path,
+) -> None:
+    tools = tmp_path / "tools"
+    stub(
+        tools / "prepush-ci",
+        'echo "TOOL RAN $*"; read -r payload; echo "$payload"; exit 5',
+    )
+    result = run_hook_command(tmp_path, uv='echo "TOOL_DIR"', tool_dir=tools)
+    assert result.returncode == 0
+    assert result.stdout == f"TOOL RAN hook post-push\n{PUSH_PAYLOAD}\n"
+
+
+@POSIX_ONLY
+def test_uv_is_not_installed_and_the_command_exits_0_and_does_not_run_the_planted_file(
+    tmp_path: Path,
+) -> None:
+    result = run_hook_command(tmp_path, uv=None)
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+@POSIX_ONLY
+def test_uv_prints_no_directory_and_the_command_does_not_run_the_planted_file(
+    tmp_path: Path,
+) -> None:
+    result = run_hook_command(tmp_path, uv="exit 0")
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+@POSIX_ONLY
+def test_uv_fails_and_the_command_does_not_run_the_planted_file(
+    tmp_path: Path,
+) -> None:
+    result = run_hook_command(tmp_path, uv='echo "an error" >&2; exit 1')
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")

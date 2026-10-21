@@ -254,6 +254,7 @@ def pushing_repo(repo: Path, tmp_path: Path, git: Git) -> Path:
 
 NAME = re.compile(r"(?<![\w/.@-])prepush-ci(?![\w/.@:-])")
 OPERATORS = {"|", "||", "&&", ";", "&", ">", ">>", "<", ")"}
+REDIRECTION = re.compile(r"\d*>")
 
 
 def cli(*args: str) -> "subprocess.CompletedProcess[str]":
@@ -314,7 +315,7 @@ def words_after_the_name(line: str) -> list[list[str]]:
             words = rest.split()
         taken: list[str] = []
         for word in words:
-            if word in OPERATORS:
+            if word in OPERATORS or REDIRECTION.match(word):
                 break
             taken.append(word)
         found.append(taken)
