@@ -242,15 +242,18 @@ def _junit_root(data: bytes, name: str) -> ET.Element:
     return root
 
 
+_MAX_LINE_DIGITS = 9
+
+
 def _zero_based_line(line: str | None) -> int | None:
-    """The number in a case's `line` attribute, or None when it is no whole number `int` takes:
-    a value past Python's limit on the digits of an integer (4300) is garbled, not a place."""
+    """The number in a case's `line` attribute, or None when it is no line: not whole digits, or
+    more than 9 of them (the bound of a frame number, #235). A longer value is garbled, and one
+    near Python's limit on the digits of an integer (4300) cannot even be printed after the +1."""
     if line is None or not (line.isascii() and line.isdigit()):
         return None
-    try:
-        return int(line)
-    except ValueError:
+    if len(line) > _MAX_LINE_DIGITS:
         return None
+    return int(line)
 
 
 def junit_failures(data: bytes, name: str, top: str) -> list[Failure]:
