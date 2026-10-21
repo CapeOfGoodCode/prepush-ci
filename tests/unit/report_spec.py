@@ -768,6 +768,17 @@ def test_a_mypy_error_without_a_line_is_a_failure_without_a_place() -> None:
     ]
 
 
+def test_a_mypy_error_with_a_line_too_long_to_read_is_a_failure_without_a_place() -> (
+    None
+):
+    huge = "9" * 4400
+    text = f'src/a.py:{huge}: error: Name "x" is not defined\n{MYPY_FOUND}'
+
+    assert mypy_failures(text, "mypy.txt", TOP) == [
+        Failure("mypy", 'src/a.py: Name "x" is not defined')
+    ]
+
+
 def test_a_mypy_path_that_holds_a_colon_is_read_whole() -> None:
     text = f'src/a:b.py:42: error: Name "x" is not defined\n{MYPY_FOUND}'
 
