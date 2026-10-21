@@ -264,6 +264,12 @@ def test_the_entry_of_app_setup_says_zero_means_created_one_refused_and_two_reje
     assert "2 means the parser rejected the command line" in entry
 
 
+def test_the_entry_of_report_advises_running_mypy_without_pretty() -> None:
+    entry = flat(entries(shipped())["report"])
+
+    assert "without `--pretty`" in entry
+
+
 # --- PREPUSH_CI ------------------------------------------------------------------------------
 
 
