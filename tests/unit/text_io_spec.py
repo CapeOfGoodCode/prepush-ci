@@ -1,4 +1,5 @@
 import io
+import signal
 import sys
 import time
 from pathlib import Path
@@ -275,3 +276,38 @@ def test_a_teed_shell_command_does_not_wait_for_a_process_it_leaves_running(
 
     assert (status, output.strip()) == (0, "1")
     assert time.monotonic() - started < 4  # the child sleeps for 5 seconds
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no SIGHUP")
+def test_a_limited_run_leaves_the_signals_of_its_caller_as_they_were(
+    tmp_path: Path,
+) -> None:
+    before = (signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGHUP))
+
+    text_io.run_limited(
+        [sys.executable, "-c", "pass"], cwd=tmp_path, env={}, seconds=30
+    )
+
+    assert (signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGHUP)) == before
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no SIGHUP")
+def test_a_limited_run_keeps_ignoring_a_signal_its_caller_ignores(
+    tmp_path: Path,
+) -> None:
+    before = signal.signal(signal.SIGHUP, signal.SIG_IGN)
+    try:
+        result = text_io.run_limited(
+            [
+                sys.executable,
+                "-c",
+                "import os, signal; os.kill(os.getppid(), signal.SIGHUP)",
+            ],
+            cwd=tmp_path,
+            env={},
+            seconds=30,
+        )
+    finally:
+        signal.signal(signal.SIGHUP, before)
+
+    assert result == (0, "")

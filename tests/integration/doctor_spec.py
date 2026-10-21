@@ -3,19 +3,83 @@
 import http.server
 import json
 import os
+import shutil
+import signal
 import subprocess
 import sys
 import threading
 import time
 from collections.abc import Callable
+from functools import cache
+from importlib import metadata
 from pathlib import Path
 
 import pytest
+
+from prepush_ci import doctor_command
 
 Git = Callable[..., "subprocess.CompletedProcess[str]"]
 Locale = Callable[..., dict[str, str]]  # `pre_commit_locale`: pre-commit's environment
 
 CONFIG = 'check = "true"\nrequire_up_to_date = false\n'
+
+
+WINDOWS = sys.platform == "win32"
+EXECUTABLE_NAMES = ("", ".exe", ".cmd", ".bat", ".com")
+
+
+@cache
+def own_line() -> str:
+    """The line `prepush-ci --version` prints for the installation the specs run."""
+    done = subprocess.run(
+        [sys.executable, "-m", "prepush_ci", "--version"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return done.stdout.splitlines()[0]
+
+
+def inherited_path() -> str:
+    """The `PATH` the specs run with, without a directory that holds a `prepush-ci` of its own:
+    the executable the hooks find is the one the spec puts first, or none."""
+    directories = os.environ.get("PATH", "").split(os.pathsep)
+    return os.pathsep.join(
+        d
+        for d in directories
+        if not any((Path(d) / f"prepush-ci{n}").exists() for n in EXECUTABLE_NAMES)
+    )
+
+
+def stub_directory(repo: Path) -> Path:
+    return repo.parent / "stub-bin"
+
+
+def put_stub(
+    repo: Path, out: str | None = None, status: int = 0, hang: bool = False
+) -> Path:
+    """A `prepush-ci` in the directory of `stubs` that prints `out` (the line of this installation
+    by default) and exits with `status`, or, with `hang`, writes its process number to `pid` and
+    becomes `sleep`. It writes `ran` when it starts. Returns the executable."""
+    directory = stub_directory(repo)
+    directory.mkdir(exist_ok=True)
+    text = own_line() if out is None else out
+    (directory / "out.txt").write_text(f"{text}\n" if text else "")
+    stub = (
+        directory / "prepush-ci"
+    )  # a script: the sh that runs the hooks runs it on Windows too
+    tail = (
+        'echo $$ > "$here/pid"\nexec sleep 60\n'
+        if hang
+        else f'cat "$here/out.txt"\nexit {status}\n'
+    )
+    stub.write_text(f'#!/bin/sh\nhere=$(dirname "$0")\n: > "$here/ran"\n{tail}')
+    stub.chmod(0o755)
+    return stub
+
+
+def path_with_stub(repo: Path) -> str:
+    return os.pathsep.join([str(stub_directory(repo)), inherited_path()])
 
 
 def doctor(
@@ -24,19 +88,25 @@ def doctor(
     env: dict[str, str] | None = None,
     timeout: float | None = None,
 ) -> "subprocess.CompletedProcess[str]":
-    """Run `prepush-ci doctor` in `repo`, without any `PREPUSH_CI` the developer has set."""
+    """Run `prepush-ci doctor` in `repo`, without any `PREPUSH_CI` the developer has set. Unless
+    `env` gives a `PATH`, the first `prepush-ci` on it prints the line of this installation (the
+    spec of a stub puts another there with `put_stub`)."""
     inherited = {
         k: v
         for k, v in os.environ.items()
         if k != "PREPUSH_CI" and not k.startswith("PRE_COMMIT_")
     }
+    if not (env and "PATH" in env):
+        if not any(stub_directory(repo).glob("prepush-ci*")):
+            put_stub(repo)
+        env = {**(env or {}), "PATH": path_with_stub(repo)}
     return subprocess.run(
         [sys.executable, "-m", "prepush_ci", "doctor", *args],
         cwd=repo,
         capture_output=True,
         text=True,
         check=False,
-        env={**inherited, **(env or {})},
+        env={**inherited, **env},
         timeout=timeout,
     )
 
@@ -1336,3 +1406,408 @@ def test_doctor_reports_a_repository_whose_path_has_a_non_ascii_character_under_
 
     assert "Traceback" not in result.stderr
     assert status(result, "config") == "ok"
+
+
+# The prepush-ci that a manager's hooks find on PATH
+
+
+def set_up_pre_commit(repo: Path) -> None:
+    """A valid config, and `install` and `pre-commit install` ran: both hooks are in place."""
+    (repo / ".prepush-ci.toml").write_text(CONFIG)
+    (repo / ".pre-commit-config.yaml").write_text(PRE_COMMIT_CONFIG)
+    install(repo)
+    activate(repo, repo / ".git" / "hooks", "pre-commit", "commit-msg", "pre-push")
+
+
+def set_up_husky(repo: Path, git: Git) -> None:
+    (repo / ".prepush-ci.toml").write_text(CONFIG)
+    (repo / ".husky").mkdir()
+    install(repo, "--hooks", "husky")
+    git(repo, "config", "core.hooksPath", ".husky/_")
+    activate(repo, repo / ".husky" / "_", "husky", "commit-msg", "pre-push")
+
+
+def shown(path: Path) -> list[str]:
+    """How a report may print `path`: as it is, or with `?` for a character the console lacks."""
+    texts = [str(path), str(path).encode("ascii", "replace").decode()]
+    if WINDOWS:  # the sh of Git for Windows writes `C:\\a\\b` as `/c/a/b`
+        texts.append(f"/{path.drive[0].lower()}{path.as_posix()[2:]}")
+    return texts
+
+
+def names(report: str, path: Path) -> bool:
+    return any(text in report for text in shown(path))
+
+
+def test_the_same_version_on_path_passes_and_the_lines_name_the_executable_and_its_line(
+    repo: Path,
+) -> None:
+    set_up_pre_commit(repo)
+    stub = put_stub(repo)
+
+    result = doctor(repo)
+
+    for name in ("commit-msg", "pre-push"):
+        assert status(result, name) == "ok"
+        assert names(line(result, name), stub)
+        assert own_line() in line(result, name)
+    assert result.returncode == 0, result.stdout
+
+
+def test_an_older_version_on_path_fails_both_hooks_and_the_lines_name_all_three_things(
+    repo: Path,
+) -> None:
+    set_up_pre_commit(repo)
+    stub = put_stub(repo, "prepush-ci 0.0.1")
+
+    result = doctor(repo)
+
+    for name in ("commit-msg", "pre-push"):
+        assert status(result, name) == "fail"
+        assert names(line(result, name), stub)
+        for text in ("prepush-ci 0.0.1", own_line()):
+            assert text in line(result, name)
+        assert "PATH" in fix_after(result, name)
+        assert own_line() in fix_after(result, name)
+    assert result.stdout.splitlines()[-1] == "2 of 6 checks did not pass"
+    assert result.returncode == 1
+
+
+def test_husky_hooks_that_find_an_older_version_fail(repo: Path, git: Git) -> None:
+    set_up_husky(repo, git)
+    put_stub(repo, "prepush-ci 0.0.1")
+
+    result = doctor(repo)
+
+    assert both(result) == ("fail", "fail")
+    assert "prepush-ci 0.0.1" in line(result, "commit-msg")
+    assert "prepush-ci 0.0.1" in line(result, "pre-push")
+
+
+def test_lefthook_hooks_that_find_the_same_version_pass(repo: Path) -> None:
+    (repo / "lefthook.yml").write_text(LEFTHOOK_CONFIG)
+    install(repo, "--hooks", "lefthook")
+    activate(repo, repo / ".git" / "hooks", "lefthook", "commit-msg", "pre-push")
+    stub = put_stub(repo)
+
+    result = doctor(repo)
+
+    assert both(result) == ("ok", "ok")
+    for name in ("commit-msg", "pre-push"):
+        assert names(line(result, name), stub)
+
+
+def put_old_script(directory: Path) -> Path:
+    """A `prepush-ci` in `directory` that prints an older version, and writes `ran` where it ran."""
+    directory.mkdir(exist_ok=True)
+    script = directory / "prepush-ci"
+    script.write_text("#!/bin/sh\n: > ran\necho prepush-ci 0.0.1\n")
+    script.chmod(0o755)
+    return script
+
+
+def test_a_prepush_ci_in_the_repository_root_is_not_the_one_on_path(
+    repo: Path,
+) -> None:
+    set_up_pre_commit(repo)
+    stub = put_stub(repo)
+    put_old_script(repo)
+    (repo / "prepush-ci.cmd").write_text("@echo off\r\necho.> ran\r\n")
+
+    result = doctor(repo)
+
+    assert both(result) == ("ok", "ok")
+    assert names(line(result, "commit-msg"), stub)
+    assert not (repo / "ran").exists()
+
+
+@POSIX_ONLY
+def test_an_empty_entry_of_path_is_the_repository_root(repo: Path) -> None:
+    set_up_pre_commit(repo)
+    put_stub(repo)
+    put_old_script(repo)
+
+    result = doctor(repo, env={"PATH": os.pathsep + path_with_stub(repo)})
+
+    assert both(result) == ("fail", "fail")
+    for name in ("commit-msg", "pre-push"):
+        assert "prepush-ci 0.0.1" in line(result, name)
+
+
+@POSIX_ONLY
+def test_a_relative_entry_of_path_is_relative_to_the_root_from_a_subdirectory(
+    repo: Path,
+) -> None:
+    set_up_pre_commit(repo)
+    put_stub(repo)
+    put_old_script(repo / "tools")
+    (repo / "sub").mkdir()
+
+    result = doctor(
+        repo / "sub", env={"PATH": f"tools{os.pathsep}{path_with_stub(repo)}"}
+    )
+
+    assert both(result) == ("fail", "fail")
+    for name in ("commit-msg", "pre-push"):
+        assert "prepush-ci 0.0.1" in line(result, name)
+        assert "tools/prepush-ci" in line(result, name)
+
+
+def test_a_cmd_file_first_on_path_is_not_what_the_hook_runs(repo: Path) -> None:
+    set_up_pre_commit(repo)
+    stub = put_stub(repo)
+    first = repo.parent / "cmd-bin"
+    first.mkdir()
+    (first / "prepush-ci.cmd").write_text(
+        "@echo off\r\necho.> ran\r\necho prepush-ci 0.0.1\r\n"
+    )
+    (first / "prepush-ci.bat").write_text(
+        "@echo off\r\necho.> ran\r\necho prepush-ci 0.0.1\r\n"
+    )
+
+    result = doctor(repo, env={"PATH": f"{first}{os.pathsep}{path_with_stub(repo)}"})
+
+    assert both(result) == ("ok", "ok")
+    assert names(line(result, "commit-msg"), stub)
+    assert not (first / "ran").exists()
+
+
+def test_no_prepush_ci_on_path_fails_both_hooks_and_names_path(repo: Path) -> None:
+    set_up_pre_commit(repo)
+
+    result = doctor(repo, env={"PATH": inherited_path()})
+
+    assert both(result) == ("fail", "fail")
+    assert "PATH" in line(result, "commit-msg")
+    assert "PATH" in line(result, "pre-push")
+
+
+def test_an_executable_that_fails_cannot_say_its_version(repo: Path) -> None:
+    set_up_pre_commit(repo)
+    stub = put_stub(repo, "prepush-ci 1.0", status=1)
+
+    result = doctor(repo)
+
+    for name in ("commit-msg", "pre-push"):
+        assert status(result, name) == "fail"
+        assert names(line(result, name), stub)
+        assert "could not be read" in line(result, name)
+
+
+def test_an_executable_that_prints_nothing_cannot_say_its_version(repo: Path) -> None:
+    set_up_pre_commit(repo)
+    stub = put_stub(repo, "")
+
+    result = doctor(repo)
+
+    for name in ("commit-msg", "pre-push"):
+        assert status(result, name) == "fail"
+        assert names(line(result, name), stub)
+        assert "could not be read" in line(result, name)
+
+
+@POSIX_ONLY
+def test_an_executable_that_does_not_finish_fails_after_ten_seconds_and_is_ended(
+    repo: Path,
+) -> None:
+    set_up_pre_commit(repo)
+    stub = put_stub(repo, hang=True)
+
+    started = time.monotonic()
+    result = doctor(repo, timeout=60)
+    took = time.monotonic() - started
+
+    assert result.returncode == 1
+    assert 9 < took < 40
+    for name in ("commit-msg", "pre-push"):
+        assert status(result, name) == "fail"
+        assert names(line(result, name), stub)
+        assert "could not be read" in line(result, name)
+    pid = int((stub.parent / "pid").read_text())
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+
+
+@POSIX_ONLY
+@pytest.mark.parametrize("sent", ["SIGINT", "SIGTERM", "SIGHUP"])
+def test_an_interrupted_doctor_ends_the_executable_it_was_waiting_for(
+    repo: Path, sent: str
+) -> None:
+    set_up_pre_commit(repo)
+    stub = put_stub(repo, hang=True)
+    pid_file = stub.parent / "pid"
+    environment = {
+        k: v for k, v in os.environ.items() if not k.startswith("PRE_COMMIT_")
+    }
+    environment["PATH"] = path_with_stub(repo)
+
+    with subprocess.Popen(
+        [sys.executable, "-m", "prepush_ci", "doctor"],
+        cwd=repo,
+        env=environment,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ) as running:
+        deadline = time.monotonic() + 30
+        while not (pid_file.exists() and pid_file.read_text().strip()):
+            assert time.monotonic() < deadline, "the executable never started"
+            time.sleep(0.05)
+        running.send_signal(getattr(signal, sent))
+        running.wait(timeout=30)
+
+    assert running.returncode != 0
+    pid = int(pid_file.read_text())
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+
+
+def test_a_failure_that_is_already_there_stands_and_runs_no_executable(
+    repo: Path,
+) -> None:
+    (repo / ".pre-commit-config.yaml").write_text(PRE_COMMIT_CONFIG)
+    stub = put_stub(repo)
+
+    result = doctor(repo)
+
+    assert both(result) == ("fail", "fail")
+    for name in ("commit-msg", "pre-push"):
+        assert ".pre-commit-config.yaml" in line(result, name)
+        assert not names(line(result, name), stub)
+    assert not (stub.parent / "ran").exists()
+
+
+def test_only_the_complete_hook_of_a_manager_looks_at_path(
+    repo: Path, git: Git
+) -> None:
+    set_up_husky(repo, git)
+    (repo / ".husky" / "pre-push").write_text("#!/bin/sh\nnpm test\n")
+    put_stub(repo, "prepush-ci 0.0.1")
+
+    result = doctor(repo)
+
+    assert both(result) == ("fail", "fail")
+    assert "prepush-ci 0.0.1" in line(result, "commit-msg")
+    assert ".husky/pre-push" in line(result, "pre-push")
+
+
+def test_native_hooks_do_not_look_at_path(repo: Path) -> None:
+    install(repo)
+
+    result = doctor(repo, env={"PATH": inherited_path()})
+
+    assert both(result) == ("ok", "ok")
+
+
+def test_no_local_hooks_wanted_runs_no_executable(repo: Path) -> None:
+    (repo / ".pre-commit-config.yaml").write_text(PRE_COMMIT_CONFIG)
+    stub = put_stub(repo)
+
+    result = doctor(repo, "--hooks", "none")
+
+    assert both(result) == ("ok", "ok")
+    for name in ("commit-msg", "pre-push"):
+        assert "no local hooks wanted" in line(result, name)
+    assert not (stub.parent / "ran").exists()
+
+
+# A doctor that cannot read its own version
+
+
+def doctor_from_a_copy(
+    repo: Path, tmp_path: Path, *args: str
+) -> "subprocess.CompletedProcess[str]":
+    """`doctor` run from a copy of the code that is no installed distribution: no `.dist-info`
+    anywhere, the standard library only (`-S`; the tool has no dependencies)."""
+    source = tmp_path / "copy"
+    shutil.copytree(
+        Path(__file__).parents[2] / "src" / "prepush_ci",
+        source / "prepush_ci",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k != "PREPUSH_CI" and not k.startswith("PRE_COMMIT_")
+    }
+    return subprocess.run(
+        [sys.executable, "-I", "-S", "-c", COPY_MAIN, str(source), "doctor", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**env, "PATH": path_with_stub(repo)},
+    )
+
+
+COPY_MAIN = (
+    "import runpy, sys\n"
+    "sys.path.insert(0, sys.argv.pop(1))\n"
+    "sys.argv[0] = 'prepush-ci'\n"
+    "runpy.run_module('prepush_ci', run_name='__main__')\n"
+)
+
+
+def test_a_doctor_that_cannot_read_its_version_fails_both_hooks_of_a_manager_without_a_traceback(
+    repo: Path, tmp_path: Path
+) -> None:
+    set_up_pre_commit(repo)
+    stub = put_stub(repo)
+
+    result = doctor_from_a_copy(repo, tmp_path)
+
+    assert "Traceback" not in result.stderr
+    for name in ("commit-msg", "pre-push"):
+        assert status(result, name) == "fail"
+        assert "its own version" in line(result, name)
+        assert "install" in fix_after(result, name)
+    assert result.stdout.splitlines()[-1] == "2 of 6 checks did not pass"
+    assert result.returncode == 1
+    assert not (stub.parent / "ran").exists()
+
+
+def test_a_doctor_that_cannot_read_its_version_still_checks_native_hooks(
+    repo: Path, tmp_path: Path
+) -> None:
+    install(repo)
+
+    result = doctor_from_a_copy(repo, tmp_path)
+
+    assert "Traceback" not in result.stderr
+    assert both(result) == ("ok", "ok")
+
+
+def test_a_doctor_that_cannot_read_its_version_leaves_an_incomplete_manager_failure_as_it_is(
+    repo: Path, tmp_path: Path
+) -> None:
+    (repo / ".pre-commit-config.yaml").write_text(PRE_COMMIT_CONFIG)
+
+    result = doctor_from_a_copy(repo, tmp_path)
+
+    for name in ("commit-msg", "pre-push"):
+        assert status(result, name) == "fail"
+        assert ".pre-commit-config.yaml" in line(result, name)
+        assert "its own version" not in line(result, name)
+
+
+def test_a_doctor_that_cannot_read_its_version_fails_both_hooks_of_a_manager_in_this_process(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The copy specs above run the code in a child coverage does not measure; this one reaches the
+    same branch in the process that is measured."""
+    set_up_pre_commit(repo)
+    put_stub(repo)
+
+    def unreadable() -> str:
+        raise metadata.PackageNotFoundError("prepush-ci")
+
+    monkeypatch.setattr(doctor_command, "own_version_line", unreadable)
+    env = {k: v for k, v in os.environ.items() if k != "PREPUSH_CI"}
+
+    code = doctor_command.run(repo, {**env, "PATH": path_with_stub(repo)})
+
+    out = capsys.readouterr().out.splitlines()
+    for name in ("commit-msg", "pre-push"):
+        found = [text for text in out if text.startswith(f"fail {name}:")]
+        assert len(found) == 1, out
+        assert "its own version" in found[0]
+    assert code == 1
