@@ -1717,6 +1717,27 @@ def test_a_mypy_error_is_an_annotation_and_a_note_is_none(
 
 
 @needs_openssl
+def test_a_wrapped_mypy_message_is_cut_at_the_end_of_its_first_line(
+    world: World, tmp_path: Path
+) -> None:
+    mypy = tmp_path / "mypy.txt"
+    mypy.write_text(
+        "src/m.py:1:10: error: Incompatible types in assignment (expression has type\n"
+        '"str", variable has type "int")  [assignment]\n'
+        '    x: int = "a"\n'
+        "             ^~~\n"
+        "Found 1 error in 1 file (checked 1 source file)\n"
+    )
+
+    result = world.failed("--mypy", str(mypy), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    (found,) = annotations_of(world)
+    assert (found["path"], found["start_line"]) == ("src/m.py", 1)
+    assert found["message"] == "Incompatible types in assignment (expression has type"
+
+
+@needs_openssl
 @pytest.mark.parametrize("flag", ["--ruff", "--mypy"])
 def test_a_file_that_starts_with_a_byte_order_mark_is_read_as_without_one(
     world: World, tmp_path: Path, flag: str
