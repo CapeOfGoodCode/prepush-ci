@@ -1,23 +1,34 @@
 """The few requests `prepush-ci report` makes to the GitHub API, over `urllib`."""
 
+import contextlib
 import http.client
 import json
+import queue
+import threading
+import time
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from urllib.parse import quote
 
 from prepush_ci import text_io
 from prepush_ci.core.report import ReportError, Repository
 
 TIMEOUT_SECONDS = 30
+PER_PAGE = 100
+SHORTEST_WAIT = 0.001  # a request is never given no time at all
 
 
 class ApiError(ReportError):
-    """The API answered with an error status (`status`), or could not be reached (None)."""
+    """The API answered with an error status (`status`), or could not be reached (None);
+    `timed_out` when it did not answer in time."""
 
-    def __init__(self, message: str, status: int | None) -> None:
+    def __init__(
+        self, message: str, status: int | None, timed_out: bool = False
+    ) -> None:
         super().__init__(message)
         self.status = status
+        self.timed_out = timed_out
 
 
 class _Refuse3xx(urllib.request.HTTPRedirectHandler):
@@ -46,26 +57,28 @@ def _message(body: bytes) -> str:
     return " ".join(str(message).split()) or "(no message)"
 
 
-def send(
-    method: str, api_url: str, path: str, token: str | None, payload: object = None
-) -> bytes:
-    """One request, with no credential when `token` is None; the answer's body, or an `ApiError`
-    naming the status and GitHub's message."""
+def _request(
+    method: str, api_url: str, path: str, token: str | None, payload: object
+) -> urllib.request.Request:
+    return urllib.request.Request(
+        text_io.to_os(api_url + path),
+        data=None if payload is None else text_io.encode(json.dumps(payload)),
+        method=method,
+        headers={
+            **({} if token is None else {"Authorization": f"Bearer {token}"}),
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "prepush-ci",
+            "Content-Type": "application/json",
+        },
+    )
+
+
+@contextlib.contextmanager
+def _api_errors(method: str, path: str) -> Iterator[None]:
+    """Turn what a request can raise into an `ApiError` naming the status and GitHub's message."""
     try:
-        request = urllib.request.Request(
-            text_io.to_os(api_url + path),
-            data=None if payload is None else text_io.encode(json.dumps(payload)),
-            method=method,
-            headers={
-                **({} if token is None else {"Authorization": f"Bearer {token}"}),
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-                "User-Agent": "prepush-ci",
-                "Content-Type": "application/json",
-            },
-        )
-        with _send_request(request, timeout=TIMEOUT_SECONDS) as response:
-            return bytes(response.read())
+        yield
     except urllib.error.HTTPError as error:
         raise ApiError(
             f"{method} {path} answered {error.code}: {_message(error.read())}",
@@ -79,9 +92,28 @@ def send(
             None,
         ) from error
     except (OSError, http.client.HTTPException) as error:
+        timed_out = isinstance(getattr(error, "reason", error), TimeoutError)
         raise ApiError(
-            f"{method} {path}: the request could not be sent ({error})", None
+            f"{method} {path}: the request could not be sent ({error})", None, timed_out
         ) from error
+
+
+def _read(request: urllib.request.Request, timeout: float) -> bytes:
+    with _send_request(request, timeout=timeout) as response:
+        return bytes(response.read())
+
+
+def send(
+    method: str,
+    api_url: str,
+    path: str,
+    token: str | None,
+    payload: object = None,
+) -> bytes:
+    """One request, with no credential when `token` is None, that waits `TIMEOUT_SECONDS` for each
+    step; the answer's body, or an `ApiError` naming the status and GitHub's message."""
+    with _api_errors(method, path):
+        return _read(_request(method, api_url, path, token, payload), TIMEOUT_SECONDS)
 
 
 def _field(body: bytes, name: str, what: str) -> str:
@@ -163,3 +195,81 @@ def installation_token(api_url: str, repository: Repository, app_jwt: str) -> st
         app_jwt,
     )
     return _field(granted, "token", "the access token request")
+
+
+def _unexpected(method: str, path: str) -> ApiError:
+    return ApiError(f"{method} {path}: the answer is not what the API documents", None)
+
+
+class PullRequestClient:
+    """The requests about the pull request of a pushed branch. All of them together end by one
+    deadline: `timeout` bounds each step of a request, not the request, so a server that sends a
+    byte a second would never be given up on."""
+
+    def __init__(
+        self, api_url: str, repository: Repository, token: str | None, seconds: float
+    ) -> None:
+        self._api_url = api_url
+        self._repository = repository
+        self._token = token
+        self._ends = time.monotonic() + seconds
+
+    def _left(self) -> float:
+        return max(self._ends - time.monotonic(), SHORTEST_WAIT)
+
+    def _call(self, method: str, path: str, payload: object = None) -> bytes:
+        """The answer's body, or an `ApiError` (`timed_out`) when the deadline comes first. The
+        request runs in a thread that is left behind when it is given up on."""
+        answers: queue.SimpleQueue[bytes | ApiError] = queue.SimpleQueue()
+        left = self._left()
+
+        def work() -> None:
+            try:
+                with _api_errors(method, path):
+                    request = _request(
+                        method, self._api_url, path, self._token, payload
+                    )
+                    answers.put(_read(request, left))
+            except ApiError as error:
+                answers.put(error)
+
+        threading.Thread(target=work, daemon=True).start()
+        try:
+            answer = answers.get(timeout=left)
+        except queue.Empty:
+            raise ApiError(
+                f"{method} {path}: no answer in time", None, timed_out=True
+            ) from None
+        if isinstance(answer, ApiError):
+            raise answer
+        return answer
+
+    def open_pulls(self, branch: str) -> list[int]:
+        """The numbers of the open pull requests whose head is the branch in the repository itself."""
+        head = quote(f"{self._repository.owner}:{branch}", safe="")
+        path = f"{_repo_path(self._repository)}/pulls?state=open&head={head}&per_page={PER_PAGE}"
+        found = self._call("GET", path)
+        try:
+            return [int(pull["number"]) for pull in json.loads(text_io.decode(found))]
+        except (ValueError, KeyError, TypeError) as error:
+            raise _unexpected("GET", path) from error
+
+    def issue_comments(self, number: int, page: int) -> list[tuple[int, str]]:
+        """One page of the comments of an issue or pull request, as (id, body)."""
+        path = f"{_repo_path(self._repository)}/issues/{number}/comments?per_page={PER_PAGE}&page={page}"
+        found = self._call("GET", path)
+        try:
+            return [
+                (int(comment["id"]), str(comment["body"]))
+                for comment in json.loads(text_io.decode(found))
+            ]
+        except (ValueError, KeyError, TypeError) as error:
+            raise _unexpected("GET", path) from error
+
+    def create_comment(self, number: int, body: str) -> None:
+        path = f"{_repo_path(self._repository)}/issues/{number}/comments"
+        self._call("POST", path, {"body": body})
+
+    def update_comment(self, comment_id: int, body: str) -> None:
+        path = f"{_repo_path(self._repository)}/issues/comments/{comment_id}"
+        self._call("PATCH", path, {"body": body})

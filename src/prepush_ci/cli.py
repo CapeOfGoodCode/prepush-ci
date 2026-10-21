@@ -13,6 +13,7 @@ from prepush_ci import (
     doctor_command,
     init_command,
     install_command,
+    post_push_hook,
     pre_push_hook,
     report_command,
     run_command,
@@ -180,6 +181,11 @@ def main(argv: list[str] | None = None) -> int:
     pre_push.add_argument(
         "git_args", nargs="*", help="the remote name and url git passes"
     )
+    hooks.add_parser(
+        "post-push",
+        help="after a push of a checked commit, put the result on its pull request "
+        "(reads a Claude Code PostToolUse payload on standard input)",
+    )
     strip = commands.add_parser(
         "strip",
         help="remove the trailer from the commits since <base>, so a push needs no check",
@@ -341,6 +347,8 @@ def main(argv: list[str] | None = None) -> int:
         return install_command.run(Path.cwd(), args.hooks)
     if args.command == "hook" and args.hook == "pre-push":
         return pre_push_hook.run(text_io.stdin_text, env, Path.cwd(), args.git_args)
+    if args.command == "hook" and args.hook == "post-push":
+        return post_push_hook.run(text_io.stdin_text, env, Path.cwd())
     if args.command == "hook":
         return commit_msg_hook.run(args.file, env, Path.cwd())
     parser.print_help()
