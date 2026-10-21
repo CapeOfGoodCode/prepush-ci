@@ -3,7 +3,6 @@
 import argparse
 import sys
 from collections.abc import Callable
-from importlib.metadata import version
 from pathlib import Path
 from typing import TypeVar
 
@@ -38,6 +37,7 @@ from prepush_ci.core.report import (
     parse_name,
     parse_tool,
 )
+from prepush_ci.version_line import PrintVersionLine
 
 T = TypeVar("T")
 
@@ -101,7 +101,9 @@ def main(argv: list[str] | None = None) -> int:
         "made by a server",  # not a subparser: argparse could never be allowed to answer for it
     )
     parser.add_argument(
-        "--version", action="version", version=f"%(prog)s {version('prepush-ci')}"
+        "--version",
+        action=PrintVersionLine,
+        help="show program's version number and exit",
     )
     commands = parser.add_subparsers(dest="command")
     hook = commands.add_parser("hook", help="entry points that git hooks call")
