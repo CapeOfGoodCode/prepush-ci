@@ -125,13 +125,12 @@ def pre_commit_block(indent: str) -> list[str]:
     return [f"{indent}{line}" for line in [*lines, END]]
 
 
-def edit_pre_commit(text: str) -> str:
-    """The `.pre-commit-config.yaml` with the block at the end of `repos:` and both hook types
-    installed, the hooks it already had kept at the stages they ran at."""
-    lines, eol = split_lines(text)
-    repos = _find(lines, "repos")
-    if repos is None or not _blank_or_comment(lines[repos][len("repos:") :]):
-        raise Refusal("`repos` must be a block list: `repos:` and `- repo:` entries")
+_EMPTY_REPOS = re.compile(r"repos:\s*\[\s*\]\s*(?:(#.*))?")
+_EMPTY_REPOS_INDENT = 2
+
+
+def _repo_entries(lines: Sequence[str], repos: int) -> tuple[int, int]:
+    """The indent of the entries under the `repos:` line and the index of the last line of them."""
     indent, last = None, repos
     for i in range(repos + 1, len(lines)):
         line = lines[i]
@@ -146,6 +145,23 @@ def edit_pre_commit(text: str) -> str:
         last = i
     if indent is None:
         raise Refusal("`repos` has no entries: add a `- repo:` or remove the key")
+    return indent, last
+
+
+def edit_pre_commit(text: str) -> str:
+    """The `.pre-commit-config.yaml` with the block at the end of `repos:` and both hook types
+    installed, the hooks it already had kept at the stages they ran at."""
+    lines, eol = split_lines(text)
+    repos = _find(lines, "repos")
+    empty = None if repos is None else _EMPTY_REPOS.fullmatch(lines[repos])
+    if repos is not None and empty is not None:
+        # An empty flow list has no entries to move: it becomes a block list for the block.
+        lines[repos] = f"repos: {empty[1]}" if empty[1] else "repos:"
+        indent, last = _EMPTY_REPOS_INDENT, repos
+    elif repos is None or not _blank_or_comment(lines[repos][len("repos:") :]):
+        raise Refusal("`repos` must be a block list: `repos:` and `- repo:` entries")
+    else:
+        indent, last = _repo_entries(lines, repos)
     lines = place_block(lines, pre_commit_block(" " * indent), last + 1)
     before = _with_hook_types(lines)
     if before is not None and _find(lines, _STAGES_KEY) is None:

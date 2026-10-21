@@ -411,13 +411,59 @@ def test_a_pre_commit_config_without_hook_types_gets_all_three_installed(
 def test_a_pre_commit_config_that_is_not_a_block_list_is_refused_and_unchanged(
     pushing: Path, env: dict[str, str]
 ) -> None:
-    (pushing / PRE_COMMIT_CONFIG).write_text("repos: []\n")
+    config = "repos: [{repo: local}]\n"
+    (pushing / PRE_COMMIT_CONFIG).write_text(config)
 
     result = install(pushing, env)
 
     assert result.returncode == 1
     assert "repos" in result.stderr
-    assert (pushing / PRE_COMMIT_CONFIG).read_text() == "repos: []\n"
+    assert (pushing / PRE_COMMIT_CONFIG).read_text() == config
+
+
+def validate_config(
+    repo: Path, env: dict[str, str], pre_commit_locale: Locale
+) -> "subprocess.CompletedProcess[str]":
+    return subprocess.run(
+        [sys.executable, "-m", "pre_commit", "validate-config", PRE_COMMIT_CONFIG],
+        cwd=repo,
+        env=pre_commit_locale(env),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_an_empty_repos_list_is_filled_with_the_block_and_pre_commit_accepts_it(
+    pushing: Path,
+    git: Git,
+    env: dict[str, str],
+    pre_commit_locale: Locale,
+) -> None:
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos: []\n")
+
+    result = install(pushing, env)
+
+    assert result.returncode == 0, result.stderr
+    text = (pushing / PRE_COMMIT_CONFIG).read_text()
+    assert "\nrepos:\n  # prepush-ci: begin\n  - repo: local\n" in text
+    assert validate_config(pushing, env, pre_commit_locale).returncode == 0
+    pre_commit_install(pushing, env, pre_commit_locale)
+    git(pushing, "add", PRE_COMMIT_CONFIG)
+    assert commit(pushing, git, pre_commit_locale(env)).returncode == 0
+    assert TRAILER in body(pushing, git)
+
+
+def test_an_empty_repos_list_with_a_comment_keeps_the_comment_on_the_key(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos: [] # none\n")
+
+    result = install(pushing, env)
+
+    assert result.returncode == 0, result.stderr
+    text = (pushing / PRE_COMMIT_CONFIG).read_text()
+    assert "\nrepos: # none\n  # prepush-ci: begin\n" in text
 
 
 def test_a_pre_commit_install_leaves_git_alone(

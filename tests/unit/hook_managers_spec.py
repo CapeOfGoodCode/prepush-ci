@@ -126,6 +126,33 @@ def test_the_pre_commit_hooks_name_their_stages_and_call_the_tool_from_path() ->
     assert "args" not in block
 
 
+def test_an_empty_repos_list_becomes_a_block_list_that_holds_the_block() -> None:
+    text = edit_pre_commit("repos: []\n")
+
+    lines = text.splitlines()
+    assert lines[lines.index("repos:") + 1 :][:2] == [f"  {BEGIN}", "  - repo: local"]
+    assert lines[-1] == f"  {END}"
+    assert "[]" not in text.replace("hooks: []", "")
+
+
+@pytest.mark.parametrize("empty", ["repos: [] # none", "repos:   [ ]   # none"])
+def test_an_empty_repos_list_with_a_comment_keeps_the_comment_on_the_key(
+    empty: str,
+) -> None:
+    lines = edit_pre_commit(f"{empty}\n").splitlines()
+
+    assert lines[lines.index("repos: # none") + 1] == f"  {BEGIN}"
+
+
+def test_an_empty_repos_list_keeps_the_keys_around_it() -> None:
+    text = edit_pre_commit("fail_fast: true\nrepos: []\n\n# keep\nexclude: x\n")
+
+    lines = text.splitlines()
+    assert lines[0] == "fail_fast: true"
+    assert text.index("repos:") < text.index(END) < text.index("# keep")
+    assert lines[-1] == "exclude: x"
+
+
 def test_comments_and_blank_lines_after_the_last_repo_stay_after_the_block() -> None:
     text = edit_pre_commit(TWO_REPOS + "\n# keep\nfail_fast: true\n")
 
@@ -239,7 +266,13 @@ def test_a_pre_commit_file_keeps_its_crlf_line_ends() -> None:
 
 @pytest.mark.parametrize(
     "config",
-    ["repos: []\n", "repos: [{repo: local}]\n", "hooks: []\n", ""],
+    [
+        "repos: [{repo: local}]\n",
+        "repos: [ {repo: local} ]\n",
+        "repos: [] x\n",
+        "hooks: []\n",
+        "",
+    ],
 )
 def test_repos_that_is_not_a_block_list_is_refused(config: str) -> None:
     with pytest.raises(Refusal, match="repos"):
