@@ -345,6 +345,17 @@ _MYPY_SUMMARY = re.compile(
 )
 
 
+def _mypy_line(line: str | None) -> int | None:
+    """The line of an error, or None when it has none or `int` cannot take it: a value past
+    Python's limit on the digits of an integer (4300) is garbled, not a place."""
+    if line is None:
+        return None
+    try:
+        return max(int(line), 1)
+    except ValueError:
+        return None
+
+
 def mypy_failures(text: str, name: str, top: str) -> list[Failure]:
     """The `error:` lines of the output of mypy; its `note:` lines are context. An error with no
     line is a failure without a place."""
@@ -358,7 +369,8 @@ def mypy_failures(text: str, name: str, top: str) -> list[Failure]:
         found = _MYPY_ERROR.fullmatch(line)
         if found is None:
             continue
-        if found["line"] is None:
+        place = _mypy_line(found["line"])
+        if place is None:
             failures.append(Failure("mypy", f"{found['path']}: {found['message']}"))
         else:
             failures.append(
@@ -366,7 +378,7 @@ def mypy_failures(text: str, name: str, top: str) -> list[Failure]:
                     "mypy",
                     found["message"],
                     relative_path(found["path"], top),
-                    max(int(found["line"]), 1),
+                    place,
                 )
             )
     return failures
