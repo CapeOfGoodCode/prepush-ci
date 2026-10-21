@@ -7,5 +7,5 @@
 
 ## 2. Pin the second run
 
-- [ ] 2.1 Add an integration spec: `init` refused by `install`, the file fixed, `init` again without `--check`; verify the second run exits 0, `.prepush-ci.toml` has the same contents and modification time, the block is in the file, `.claude/hooks/session-start.sh` exists, and `.claude/settings.json` registers the script in `hooks.SessionStart`
+- [x] 2.1 Add an integration spec: `init` refused by `install`, the file fixed, `init` again without `--check`; verify the second run exits 0, `.prepush-ci.toml` has the same contents and modification time, the block is in the file, `.claude/hooks/session-start.sh` exists, and `.claude/settings.json` registers the script in `hooks.SessionStart`
 - [ ] 2.2 Run `sh scripts/ci` and verify it passes
