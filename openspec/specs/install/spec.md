@@ -505,13 +505,6 @@ When `prepush-ci` is not found on `PATH`, the `pre-push` entry that `install` wr
 - **WHEN** `install --hooks husky` ran, `.husky/pre-push` has a later line that writes a marker file, `prepush-ci` is not on `PATH`, and `sh .husky/pre-push origin <url>` runs with a ref line on standard input
 - **THEN** it exits non-zero, standard error contains `not on PATH` and `cannot be checked`, and the marker file does not exist
 
-### Requirement: pre-commit shows the warning of its commit-msg hook
-The `commit-msg` hook that `install` adds to `.pre-commit-config.yaml` SHALL set `verbose: true`, because pre-commit hides the output of a hook that passes, and the warning of the previous requirement would never be seen.
-
-#### Scenario: The setting is written
-- **WHEN** `install` runs for pre-commit
-- **THEN** the `commit-msg` hook of the block holds `verbose: true` and the `pre-push` hook does not
-
 ### Requirement: A block of an earlier version gets the guard
 When a manager's file holds a block from a version of `install` that did not handle a missing tool, `install` SHALL replace it as "Manager installs are idempotent" says, print `updated`, and leave the lines outside the block as they were.
 
@@ -540,3 +533,18 @@ When the operating system refuses a write while `install` edits the files of a m
 #### Scenario: Rerun after the fix
 - **WHEN** a refused write left `.husky/pre-push` read-only, the user makes it writable, and `install --hooks husky` runs again
 - **THEN** it exits 0, prints `installed`, and both files hold the block
+
+### Requirement: pre-commit shows the messages of its hooks
+Both hooks that `install` adds to `.pre-commit-config.yaml` SHALL set `verbose: true`, because pre-commit hides the output of a hook that passes, and neither the warning of the `commit-msg` hook nor what the `pre-push` hook says about a reused or unshared result would be seen.
+
+#### Scenario: The setting is written
+- **WHEN** `install` runs for pre-commit
+- **THEN** the `commit-msg` hook and the `pre-push` hook of the block both hold `verbose: true`
+
+#### Scenario: A block of an earlier version gets it
+- **WHEN** the block in `.pre-commit-config.yaml` has a `pre-push` hook without `verbose: true`, a hook of the user follows it, and `install` runs
+- **THEN** it prints `updated`, the `pre-push` hook of the block holds `verbose: true` and the lines outside the block are as they were
+
+#### Scenario: A push shows why the check was not run
+- **WHEN** `install` and `pre-commit install` ran, the check passed on a tree, and an amended commit of that tree with the trailer is pushed
+- **THEN** the push succeeds and its output contains `not run again`
