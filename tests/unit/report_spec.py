@@ -624,7 +624,7 @@ def test_a_failed_case_with_a_file_and_a_line_is_a_failure_on_that_line_plus_one
     data = junit(located("test_a", "tests/a_spec.py", "117", "assert 1 == 2"))
 
     assert junit_failures(data, "r.xml", TOP) == [
-        Failure("pytest", "assert 1 == 2", "tests/a_spec.py", 118)
+        Failure("pytest", "assert 1 == 2", "tests/a_spec.py", 118, "test_a")
     ]
 
 
@@ -660,7 +660,7 @@ def test_a_failed_case_with_a_line_of_nine_digits_is_a_failure_on_that_line_plus
     data = junit(located("test_a", "a.py", "999999998", "x"))
 
     assert junit_failures(data, "r.xml", TOP) == [
-        Failure("pytest", "x", "a.py", 999999999)
+        Failure("pytest", "x", "a.py", 999999999, case="test_a")
     ]
 
 
@@ -799,8 +799,8 @@ def test_the_message_of_a_failed_case_falls_back_to_the_text_of_its_element_and_
     )
 
     assert junit_failures(data, "r.xml", TOP) == [
-        Failure("pytest", "detail", "a.py", 1),
-        Failure("pytest", "t2", "a.py", 1),
+        Failure("pytest", "detail", "a.py", 1, "t1"),
+        Failure("pytest", "t2", "a.py", 1, "t2"),
     ]
 
 
@@ -1022,6 +1022,37 @@ def test_an_annotation_sits_on_its_line_with_the_tool_as_title() -> None:
         "title": "mypy",
         "message": "bad  [code]",
     }
+
+
+def test_the_annotation_of_a_failed_case_begins_with_the_name_of_the_case() -> None:
+    first, second = annotations(
+        junit_failures(
+            junit(
+                located("test_double[1]", "a.py", "3", "assert 2 == 1"),
+                located("test_double[2]", "a.py", "3", "assert 4 == 2"),
+            ),
+            "r.xml",
+            TOP,
+        )
+    )
+
+    assert first["message"] == "test_double[1]\nassert 2 == 1"
+    assert second["message"] == "test_double[2]\nassert 4 == 2"
+    assert first["title"] == second["title"] == "pytest"
+
+
+def test_the_list_of_failures_keeps_the_message_of_the_case_without_its_name() -> None:
+    (failure,) = junit_failures(
+        junit(located("test_a", "a.py", "3", "AssertionError: assert a == b")),
+        "r.xml",
+        TOP,
+    )
+
+    text = summary(facts(failures=(failure,)))
+
+    assert "` AssertionError: assert a == b `" in text
+    assert "test_a" not in text
+    assert str(annotation(failure)["message"]).startswith("test_a")
 
 
 def test_an_annotation_message_is_cut_below_what_github_accepts() -> None:

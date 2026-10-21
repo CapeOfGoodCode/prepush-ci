@@ -222,12 +222,14 @@ def count_junit(data: bytes, name: str) -> Counts:
 @dataclass(frozen=True)
 class Failure:
     """One failure the files report: a failed test case, a ruff error or a mypy error. `path` and
-    `line` (1-based, relative to the top of the worktree) are None for a case with no location."""
+    `line` (1-based, relative to the top of the worktree) are None for a case with no location.
+    `case` is the name of the test case, which its annotation begins with."""
 
     tool: str
     text: str
     path: str | None = None
     line: int | None = None
+    case: str = ""
 
 
 def _junit_root(data: bytes, name: str) -> ET.Element:
@@ -287,6 +289,7 @@ def junit_failures(data: bytes, name: str, top: str) -> list[Failure]:
                     message or detail.strip() or case.get("name", ""),
                     relative_path(file, top),
                     _failing_line(file, f"{message}\n{detail}") or line + 1,
+                    case.get("name", ""),
                 )
             )
         else:
@@ -469,14 +472,16 @@ MAX_ANNOTATION_MESSAGE = 32_000
 
 
 def annotation(failure: Failure) -> dict[str, object]:
-    """The annotation of a failure that has a place; the message is cut far below GitHub's 64 KB."""
+    """The annotation of a failure that has a place; the message, which begins with the name of a
+    test case, is cut far below GitHub's 64 KB."""
+    text = f"{failure.case}\n{failure.text}" if failure.case else failure.text
     return {
         "path": failure.path,
         "start_line": failure.line,
         "end_line": failure.line,
         "annotation_level": "failure",
         "title": failure.tool,
-        "message": failure.text[:MAX_ANNOTATION_MESSAGE],
+        "message": text[:MAX_ANNOTATION_MESSAGE],
     }
 
 

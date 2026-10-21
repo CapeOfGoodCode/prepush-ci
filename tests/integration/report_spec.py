@@ -1655,7 +1655,7 @@ def test_a_failing_test_sits_on_its_line_plus_one_with_the_title_pytest(
             "end_line": 118,
             "annotation_level": "failure",
             "title": "pytest",
-            "message": "assert 1 == 2",
+            "message": "test_a\nassert 1 == 2",
         }
     ]
 
@@ -1676,6 +1676,26 @@ def test_a_decorated_failing_test_sits_on_the_line_its_failure_names(
     assert result.returncode == 0, result.stderr
     (found,) = annotations_of(world)
     assert found["start_line"] == found["end_line"] == 7
+
+
+@needs_openssl
+def test_the_cases_of_a_parametrized_test_are_told_apart_by_their_names(
+    world: World, tmp_path: Path
+) -> None:
+    cases = [
+        f"<testcase classname='a' name='test_double[{n}]' file='test_demo.py' line='3'>"
+        f"<failure message='assert {2 * n} == {n}'/></testcase>"
+        for n in (1, 2)
+    ]
+    junit = write_junit(tmp_path / "r.xml", *cases)
+
+    result = world.failed("--junit", str(junit), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    assert [(a["title"], a["message"]) for a in annotations_of(world)] == [
+        ("pytest", "test_double[1]\nassert 2 == 1"),
+        ("pytest", "test_double[2]\nassert 4 == 2"),
+    ]
 
 
 @needs_openssl
