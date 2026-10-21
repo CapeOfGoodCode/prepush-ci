@@ -20,6 +20,7 @@ import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from importlib import resources
+from importlib.metadata import Distribution
 from pathlib import Path
 
 CODEC = "utf-8"
@@ -132,6 +133,16 @@ def create_private(path: Path, text: str) -> None:
 def packaged_text(package: str, *parts: str) -> str:
     """The text of a file shipped inside `package`."""
     return _universal(decode(resources.files(package).joinpath(*parts).read_bytes()))
+
+
+def metadata_text(distribution: Distribution, name: str) -> str | None:
+    """The text of a file of an installed distribution (`distribution.read_text` decodes it as
+    UTF-8); None when there is no such file, its bytes are no UTF-8 or the disk cannot read it (a
+    symlink loop, an I/O error: `read_text` itself only swallows the common refusals)."""
+    try:
+        return distribution.read_text(name)
+    except (ValueError, OSError):  # UnicodeDecodeError, ELOOP, EIO
+        return None
 
 
 # --- Subprocesses ----------------------------------------------------------------------------------
