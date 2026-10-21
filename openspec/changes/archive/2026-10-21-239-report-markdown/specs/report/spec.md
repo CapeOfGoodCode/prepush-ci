@@ -205,7 +205,7 @@ Without `--markdown` and without an app, `report` SHALL create a commit status f
 - **THEN** the description holds the first 7 characters of the tree and `reported from a session`, and no counts
 
 ### Requirement: The final report completes the run in progress
-With an app and without `--markdown`, `report --result` SHALL look up the check runs of the commit's sha with the name of the run, the status `in_progress` and the app's id (`GET /repos/<owner>/<repo>/commits/<sha>/check-runs?check_name=<name>&status=in_progress&app_id=<id>`). When it finds one it SHALL complete that run with `PATCH /repos/<owner>/<repo>/check-runs/<id>` and create no other. When it finds none it SHALL create the check run as before. When several are found it SHALL complete the one with the highest id.
+With an app and without `--markdown`, `report --result` SHALL look up the check runs of the sha with the run's name, the status `in_progress` and the app's id (`GET /repos/<owner>/<repo>/commits/<sha>/check-runs?check_name=<name>&status=in_progress&app_id=<id>`). When it finds one it SHALL complete that run with `PATCH /repos/<owner>/<repo>/check-runs/<id>` and create no other. When it finds none it SHALL create the check run. When several are found it SHALL complete the one with the highest id.
 
 #### Scenario: The started run is completed
 - **WHEN** `report --start` and then `report --result passed` run for the same commit with an app
