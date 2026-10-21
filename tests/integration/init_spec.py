@@ -424,6 +424,26 @@ def test_a_second_run_with_a_manager_file_leaves_it_alone(repo: Path) -> None:
     assert snapshot(repo) == before
 
 
+def test_a_second_run_after_a_refused_install_finishes_the_setup(repo: Path) -> None:
+    manager = repo / ".pre-commit-config.yaml"
+    manager.write_text("repos: [{repo: local}]\n")
+    first = init(repo, "--non-interactive", "--check", "scripts/ci")
+    assert first.returncode == 1
+    config = repo / ".prepush-ci.toml"
+    written = (config.read_bytes(), config.stat().st_mtime_ns)
+    manager.write_text("repos:\n  - repo: local\n    hooks: []\n")
+
+    second = init(repo, "--non-interactive")
+
+    assert second.returncode == 0, second.stderr
+    assert (config.read_bytes(), config.stat().st_mtime_ns) == written
+    assert "prepush-ci: begin" in manager.read_text()
+    assert (repo / ".claude" / "hooks" / "session-start.sh").is_file()
+    registered = json.loads((repo / ".claude" / "settings.json").read_text())
+    command = registered["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+    assert ".claude/hooks/session-start.sh" in command
+
+
 POSIX_ONLY = pytest.mark.skipif(
     sys.platform == "win32",
     reason="the SessionStart script is a sh script for the Linux container of Claude Code on "
