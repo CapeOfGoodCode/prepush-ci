@@ -1,10 +1,12 @@
 from dataclasses import replace
 
+from prepush_ci.core import doctor_hooks
+from prepush_ci.core.doctor import Check
 from prepush_ci.core.doctor_hooks import (
+    Binary,
     ManagerFacts,
     NativeFacts,
     Script,
-    manager_check,
     native_check,
     none_check,
     refusal_check,
@@ -104,6 +106,15 @@ def manager(name: str = "pre-commit", **changes: object) -> ManagerFacts:
         installed=Script(exists=True, executable=True, content=f"# run {name}\n"),
     )
     return replace(facts, **changes)  # type: ignore[arg-type]
+
+
+OWN = "prepush-ci 0.2.0 (git abcdef0)"
+FOUND = "/usr/local/bin/prepush-ci"
+SAME = Binary(FOUND, OWN)
+
+
+def manager_check(hook: str, facts: ManagerFacts, binary: Binary = SAME) -> Check:
+    return doctor_hooks.manager_check(hook, facts, OWN, lambda: binary)
 
 
 def test_a_manager_with_its_block_and_its_activation_passes() -> None:
@@ -208,3 +219,104 @@ def test_a_husky_hook_that_is_missing_or_not_executable_fails() -> None:
     assert ".husky/_/pre-push" in missing.text and "does not exist" in missing.text
     assert plain.status == "fail"
     assert "not executable" in plain.text
+
+
+# The prepush-ci the hooks find on PATH
+
+
+def test_the_same_version_on_path_passes_and_the_line_names_the_executable_and_its_line() -> (
+    None
+):
+    check = manager_check("pre-push", manager(), Binary(FOUND, OWN))
+
+    assert check.status == "ok"
+    assert FOUND in check.text and OWN in check.text
+
+
+def test_another_version_on_path_fails_and_names_the_executable_both_lines_and_path() -> (
+    None
+):
+    check = manager_check("pre-push", manager(), Binary(FOUND, "prepush-ci 0.0.1"))
+
+    assert check.status == "fail"
+    assert (
+        FOUND in check.text and "prepush-ci 0.0.1" in check.text and OWN in check.text
+    )
+    assert check.fix is not None and "PATH" in check.fix and OWN in check.fix
+
+
+def test_the_whole_line_is_compared_not_the_version_number() -> None:
+    check = manager_check(
+        "pre-push", manager(), Binary(FOUND, "prepush-ci 0.2.0 (direct install)")
+    )
+
+    assert check.status == "fail"
+
+
+def test_no_executable_on_path_fails_and_names_path() -> None:
+    check = manager_check("pre-push", manager(), Binary(None))
+
+    assert check.status == "fail"
+    assert "PATH" in check.text
+    assert check.fix is not None and "PATH" in check.fix and OWN in check.fix
+
+
+def test_an_executable_whose_version_was_not_read_fails_with_its_path_and_the_reason() -> (
+    None
+):
+    for why in ("it exited with status 1", "it printed nothing"):
+        check = manager_check("pre-push", manager(), Binary(FOUND, None, why))
+
+        assert check.status == "fail"
+        assert FOUND in check.text and "could not be read" in check.text
+        assert why in check.text
+        assert check.fix is not None and "PATH" in check.fix and OWN in check.fix
+
+
+def test_the_executable_is_looked_up_only_for_a_check_that_passes_everything_else() -> (
+    None
+):
+    looked: list[str] = []
+
+    def binary() -> Binary:
+        looked.append("looked")
+        return Binary(FOUND, OWN)
+
+    broken = manager(content=None)
+    doctor_hooks.manager_check("pre-push", broken, OWN, binary)
+    doctor_hooks.manager_check("pre-push", manager(), OWN, binary)
+
+    assert looked == ["looked"]
+
+
+def test_the_fix_of_a_failure_that_is_already_there_is_not_changed_by_the_executable() -> (
+    None
+):
+    check = manager_check("pre-push", manager(content=None), Binary(None))
+
+    assert check.fix is not None and check.fix.startswith("run `prepush-ci install`;")
+    assert "PATH" not in check.text
+
+
+def test_a_manager_whose_doctor_cannot_read_its_own_version_fails_without_running_the_executable() -> (
+    None
+):
+    def never() -> Binary:
+        raise AssertionError("the executable was run")
+
+    check = doctor_hooks.manager_check("pre-push", manager(), None, never)
+
+    assert check.status == "fail"
+    assert "its own version" in check.text
+    assert check.fix is not None and "install" in check.fix
+
+
+def test_a_failure_that_is_already_there_stands_when_doctor_cannot_read_its_own_version() -> (
+    None
+):
+    check = doctor_hooks.manager_check(
+        "pre-push", manager(content=None), None, lambda: SAME
+    )
+
+    assert check.status == "fail"
+    assert "its own version" not in check.text

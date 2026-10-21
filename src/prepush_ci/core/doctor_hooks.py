@@ -1,6 +1,6 @@
 """The `commit-msg` and `pre-push` checks of `prepush-ci doctor`: would git run our hooks?"""
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from prepush_ci.core.doctor import Check, fail, ok
@@ -55,6 +55,17 @@ class ManagerFacts:
     installed: Script  # the hook of this name in `hooks_directory`
 
 
+@dataclass(frozen=True)
+class Binary:
+    """The `prepush-ci` a manager's hooks find on `PATH`, and what it answered to `--version`."""
+
+    path: str | None  # where it is; None when `PATH` holds none
+    line: str | None = (
+        None  # the first line it printed; None when its version was not read
+    )
+    why: str = ""  # why the version was not read: "it printed nothing", "it exited with status 1"
+
+
 def none_check(hook: str) -> Check:
     return ok(hook, "no local hooks wanted (`--hooks none`)")
 
@@ -89,15 +100,44 @@ def native_check(hook: str, facts: NativeFacts) -> Check:
     return ok(hook, f"{facts.directory}/{hook} runs {facts.interpreter}")
 
 
-def manager_check(hook: str, facts: ManagerFacts) -> Check:
-    """Whether the manager's file has our block for `hook` and git would run the manager."""
+def manager_check(
+    hook: str, facts: ManagerFacts, own: str | None, binary: Callable[[], Binary]
+) -> Check:
+    """Whether the manager's file has our block for `hook`, git would run the manager, and the
+    manager finds the `prepush-ci` whose `--version` line is `own` (None when doctor cannot read
+    its own). `binary` looks it up and runs it; it is called only for a check that has passed
+    everything else."""
     problem = _manager_problem(hook, facts)
     if problem is None:
-        return ok(hook, f"{facts.file} has the block and {facts.manager} is activated")
+        if own is None:
+            set_up = f"{facts.file} has the block and {facts.manager} is activated"
+            text = f"{set_up}, but this prepush-ci cannot read its own version, so the hook's cannot be compared"
+            return fail(
+                hook,
+                text,
+                "run doctor from an installed prepush-ci (`uv tool install prepush-ci`)",
+            )
+        return _binary_check(hook, facts, own, binary())
     text, fix = problem
     if facts.detected:
         fix = f"{fix}; {_NATIVE_HINT}"
     return fail(hook, text, fix)
+
+
+def _binary_check(hook: str, facts: ManagerFacts, own: str, found: Binary) -> Check:
+    set_up = f"{facts.file} has the block and {facts.manager} is activated"
+    if found.path is None:
+        text = f"{set_up}, but no prepush-ci is on PATH"
+        return fail(hook, text, f"put the prepush-ci that prints `{own}` on PATH")
+    if found.line is None:
+        text = (
+            f"{set_up}, but the version of {found.path} could not be read: {found.why}"
+        )
+        return fail(hook, text, f"put the prepush-ci that prints `{own}` first on PATH")
+    if found.line != own:
+        text = f"{set_up}, but the hook runs {found.path}: {found.line}, not {own}"
+        return fail(hook, text, f"put the prepush-ci that prints `{own}` first on PATH")
+    return ok(hook, f"{set_up}; the hook runs {found.path}: {found.line}")
 
 
 def _manager_problem(hook: str, facts: ManagerFacts) -> tuple[str, str] | None:

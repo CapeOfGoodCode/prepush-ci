@@ -14,14 +14,16 @@ Nothing else outside `core/` calls `read_text`, `write_text`, `open`, `decode`, 
 import contextlib
 import io
 import os
+import signal
 import subprocess
 import sys
 import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from importlib import resources
 from importlib.metadata import Distribution
 from pathlib import Path
+from typing import Any
 
 CODEC = "utf-8"
 ERRORS = "surrogateescape"
@@ -191,6 +193,88 @@ def run(
         _universal(decode(done.stdout)),
         _universal(decode(done.stderr)),
     )
+
+
+def run_limited(
+    args: Sequence[str], *, cwd: Path, env: Mapping[str, str], seconds: float
+) -> tuple[int, str] | None:
+    """Run a program, asking nothing, for at most `seconds`: its status and what it wrote to its
+    standard output, as the tool's text. A program still running by then is ended, and the answer
+    is None; one that cannot be started raises `OSError`. A program is ended too when the caller
+    is interrupted or terminated (Ctrl-C, SIGTERM, SIGHUP): it is in a group of its own, and none
+    of them reaches it.
+
+    The output goes to an unnamed temporary file, not a pipe: a process the program leaves
+    running keeps a pipe open and would hold the caller after the program itself was ended.
+    """
+    with tempfile.TemporaryFile() as output, _exiting_on_termination():
+        process = subprocess.Popen(
+            _arguments(args),
+            cwd=cwd,
+            env=_environment(env),
+            stdin=subprocess.DEVNULL,
+            stdout=output,
+            stderr=subprocess.DEVNULL,
+            **_own_group(),
+        )
+        try:
+            status = process.wait(timeout=seconds)
+        except subprocess.TimeoutExpired:
+            _end_tree(process)
+            return None
+        except (
+            BaseException
+        ):  # Ctrl-C does not reach a group of its own: end the tree here
+            _end_tree(process)
+            raise
+        output.seek(0)
+        return status, decode(output.read())
+
+
+@contextlib.contextmanager
+def _exiting_on_termination() -> Iterator[None]:
+    """Make SIGTERM and SIGHUP end the caller by an exception, `SystemExit`, so that what the
+    caller waits for in a group of its own is ended on the way out: their default action kills the
+    caller on the spot. A signal that is ignored stays ignored (a command run under `nohup`)."""
+    if sys.platform == "win32":  # pragma: no cover (the coverage run is on Linux)
+        yield
+        return
+
+    def leave(number: int, _frame: object) -> None:
+        raise SystemExit(128 + number)
+
+    previous = {}
+    for number in (signal.SIGTERM, signal.SIGHUP):
+        if signal.getsignal(number) != signal.SIG_IGN:
+            previous[number] = signal.signal(number, leave)
+    try:
+        yield
+    finally:
+        for number, handler in previous.items():
+            signal.signal(number, handler)
+
+
+def _own_group() -> dict[str, Any]:
+    """The `Popen` arguments that make a program the head of a group of its own, so that it and
+    what it starts can be ended together."""
+    if sys.platform == "win32":  # pragma: no cover (the coverage run is on Linux)
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def _end_tree(process: "subprocess.Popen[bytes]") -> None:
+    """End a program started with `_own_group`, with every process it started, and wait for it."""
+    if sys.platform == "win32":  # pragma: no cover (the coverage run is on Linux)
+        subprocess.run(
+            ["taskkill", "/T", "/F", "/PID", str(process.pid)],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            check=False,
+        )
+    else:
+        with contextlib.suppress(ProcessLookupError):  # it ended just now
+            os.killpg(process.pid, signal.SIGKILL)
+    process.wait()
 
 
 def run_shell(command: str, *, cwd: Path, env: Mapping[str, str] | None = None) -> int:

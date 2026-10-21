@@ -2,14 +2,16 @@
 
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from functools import cache
+from importlib import metadata
 from pathlib import Path
 
 from prepush_ci import text_io
 from prepush_ci.core import doctor, doctor_hooks
 from prepush_ci.core.config import Config, ConfigError
 from prepush_ci.core.config_source import PREPUSH_CI_FILE, PYPROJECT_FILE, ConfigMissing
-from prepush_ci.core.doctor_hooks import ManagerFacts, NativeFacts, Script
+from prepush_ci.core.doctor_hooks import Binary, ManagerFacts, NativeFacts, Script
 from prepush_ci.core.hook_managers import (
     HUSKY_DIRECTORY,
     LEFTHOOK_FILES,
@@ -23,6 +25,12 @@ from prepush_ci.core.install import HOOKS, HOOKS_DIRECTORY, PYTHON_FILE
 from prepush_ci.core.preflight import missing_env
 from prepush_ci.git import answer, git
 from prepush_ci.repo_config import load_repository_config
+from prepush_ci.version_line import own_version_line
+
+PROBE = "prepush-ci-doctor-probe"  # the alias that runs a command in git's shell
+VERSION_SECONDS = (
+    10  # what `prepush-ci --version` of a healthy install needs is far less
+)
 
 
 def run(
@@ -45,7 +53,7 @@ def run(
         return 1
     root = (cwd / text_io.to_path(answer(top))).resolve()
     common = (cwd / text_io.to_path(answer(common_dir))).resolve()
-    commit_msg, pre_push = _hook_checks(cwd, root, common, hooks)
+    commit_msg, pre_push = _hook_checks(cwd, root, common, hooks, env)
     config, config_check = _config(root)
     found = {
         doctor.CONFIG: config_check,
@@ -124,7 +132,7 @@ def _up_to_date(
 
 
 def _hook_checks(
-    cwd: Path, root: Path, common: Path, hooks: str | None
+    cwd: Path, root: Path, common: Path, hooks: str | None, env: Mapping[str, str]
 ) -> tuple[doctor.Check, doctor.Check]:
     """The `commit-msg` and `pre-push` verdicts for the hooks asked for, else the manager found,
     else the native ones."""
@@ -146,14 +154,62 @@ def _hook_checks(
             doctor_hooks.native_check(HOOKS[1], native),
         )
     detected = hooks is None
+    try:
+        own: str | None = own_version_line()
+    except (
+        metadata.PackageNotFoundError
+    ):  # run from source that is no installed distribution
+        own = None
+    binary = _binary_on_path(root, env)
     return (
         doctor_hooks.manager_check(
-            HOOKS[0], _manager_facts(cwd, root, chosen, HOOKS[0], detected)
+            HOOKS[0], _manager_facts(cwd, root, chosen, HOOKS[0], detected), own, binary
         ),
         doctor_hooks.manager_check(
-            HOOKS[1], _manager_facts(cwd, root, chosen, HOOKS[1], detected)
+            HOOKS[1], _manager_facts(cwd, root, chosen, HOOKS[1], detected), own, binary
         ),
     )
+
+
+def _through_git_shell(
+    root: Path, env: Mapping[str, str], command: str
+) -> tuple[int, str] | None:
+    """Run `command` as the hooks of a manager would: in the shell git runs a hook with (on
+    Windows the sh of Git for Windows, not one on `PATH`), from the repository root, which is
+    where that shell finds an empty or a relative `PATH` entry. Git runs the command of an alias
+    that starts with `!` in exactly that shell, from the top of the worktree."""
+    return text_io.run_limited(
+        ["git", "-c", f"alias.{PROBE}=!{command}", PROBE],
+        cwd=root,
+        env=env,
+        seconds=VERSION_SECONDS,
+    )
+
+
+def _binary_on_path(root: Path, env: Mapping[str, str]) -> Callable[[], Binary]:
+    """The look-up of the `prepush-ci` the hooks find on `PATH`, done once and only when asked:
+    a failure that is already there needs no executable run."""
+
+    @cache
+    def look() -> Binary:
+        found = _through_git_shell(root, env, "command -v prepush-ci")
+        if found is None or found[0] != 0 or not found[1].strip():
+            return Binary(None)
+        shown = found[1].splitlines()[0].strip()
+        done = _through_git_shell(root, env, "prepush-ci --version")
+        if done is None:
+            return Binary(
+                shown, None, f"it did not finish in {VERSION_SECONDS} seconds"
+            )
+        status, output = done
+        if status != 0:
+            return Binary(shown, None, f"it exited with status {status}")
+        line = next(iter(output.splitlines()), "").strip()
+        if not line:
+            return Binary(shown, None, "it printed no line")
+        return Binary(shown, line)
+
+    return look
 
 
 def _marker(root: Path, name: str) -> bool:

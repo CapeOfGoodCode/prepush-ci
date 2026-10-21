@@ -19,6 +19,11 @@ def version_line(distribution: Distribution) -> str:
     return f"prepush-ci {distribution.version}{origin_suffix(record)}"
 
 
+def own_version_line() -> str:
+    """The line `prepush-ci --version` prints for this installation."""
+    return version_line(metadata.distribution("prepush-ci"))
+
+
 class PrintVersionLine(argparse.Action):
     """`--version` that prints the line as it is: argparse's own `version` action wraps its text to
     the width of the terminal, and a line the requirement calls one line must stay one."""
@@ -33,5 +38,5 @@ class PrintVersionLine(argparse.Action):
         values: Any,
         option_string: str | None = None,
     ) -> None:
-        print(version_line(metadata.distribution("prepush-ci")))
+        print(own_version_line())
         sys.exit(0)
