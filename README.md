@@ -8,7 +8,7 @@
 | src/prepush\_ci/\_\_main\_\_.py        |        2 |        0 |        0 |        0 |     100% |           |
 | src/prepush\_ci/app\_setup\_command.py |      132 |        0 |       14 |        0 |     100% |           |
 | src/prepush\_ci/checking.py            |       30 |        0 |       10 |        0 |     100% |           |
-| src/prepush\_ci/cli.py                 |      120 |        0 |       38 |        0 |     100% |           |
+| src/prepush\_ci/cli.py                 |      117 |        0 |       36 |        0 |     100% |           |
 | src/prepush\_ci/commit\_msg\_hook.py   |       63 |        0 |       14 |        0 |     100% |           |
 | src/prepush\_ci/core/\_\_init\_\_.py   |        0 |        0 |        0 |        0 |     100% |           |
 | src/prepush\_ci/core/app\_setup.py     |       58 |        0 |       14 |        0 |     100% |           |
@@ -20,7 +20,6 @@
 | src/prepush\_ci/core/hook\_managers.py |      203 |        0 |       76 |        0 |     100% |           |
 | src/prepush\_ci/core/init.py           |      187 |        0 |       70 |        0 |     100% |           |
 | src/prepush\_ci/core/install.py        |       54 |        0 |        8 |        0 |     100% |           |
-| src/prepush\_ci/core/post\_push.py     |       91 |        0 |       44 |        0 |     100% |           |
 | src/prepush\_ci/core/pre\_push.py      |       87 |        0 |       30 |        0 |     100% |           |
 | src/prepush\_ci/core/preflight.py      |       25 |        0 |        2 |        0 |     100% |           |
 | src/prepush\_ci/core/report.py         |      306 |        0 |       98 |        0 |     100% |           |
@@ -31,22 +30,21 @@
 | src/prepush\_ci/core/verify.py         |       45 |        0 |       16 |        0 |     100% |           |
 | src/prepush\_ci/doctor\_command.py     |      121 |        0 |       22 |        0 |     100% |           |
 | src/prepush\_ci/git.py                 |       60 |        0 |       14 |        0 |     100% |           |
-| src/prepush\_ci/github\_api.py         |      136 |        0 |        4 |        0 |     100% |           |
+| src/prepush\_ci/github\_api.py         |       71 |        0 |        2 |        0 |     100% |           |
 | src/prepush\_ci/init\_command.py       |      199 |        0 |       56 |        0 |     100% |           |
 | src/prepush\_ci/install\_command.py    |      205 |        0 |       58 |        0 |     100% |           |
 | src/prepush\_ci/pass\_cache.py         |      105 |        0 |       42 |        0 |     100% |           |
-| src/prepush\_ci/post\_push\_hook.py    |       77 |        0 |       16 |        0 |     100% |           |
 | src/prepush\_ci/pre\_push\_hook.py     |       86 |        0 |       30 |        0 |     100% |           |
 | src/prepush\_ci/preflight.py           |       35 |        0 |       18 |        0 |     100% |           |
 | src/prepush\_ci/repo\_config.py        |       22 |        0 |        2 |        0 |     100% |           |
-| src/prepush\_ci/report\_command.py     |      141 |        0 |       36 |        0 |     100% |           |
+| src/prepush\_ci/report\_command.py     |      138 |        0 |       36 |        0 |     100% |           |
 | src/prepush\_ci/run\_command.py        |       32 |        0 |        6 |        0 |     100% |           |
 | src/prepush\_ci/signing.py             |       16 |        0 |        2 |        0 |     100% |           |
 | src/prepush\_ci/skill\_command.py      |       47 |        0 |       10 |        0 |     100% |           |
 | src/prepush\_ci/strip\_command.py      |      103 |        0 |       38 |        0 |     100% |           |
 | src/prepush\_ci/text\_io.py            |      118 |        0 |        8 |        0 |     100% |           |
 | src/prepush\_ci/verify\_command.py     |       44 |        0 |       12 |        0 |     100% |           |
-| **TOTAL**                              | **3515** |    **0** | **1006** |    **0** | **100%** |           |
+| **TOTAL**                              | **3276** |    **0** |  **942** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
