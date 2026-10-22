@@ -289,6 +289,25 @@ def test_a_long_option_word_after_a_shell_is_read_within_the_time_the_hook_has()
     assert time.monotonic() - started < 1
 
 
+@pytest.mark.parametrize(
+    ("repeated", "prefix", "suffix", "count"),
+    [
+        pytest.param("env -u x ", "", "git push", 250_000, id="env options"),
+        pytest.param("time ", "", "git push", 600_000, id="wrappers"),
+        pytest.param("-k 1 ", "timeout ", " 5 git push", 350_000, id="timeout options"),
+        pytest.param("A=1 ", "", "git push", 600_000, id="assignments"),
+        pytest.param("-c a=b ", "git ", "push", 400_000, id="git options"),
+    ],
+)
+def test_a_command_of_many_words_is_read_within_the_time_the_hook_has(
+    repeated: str, prefix: str, suffix: str, count: int
+) -> None:
+    command = prefix + repeated * count + suffix
+    started = time.monotonic()
+    assert is_push(command)
+    assert time.monotonic() - started < 5
+
+
 # --- Forms that are not recognized ------------------------------------------------------------
 
 
