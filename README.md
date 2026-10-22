@@ -145,6 +145,8 @@ Puts the result of the check on the pull request after a push. Claude Code runs 
 prepush-ci hook post-push
 ```
 
+The hook reads the command line as a shell splits it into words; it does not run it. A push is recognized when it stands alone, after `&&`, `;` or `|`, in a subshell `( … )`, in `$( … )` or backticks, behind `time`, `command`, `exec`, `nohup`, `env` or `timeout`, or in the script of `sh -c`, `bash -c` or `zsh -c`. It is not recognized in `$( … )` inside double quotes, behind `eval`, `xargs`, `sudo` or `ssh`, through an alias or a function defined outside the command line, or in a script file. An unrecognized push leaves the comment as it was.
+
 **Exit status:** always 0, so the agent's command is never blocked; a comment that could not be written costs one line on standard error, and the hook gives up after 15 seconds.
 
 ### `run`

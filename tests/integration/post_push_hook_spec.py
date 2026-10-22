@@ -662,6 +662,39 @@ def test_the_comment_of_another_check_is_left_alone_and_a_new_one_is_created(
     assert str(world.api.comments[1]["body"]).startswith(MARKER)
 
 
+# --- A wrapped push is a push -----------------------------------------------------------------
+
+WRAPPED = "(time git push --force-with-lease) 2>&1 | tail -25"
+
+
+def test_a_wrapped_push_updates_the_comment(world: World) -> None:
+    world.api.comments = [{"id": 2, "body": f"{MARKER}\nCommit {'0' * 40}"}]
+    world.git(
+        world.repo,
+        "commit",
+        "--amend",
+        "--allow-empty",
+        "-q",
+        "-m",
+        "reworded",
+        "-m",
+        TRAILER,
+    )
+    world.push("--no-verify", "--force", "origin", BRANCH)
+    world.hook(world.payload(WRAPPED))
+    (patch,) = world.api.writes()
+    assert (patch.method, patch.route) == (
+        "PATCH",
+        "/repos/acme/widgets/issues/comments/2",
+    )
+    assert world.sha in patch.json()["body"]
+
+
+def test_a_wrapped_push_that_did_not_land_sends_no_request(world: World) -> None:
+    world.commit("more", trailer=None)  # the same tree, so a pass is recorded for it
+    world.nothing(world.hook(world.payload("(time git push origin main) 2>&1 | tail")))
+
+
 # --- The comment is replaced, left alone or created ---------------------------------------------------
 
 
