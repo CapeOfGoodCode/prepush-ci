@@ -9,7 +9,11 @@ from prepush_ci.core.run_cache import RESULTS
 
 TOOL = "Bash"
 _NOT_A_PUSH = ("--dry-run", "-n", "--delete", "-d")
-_SEPARATORS = ";&|\n\r"
+_SEPARATORS = ";&|()`\n\r"
+_KEYWORDS = frozenset(("!", "{", "if", "elif", "while", "until", "then", "else", "do"))
+_WRAPPERS = frozenset(("time", "command", "exec", "nohup", "env", "timeout"))
+_VALUE_OPTIONS = {"env": ("-u", "-C"), "timeout": ("-k", "-s")}
+_SHELLS = ("sh", "bash", "zsh")
 _ESCAPED_IN_DOUBLE_QUOTES = '"\\$`\n'
 
 
@@ -96,19 +100,61 @@ def _is_assignment(word: str) -> bool:
     return bool(separator) and name.isidentifier()
 
 
-def _pushes(words: list[str]) -> bool:
-    """Whether one command is `git [options] push` that sends something."""
-    rest = list(words)
-    while rest and _is_assignment(rest[0]):
-        rest.pop(0)
+def _after_wrapper(name: str, rest: list[str]) -> list[str]:
+    """What follows a wrapper once its options are skipped: the value of `env -u` and `timeout -k`
+    with them, and the duration `timeout` takes."""
+    values = _VALUE_OPTIONS.get(name, ())
+    while rest and rest[0].startswith("-"):
+        del rest[: 2 if rest[0] in values else 1]
+    if name == "timeout":
+        del rest[:1]
+    return rest
+
+
+def _is_c_option(word: str) -> bool:
+    """Whether `word` is a shell option word that holds `c`: `-c`, `-lc`, `-ec`."""
+    letters = word[1:]
+    return (
+        word[:1] == "-" and "c" in letters and letters.isascii() and letters.isalpha()
+    )
+
+
+def _script_of(args: list[str]) -> str | None:
+    """The script of `sh -c`: the word after the first option that holds `c`, when every option
+    before it starts with `-`."""
+    for index, word in enumerate(args):
+        if _is_c_option(word):
+            return args[index + 1] if index + 1 < len(args) else None
+        if not word.startswith("-"):
+            return None
+    return None
+
+
+def _is_git_push(rest: list[str]) -> bool:
+    """Whether a command that starts with `git` is `git [options] push` that sends something."""
     if rest[:1] != ["git"]:
         return False
-    rest.pop(0)
+    rest = rest[1:]
     while rest and (rest[0] in ("-C", "-c") or rest[0].startswith("--")):
         del rest[: 2 if rest[0] in ("-C", "-c") else 1]
     if rest[:1] != ["push"]:
         return False
     return not any(word in _NOT_A_PUSH for word in rest[1:])
+
+
+def _pushes(words: list[str]) -> bool:
+    """Whether one command is a push, once the words that run another command are skipped."""
+    rest = list(words)
+    while rest and (
+        _is_assignment(rest[0]) or rest[0] in _KEYWORDS or rest[0] in _WRAPPERS
+    ):
+        name = rest.pop(0)
+        if name in _WRAPPERS:
+            rest = _after_wrapper(name, rest)
+    if rest[:1] and rest[0] in _SHELLS:
+        script = _script_of(rest[1:])
+        return script is not None and is_push(script)
+    return _is_git_push(rest)
 
 
 def is_push(command: str) -> bool:
