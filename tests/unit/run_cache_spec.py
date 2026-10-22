@@ -1,5 +1,7 @@
 import dataclasses
 
+import pytest
+
 from prepush_ci.core.config import Config, Trailer
 from prepush_ci.core.run_cache import (
     Key,
@@ -199,14 +201,101 @@ def test_without_an_argument_and_without_the_pre_commit_name_the_remote_is_unkno
     assert not pushes_to_origin([], {})
 
 
-def test_the_warning_for_a_result_that_was_not_shared_names_origin_and_the_reason() -> (
+LINE = (
+    "prepush-ci: the result was not shared through origin ({cause}), "
+    "so another clone runs the check again; the push goes on"
+)
+HTTP_403 = (
+    "fatal: unable to access 'http://h/x.git/': The requested URL returned error: 403"
+)
+RPC_403 = (
+    "error: RPC failed; HTTP 403 curl 22 The requested URL returned error: 403\n"
+    "fatal: expected 'acknowledgments', received 'packfile'"
+)
+REJECTED = (
+    "remote: refusing refs/prepush-ci/results/t-k\n"
+    "To /x.git\n"
+    " ! [remote rejected] refs/prepush-ci/results/t-k -> refs/prepush-ci/results/t-k "
+    "(pre-receive hook declined)\n"
+    "error: failed to push some refs to '/x.git'"
+)
+NOT_A_REPOSITORY = (
+    "fatal: '/x.git' does not appear to be a git repository\n"
+    "fatal: Could not read from remote repository."
+)
+
+
+def test_the_warning_for_a_result_that_was_not_shared_is_one_line_naming_origin_and_the_cause() -> (
     None
 ):
-    text = message_not_shared("remote said no")
+    text = message_not_shared(REJECTED)
 
-    assert "origin" in text
-    assert "remote said no" in text
-    assert "not shared" in text
+    assert text == LINE.format(cause="origin rejected the ref")
+
+
+def test_git_s_lines_stay_out_of_the_warning_for_a_result_that_was_not_shared() -> None:
+    text = message_not_shared(REJECTED)
+
+    assert "\n" not in text
+    assert not {"fatal:", "error:", "remote:"} & set(text.split())
+
+
+def test_a_status_from_the_transport_is_the_cause_of_a_result_that_was_not_shared() -> (
+    None
+):
+    for output in (HTTP_403, RPC_403):
+        assert message_not_shared(output) == LINE.format(
+            cause="origin refused the ref, HTTP 403"
+        )
+
+
+def test_a_failure_without_a_status_is_that_git_could_not_push_it() -> None:
+    assert message_not_shared(NOT_A_REPOSITORY) == LINE.format(
+        cause="git could not push it"
+    )
+
+
+def test_a_number_that_is_not_a_status_is_not_the_cause_of_a_result_that_was_not_shared() -> (
+    None
+):
+    for output in ("error: 200", "fatal: HTTP 302", "error: 4031", "error: 99"):
+        assert message_not_shared(output) == LINE.format(cause="git could not push it")
+
+
+def test_a_status_wins_over_a_rejected_line() -> None:
+    assert "HTTP 502" in message_not_shared(REJECTED + "\nerror: RPC failed; HTTP 502")
+
+
+def test_a_status_in_the_remote_s_own_text_is_not_the_cause_of_a_result_that_was_not_shared() -> (
+    None
+):
+    output = (
+        "remote: error: 500 files are over the limit\n"
+        " ! [remote rejected] main -> refs/prepush-ci/results/t-k (pre-receive hook declined)"
+    )
+
+    assert message_not_shared(output) == LINE.format(cause="origin rejected the ref")
+
+
+@pytest.mark.parametrize(
+    "separator",
+    [
+        pytest.param("\v", id="vertical-tab"),
+        pytest.param("\f", id="form-feed"),
+        pytest.param("\x1c", id="file-separator"),
+        pytest.param("\x85", id="next-line"),
+        pytest.param("\u2028", id="line-separator"),
+    ],
+)
+def test_a_status_after_a_line_separator_in_the_remote_s_own_text_is_not_the_cause_of_a_result_that_was_not_shared(
+    separator: str,
+) -> None:
+    output = (
+        f"remote: hello{separator}error: 500 files are over the limit\n"
+        " ! [remote rejected] main -> refs/prepush-ci/results/t-k (pre-receive hook declined)"
+    )
+
+    assert message_not_shared(output) == LINE.format(cause="origin rejected the ref")
 
 
 def test_the_line_for_a_result_from_origin_names_origin_the_tree_and_the_commit() -> (

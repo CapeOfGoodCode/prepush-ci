@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -15,6 +16,7 @@ IDENTITY = ("prepush-ci", "prepush-ci@localhost")
 SUBJECT = "prepush-ci: the check passed"
 NAMES = "commit "
 EXPIRES_AFTER = 30 * 24 * 60 * 60  # seconds
+_STATUS = re.compile(r"(?:\bHTTP |\berror: )(?P<status>\d{3})\b")
 BATCH = 100  # refs per `git push` that deletes them, so the command line stays short on Windows
 
 
@@ -121,11 +123,29 @@ def message_not_cached(reason: str) -> str:
     return f"prepush-ci: the pass could not be cached, so a retry runs the check again: {reason}"
 
 
-def message_not_shared(reason: str) -> str:
+def message_not_shared(git_output: str) -> str:
+    """One line for a result ref that `origin` did not take: the cause in a few words, none of
+    git's lines."""
     return (
-        f"prepush-ci: the result was not shared through {REMOTE}, so another clone "
-        f"runs the check again: {reason}"
+        f"prepush-ci: the result was not shared through {REMOTE} ({_cause(git_output)}), "
+        "so another clone runs the check again; the push goes on"
     )
+
+
+def _cause(git_output: str) -> str:
+    """Git's wording is not an interface, so only a status and the `[remote rejected]` line are
+    read; anything else claims nothing about why. A `remote:` line is the remote author's text,
+    not the transport's, so no status is read from it. Lines end at a line feed only: git prints the
+    remote's text on one line, and `splitlines` would cut it at a vertical tab, a form feed or U+2028 in it."""
+    own_lines = "\n".join(
+        line for line in git_output.split("\n") if not line.startswith("remote:")
+    )
+    for match in _STATUS.finditer(own_lines):
+        if 400 <= int(match["status"]) <= 599:
+            return f"{REMOTE} refused the ref, HTTP {match['status']}"
+    if "[remote rejected]" in git_output:
+        return f"{REMOTE} rejected the ref"
+    return "git could not push it"
 
 
 def message_not_cleaned(reason: str) -> str:
