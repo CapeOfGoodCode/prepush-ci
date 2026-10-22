@@ -262,6 +262,13 @@ def test_without_an_origin_a_remote_name_origin_from_pre_commit_shares_nothing_a
 # --- A remote that fails costs time and nothing else ---------------------------------------------
 
 
+WARNING = (
+    "prepush-ci: the result was not shared through origin ({cause}), "
+    "so another clone runs the check again; the push goes on"
+)
+GIT_LINES = ("fatal:", "error:", "remote:", "[remote rejected]")
+
+
 def test_a_remote_that_refuses_the_ref_is_a_warning_and_the_push_goes_through(
     pushing: Path, git: Git, tmp_path: Path
 ) -> None:
@@ -274,6 +281,46 @@ def test_a_remote_that_refuses_the_ref_is_a_warning_and_the_push_goes_through(
     assert NOT_SHARED in result.stderr
     assert shared(remote, git) == []
     assert git(remote, "rev-parse", "refs/heads/main", check=False).returncode == 0
+
+
+def test_a_rejected_ref_is_one_warning_line_with_the_cause_and_none_of_gits_lines(
+    pushing: Path, git: Git, tmp_path: Path
+) -> None:
+    refuse_other_refs(tmp_path / "remote.git")
+
+    result = push(pushing, git)
+
+    assert result.returncode == 0
+    ours = [line for line in result.stderr.splitlines() if "prepush-ci:" in line]
+    assert ours == [WARNING.format(cause="origin rejected the ref")]
+    assert not any(text in result.stderr for text in GIT_LINES)
+
+
+def test_with_debug_on_git_s_lines_follow_the_warning(
+    pushing: Path, git: Git, tmp_path: Path
+) -> None:
+    refuse_other_refs(tmp_path / "remote.git")
+
+    result = push(pushing, git, env={"PREPUSH_CI_DEBUG": "1"})
+
+    warning = WARNING.format(cause="origin rejected the ref")
+    _, found, after = result.stderr.partition(warning)
+    assert found
+    assert "[remote rejected]" in after
+
+
+@pytest.mark.parametrize("value", [None, ""], ids=["unset", "empty"])
+def test_with_debug_unset_or_empty_none_of_git_s_lines_are_printed(
+    pushing: Path, git: Git, tmp_path: Path, value: str | None
+) -> None:
+    refuse_other_refs(tmp_path / "remote.git")
+
+    result = push(
+        pushing, git, env=None if value is None else {"PREPUSH_CI_DEBUG": value}
+    )
+
+    assert WARNING.format(cause="origin rejected the ref") in result.stderr
+    assert not any(text in result.stderr for text in GIT_LINES)
 
 
 def decline_main(remote: Path) -> Path:

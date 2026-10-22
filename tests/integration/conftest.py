@@ -157,7 +157,7 @@ def printed(variant: str) -> Callable[[str], str]:
 def git() -> Git:
     """Run real git in a directory; a failing command fails the test unless `check=False`.
 
-    `PREPUSH_CI` and `PRE_COMMIT_*` are dropped from the inherited environment so a developer's
+    `PREPUSH_CI`, `PREPUSH_CI_DEBUG` and `PRE_COMMIT_*` are dropped from the inherited environment so a developer's
     own opt-in, or the pre-commit run that started the suite as a pre-push hook, never leaks
     into a spec; pass them through `env` when a spec needs them.
     """
@@ -171,7 +171,8 @@ def git() -> Git:
         inherited = {
             k: v
             for k, v in os.environ.items()
-            if k != "PREPUSH_CI" and not k.startswith("PRE_COMMIT_")
+            if k not in ("PREPUSH_CI", "PREPUSH_CI_DEBUG")
+            and not k.startswith("PRE_COMMIT_")
         }
         return subprocess.run(
             ["git", *args],

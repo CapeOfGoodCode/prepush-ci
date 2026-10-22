@@ -64,7 +64,9 @@ def publish_pass(root: Path, key: Key) -> None:
     # `+`: a pass made again is a new parentless commit, which never fast-forwards the old one
     pushed = git(root, "push", "--no-verify", REMOTE, f"+{ref}:{ref}")
     if pushed.returncode != 0:
-        print(message_not_shared(pushed.stderr.strip()), file=sys.stderr)
+        print(message_not_shared(pushed.stderr), file=sys.stderr)
+        if os.environ.get("PREPUSH_CI_DEBUG"):
+            print(pushed.stderr.strip(), file=sys.stderr)
 
 
 def expire_passes(root: Path, to_origin: bool) -> None:
