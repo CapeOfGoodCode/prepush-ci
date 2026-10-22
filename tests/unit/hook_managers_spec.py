@@ -356,6 +356,18 @@ def test_the_report_names_the_files_and_the_step_that_activates_the_hooks() -> N
     assert "`pre-commit install`" in report
 
 
+def test_the_report_of_a_manager_whose_hooks_are_active_prints_no_activation_step() -> (
+    None
+):
+    for manager, name in (
+        ("pre-commit", PRE_COMMIT_FILE),
+        ("lefthook", "lefthook.yml"),
+    ):
+        report = manager_report("installed", manager, [name], active=True)
+
+        assert report == f"installed: {manager}\n  {name}"
+
+
 def test_the_report_of_a_manager_without_an_activation_step_names_none() -> None:
     report = manager_report("installed", "husky", [".husky/pre-push"])
 
