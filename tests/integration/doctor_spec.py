@@ -784,6 +784,63 @@ def test_pre_commit_that_was_not_activated_fails_and_the_fix_is_pre_commit_insta
     assert "pre-commit install" in fix_after(result, "pre-push")
 
 
+def without_verbose_on_pre_push(repo: Path) -> None:
+    """The block of a version before #234: no `verbose: true` on the pre-push hook."""
+    config = repo / ".pre-commit-config.yaml"
+    lines = config.read_text(encoding="utf-8").splitlines()
+    stripped = [text.strip() for text in lines]
+    start = stripped.index("- id: prepush-ci-pre-push")
+    del lines[stripped.index("verbose: true", start)]
+    config.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+
+
+def test_a_pre_commit_block_without_verbose_fails_pre_push_and_the_fix_is_install(
+    repo: Path, tmp_path: Path, pre_commit_locale: Locale
+) -> None:
+    (repo / ".pre-commit-config.yaml").write_text(PRE_COMMIT_CONFIG)
+    install(repo)
+    without_verbose_on_pre_push(repo)
+    pre_commit_install(repo, tmp_path, pre_commit_locale)
+
+    result = doctor(repo)
+
+    assert both(result) == ("ok", "fail")
+    assert ".pre-commit-config.yaml" in line(result, "pre-push")
+    assert "verbose: true" in line(result, "pre-push")
+    assert "prepush-ci install" in fix_after(result, "pre-push")
+
+
+def test_install_puts_the_verbose_key_back_and_doctor_passes(
+    repo: Path, tmp_path: Path, pre_commit_locale: Locale
+) -> None:
+    (repo / ".pre-commit-config.yaml").write_text(PRE_COMMIT_CONFIG)
+    install(repo)
+    without_verbose_on_pre_push(repo)
+    pre_commit_install(repo, tmp_path, pre_commit_locale)
+    assert status(doctor(repo), "pre-push") == "fail"
+
+    install(repo)
+
+    assert both(doctor(repo)) == ("ok", "ok")
+
+
+def test_the_missing_verbose_key_is_reported_before_the_activation(repo: Path) -> None:
+    (repo / ".pre-commit-config.yaml").write_text(PRE_COMMIT_CONFIG)
+    install(repo)
+    without_verbose_on_pre_push(repo)
+
+    result = doctor(repo)
+
+    assert "verbose: true" in line(result, "pre-push")
+    assert "not activated" in line(result, "commit-msg")
+
+
+def test_husky_does_not_need_the_verbose_key(repo: Path, git: Git) -> None:
+    set_up_husky(repo, git)
+
+    assert "verbose" not in line(doctor(repo), "pre-push")
+
+
 def test_pre_commit_activated_for_the_default_hook_type_only_fails_both(
     repo: Path,
     tmp_path: Path,
