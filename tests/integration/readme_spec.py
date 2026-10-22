@@ -229,6 +229,19 @@ def test_the_entry_of_doctor_says_zero_means_every_check_passed() -> None:
     assert "1 means at least one did not" in entry
 
 
+def test_the_readme_of_hook_post_push_names_the_forms_recognized_and_those_not() -> (
+    None
+):
+    entry = flat(entries(shipped())["hook post-push"])
+    recognized, _, not_recognized = entry.partition("It is not recognized")
+
+    assert not_recognized
+    for form in ("`time`", "`env`", "`bash -c`", "subshell"):
+        assert form in recognized
+    for form in ("`eval`", "`xargs`", "`sudo`", "alias or a function defined outside"):
+        assert form in not_recognized
+
+
 def test_the_entry_of_init_says_it_exits_two_when_the_check_is_missing() -> None:
     entry = flat(entries(shipped())["init"])
 
