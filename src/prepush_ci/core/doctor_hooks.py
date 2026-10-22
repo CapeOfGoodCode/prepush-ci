@@ -1,6 +1,6 @@
 """The `commit-msg` and `pre-push` checks of `prepush-ci doctor`: would git run our hooks?"""
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 from prepush_ci.core.doctor import Check, fail, ok
@@ -13,6 +13,7 @@ _ACTIVATION = {
     "husky": "npx husky",
 }
 _NAMED_IN_SCRIPT = {"pre-commit": "pre-commit", "lefthook": "lefthook"}
+PRE_PUSH_ID = "prepush-ci-pre-push"
 _REINSTALL = "run `prepush-ci install`"
 _NATIVE_HINT = "if you chose native hooks, run `prepush-ci doctor --hooks native`"
 
@@ -150,15 +151,33 @@ def _manager_problem(hook: str, facts: ManagerFacts) -> tuple[str, str] | None:
     )
     if facts.content is None:
         return f"{facts.file} does not exist", install
+    lines = split_lines(facts.content)[0]
     try:
-        block = find_block(split_lines(facts.content)[0], f"prepush-ci hook {hook}")
+        block = find_block(lines, f"prepush-ci hook {hook}")
     except Refusal as refusal:
         return f"{facts.file}: {refusal}", install
     if block is None:
         return f"{facts.file} has no prepush-ci block for {hook}", install
     if manager == "husky":
         return _husky_problem(hook, facts)
+    hidden = not _shows_messages(lines[block[0] + 1 : block[1]])
+    if manager == "pre-commit" and hook == "pre-push" and hidden:
+        text = f"{facts.file}: the {PRE_PUSH_ID} hook has no `verbose: true`, so pre-commit hides what it prints"
+        return text, install
     return _activation_problem(hook, facts)
+
+
+def _shows_messages(block: Sequence[str]) -> bool:
+    """Whether the `prepush-ci-pre-push` hook of a pre-commit block holds the line `verbose: true`: its
+    lines run from its `- id:` line to the next one."""
+    inside = False
+    for line in block:
+        text = line.strip()
+        if text.startswith("- id:"):
+            inside = text.removeprefix("- id:").strip() == PRE_PUSH_ID
+        elif inside and text == "verbose: true":
+            return True
+    return False
 
 
 def _husky_problem(hook: str, facts: ManagerFacts) -> tuple[str, str] | None:

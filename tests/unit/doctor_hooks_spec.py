@@ -11,6 +11,7 @@ from prepush_ci.core.doctor_hooks import (
     none_check,
     refusal_check,
 )
+from prepush_ci.core.hook_managers import pre_commit_block
 
 DIRECTORY = "/repo/.git/prepush-ci/hooks"
 GOOD_SCRIPT = Script(exists=True, executable=True, content="#!/bin/sh\n")
@@ -92,7 +93,10 @@ def test_an_interpreter_that_is_gone_fails_and_names_it() -> None:
     assert "/venv/bin/python" in check.text
 
 
-BLOCK = "# prepush-ci: begin\nprepush-ci hook pre-push\n# prepush-ci: end\n"
+BLOCK = (
+    "# prepush-ci: begin\n- id: prepush-ci-pre-push\n  entry: prepush-ci hook pre-push\n"
+    "  verbose: true\n# prepush-ci: end\n"
+)
 
 
 def manager(name: str = "pre-commit", **changes: object) -> ManagerFacts:
@@ -320,3 +324,99 @@ def test_a_failure_that_is_already_there_stands_when_doctor_cannot_read_its_own_
 
     assert check.status == "fail"
     assert "its own version" not in check.text
+
+
+# --- The pre-push hook of a pre-commit block shows its messages -------------------------------
+
+VERBOSE = "      verbose: true"
+
+
+def written(*, pre_push: str | None = VERBOSE, commit_msg: str | None = VERBOSE) -> str:
+    """The block `install` writes, with the `verbose` line of each hook replaced (None: left out)."""
+    lines = pre_commit_block("")
+    hook = ""
+    out: list[str] = []
+    for line in lines:
+        if line.strip().startswith("- id:"):
+            hook = line.strip().removeprefix("- id: prepush-ci-")
+        if line == VERBOSE:
+            line = {"pre-push": pre_push, "commit-msg": commit_msg}[hook] or ""
+            if not line:
+                continue
+        out.append(line)
+    return "\n".join(out) + "\n"
+
+
+def test_a_block_of_an_earlier_version_fails_the_pre_push_check_and_names_the_key() -> (
+    None
+):
+    facts = manager(content=written(pre_push=None))
+
+    check = manager_check("pre-push", facts)
+
+    assert check.status == "fail"
+    assert ".pre-commit-config.yaml" in check.text and "verbose: true" in check.text
+    assert check.fix is not None and "prepush-ci install" in check.fix
+    assert manager_check("commit-msg", facts).status == "ok"
+
+
+def test_a_block_that_install_wrote_passes_the_pre_push_check() -> None:
+    assert manager_check("pre-push", manager(content=written())).status == "ok"
+
+
+def test_verbose_false_fails_the_pre_push_check() -> None:
+    check = manager_check(
+        "pre-push", manager(content=written(pre_push="      verbose: false"))
+    )
+
+    assert check.status == "fail"
+    assert "verbose: true" in check.text
+
+
+def test_a_comment_with_the_key_fails_the_pre_push_check() -> None:
+    check = manager_check(
+        "pre-push", manager(content=written(pre_push="      # verbose: true"))
+    )
+
+    assert check.status == "fail"
+
+
+def test_the_key_on_the_other_hook_fails_the_pre_push_check() -> None:
+    check = manager_check("pre-push", manager(content=written(pre_push=None)))
+
+    assert check.status == "fail"
+
+
+def test_a_commit_msg_hook_without_the_key_passes_both_checks() -> None:
+    facts = manager(content=written(commit_msg=None))
+
+    assert manager_check("commit-msg", facts).status == "ok"
+    assert manager_check("pre-push", facts).status == "ok"
+
+
+def test_the_missing_key_is_reported_before_the_activation() -> None:
+    facts = manager(content=written(pre_push=None), installed=Script(exists=False))
+
+    check = manager_check("pre-push", facts)
+
+    assert check.status == "fail"
+    assert "verbose: true" in check.text
+
+
+def test_the_missing_key_fails_before_the_executable_is_run() -> None:
+    def never() -> Binary:
+        raise AssertionError("the executable was run")
+
+    check = doctor_hooks.manager_check(
+        "pre-push", manager(content=written(pre_push=None)), OWN, never
+    )
+
+    assert check.status == "fail"
+
+
+def test_other_managers_do_not_need_the_key() -> None:
+    check = manager_check(
+        "pre-push", manager("lefthook", content=written(pre_push=None))
+    )
+
+    assert check.status == "ok"
