@@ -1654,8 +1654,8 @@ def test_a_failing_test_sits_on_its_line_plus_one_with_the_title_pytest(
             "start_line": 118,
             "end_line": 118,
             "annotation_level": "failure",
-            "title": "pytest",
-            "message": "test_a\nassert 1 == 2",
+            "title": "pytest: a.test_a",
+            "message": "assert 1 == 2",
         }
     ]
 
@@ -1679,7 +1679,7 @@ def test_a_decorated_failing_test_sits_on_the_line_its_failure_names(
 
 
 @needs_openssl
-def test_the_cases_of_a_parametrized_test_are_told_apart_by_their_names(
+def test_the_cases_of_a_parametrized_test_are_told_apart_by_their_titles(
     world: World, tmp_path: Path
 ) -> None:
     cases = [
@@ -1693,9 +1693,31 @@ def test_the_cases_of_a_parametrized_test_are_told_apart_by_their_names(
 
     assert result.returncode == 0, result.stderr
     assert [(a["title"], a["message"]) for a in annotations_of(world)] == [
-        ("pytest", "test_double[1]\nassert 2 == 1"),
-        ("pytest", "test_double[2]\nassert 4 == 2"),
+        ("pytest: a.test_double[1]", "assert 2 == 1"),
+        ("pytest: a.test_double[2]", "assert 4 == 2"),
     ]
+
+
+@needs_openssl
+def test_a_method_is_titled_with_its_class_and_listed_with_it(
+    world: World, tmp_path: Path
+) -> None:
+    case = (
+        "<testcase classname='tests.a_spec.TestK' name='test_in_class' "
+        "file='tests/a_spec.py' line='3'><failure message='boom'/></testcase>"
+    )
+    junit = write_junit(tmp_path / "r.xml", case)
+
+    result = world.failed("--junit", str(junit), env=world.app_env())
+
+    assert result.returncode == 0, result.stderr
+    (found,) = annotations_of(world)
+    assert found["title"] == "pytest: TestK.test_in_class"
+    assert found["message"] == "boom"
+    assert (
+        "- pytest ` tests/a_spec.py:4 ` ` TestK.test_in_class ` ` boom `"
+        in summary_of(world)
+    )
 
 
 @needs_openssl
@@ -2146,7 +2168,7 @@ def test_25_errors_list_20_and_the_number_of_the_others_and_all_25_are_annotated
 
 
 @needs_openssl
-def test_a_failed_case_without_a_location_is_listed_with_its_name(
+def test_a_failed_case_without_a_location_is_listed_by_its_label_alone(
     world: World, tmp_path: Path
 ) -> None:
     junit = write_junit(tmp_path / "r.xml", FAILING)
@@ -2154,7 +2176,7 @@ def test_a_failed_case_without_a_location_is_listed_with_its_name(
     result = world.failed("--junit", str(junit), env=world.app_env())
 
     assert result.returncode == 0, result.stderr
-    assert "- pytest ` bad `" in summary_of(world)
+    assert "- pytest ` a.bad `" in summary_of(world)
 
 
 @needs_openssl
@@ -2210,7 +2232,7 @@ def test_a_pipe_and_markdown_characters_of_a_message_reach_the_summary_as_typed(
 
     assert result.returncode == 0, result.stderr
     assert (
-        "- pytest ` a_spec.py:4 ` `` assert 2*3 == 7*1 | <built-in function len> `tick` ``"
+        "- pytest ` a_spec.py:4 ` ` a.test_a ` `` assert 2*3 == 7*1 | <built-in function len> `tick` ``"
         in summary_of(world)
     )
 

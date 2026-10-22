@@ -5,6 +5,7 @@ No I/O: the command reads the files, the environment and the remote, and sends t
 
 import base64
 import json
+import posixpath
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import Mapping
@@ -223,7 +224,7 @@ def count_junit(data: bytes, name: str) -> Counts:
 class Failure:
     """One failure the files report: a failed test case, a ruff error or a mypy error. `path` and
     `line` (1-based, relative to the top of the worktree) are None for a case with no location.
-    `case` is the name of the test case, which its annotation begins with."""
+    `case` is the label of the test case (see `case_label`), which titles its annotation."""
 
     tool: str
     text: str
@@ -269,6 +270,33 @@ def _failing_line(file: str, text: str) -> int | None:
     return frames[-1] if frames else None
 
 
+def _module(file: str | None, top: str) -> str | None:
+    """The module of a test file: its path in the worktree without the extension, a dot for each
+    `/`; None for a case without a file, or with one outside the worktree."""
+    if not file:
+        return None
+    try:
+        path = relative_path(file, top)
+    except ReportError:
+        return None
+    return posixpath.splitext(path)[0].replace("/", ".")
+
+
+def case_label(case: ET.Element, top: str) -> str:
+    """The name of a test case, joined with a `.` to what its `classname` adds to the module of
+    its `file` (the class of a method). A `classname` that is not under that module is kept whole
+    in front of the name: nothing it says is lost."""
+    name, classname = case.get("name", ""), case.get("classname")
+    if not classname:
+        return name
+    module = _module(case.get("file"), top)
+    if classname == module:
+        return name
+    if module is not None and classname.startswith(module + "."):
+        classname = classname[len(module) + 1 :]
+    return f"{classname}.{name}"
+
+
 def junit_failures(data: bytes, name: str, top: str) -> list[Failure]:
     """The failed cases of a JUnit file. A case with a `file` and a `line` sits on that file, on
     the last line its failure text names in that file (see `_failing_line`), else at `line` + 1:
@@ -281,19 +309,20 @@ def junit_failures(data: bytes, name: str, top: str) -> list[Failure]:
         if found is None:
             continue
         file, line = case.get("file"), _zero_based_line(case.get("line"))
+        label = case_label(case, top)
         if file and line is not None:
             message, detail = found.get("message") or "", found.text or ""
             failures.append(
                 Failure(
                     "pytest",
-                    message or detail.strip() or case.get("name", ""),
+                    message or detail.strip() or label,
                     relative_path(file, top),
                     _failing_line(file, f"{message}\n{detail}") or line + 1,
-                    case.get("name", ""),
+                    label,
                 )
             )
         else:
-            failures.append(Failure("pytest", case.get("name", "")))
+            failures.append(Failure("pytest", label, case=label))
     return failures
 
 
@@ -472,16 +501,17 @@ MAX_ANNOTATION_MESSAGE = 32_000
 
 
 def annotation(failure: Failure) -> dict[str, object]:
-    """The annotation of a failure that has a place; the message, which begins with the name of a
-    test case, is cut far below GitHub's 64 KB."""
-    text = f"{failure.case}\n{failure.text}" if failure.case else failure.text
+    """The annotation of a failure that has a place; a failed case titles it with its label, and
+    the message is cut far below GitHub's 64 KB."""
     return {
         "path": failure.path,
         "start_line": failure.line,
         "end_line": failure.line,
         "annotation_level": "failure",
-        "title": failure.tool,
-        "message": text[:MAX_ANNOTATION_MESSAGE],
+        "title": f"{failure.tool}: {_cut(failure.case)}"
+        if failure.case
+        else failure.tool,
+        "message": failure.text[:MAX_ANNOTATION_MESSAGE],
     }
 
 
@@ -512,12 +542,15 @@ MAX_LISTED = 20
 MAX_TEXT = 200
 
 
-def _listed_text(text: str) -> str:
-    """The first line of a message with its white space merged, cut at 200 characters with `…`
-    as the 200th."""
-    first = next((line for line in text.splitlines() if line.strip()), "")
-    merged = " ".join(first.split())
+def _cut(text: str) -> str:
+    """`text` with its white space merged, cut at 200 characters with `…` as the 200th."""
+    merged = " ".join(text.split())
     return merged if len(merged) <= MAX_TEXT else merged[: MAX_TEXT - 1] + "…"
+
+
+def _listed_text(text: str) -> str:
+    """The first line of a message, cut as `_cut` does."""
+    return _cut(next((line for line in text.splitlines() if line.strip()), ""))
 
 
 def _failure_line(failure: Failure) -> str:
@@ -526,7 +559,13 @@ def _failure_line(failure: Failure) -> str:
         if failure.path is None
         else f" {code_span(f'{failure.path}:{failure.line}')}"
     )
-    return f"- {failure.tool}{where} {code_span(_listed_text(failure.text))}"
+    label = f" {code_span(_cut(failure.case))}" if failure.case else ""
+    text = (
+        ""
+        if failure.case and failure.path is None
+        else f" {code_span(_listed_text(failure.text))}"
+    )
+    return f"- {failure.tool}{where}{label}{text}"
 
 
 def _failures_section(failures: tuple[Failure, ...]) -> str:

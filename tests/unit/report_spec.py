@@ -624,7 +624,7 @@ def test_a_failed_case_with_a_file_and_a_line_is_a_failure_on_that_line_plus_one
     data = junit(located("test_a", "tests/a_spec.py", "117", "assert 1 == 2"))
 
     assert junit_failures(data, "r.xml", TOP) == [
-        Failure("pytest", "assert 1 == 2", "tests/a_spec.py", 118, "test_a")
+        Failure("pytest", "assert 1 == 2", "tests/a_spec.py", 118, "a.test_a")
     ]
 
 
@@ -636,7 +636,9 @@ def test_a_failed_case_with_a_line_too_long_to_read_is_a_failure_without_a_place
         f"<testcase classname='a' name='test_a' file='a.py' line='{huge}'><failure message='x'/></testcase>"
     )
 
-    assert junit_failures(data, "r.xml", TOP) == [Failure("pytest", "test_a")]
+    assert junit_failures(data, "r.xml", TOP) == [
+        Failure("pytest", "test_a", case="test_a")
+    ]
 
 
 @pytest.mark.parametrize("digits", [4299, 4300, 4301])
@@ -650,7 +652,7 @@ def test_a_failed_case_with_a_line_whose_successor_cannot_be_printed_is_reported
 
     failures = junit_failures(data, "r.xml", TOP)
 
-    assert failures == [Failure("pytest", "test_a")]
+    assert failures == [Failure("pytest", "test_a", case="test_a")]
     assert "test_a" in markdown("n", facts(failures=tuple(failures)), "failed")
 
 
@@ -675,11 +677,73 @@ def test_a_failed_case_without_a_line_is_a_failure_named_by_the_case_and_without
     )
 
     assert junit_failures(data, "r.xml", TOP) == [
-        Failure("pytest", "test_a"),
-        Failure("pytest", "test_b"),
-        Failure("pytest", "test_c"),
-        Failure("pytest", "test_d"),
+        Failure("pytest", "test_a", case="test_a"),
+        Failure("pytest", "a.test_b", case="a.test_b"),
+        Failure("pytest", "test_c", case="test_c"),
+        Failure("pytest", "test_d", case="test_d"),
     ]
+
+
+def label_of(name: str, classname: str | None = None, file: str | None = None) -> str:
+    attributes = f" name={name!r}"
+    if classname is not None:
+        attributes += f" classname={classname!r}"
+    if file is not None:
+        attributes += f" file={file!r} line='1'"
+    data = junit(f"<testcase{attributes}><failure message='x'/></testcase>")
+    (failure,) = junit_failures(data, "r.xml", TOP)
+    return failure.case
+
+
+def test_the_label_of_a_function_is_its_name() -> None:
+    label = label_of("test_split[three-ways]", "tests.a_spec", "tests/a_spec.py")
+
+    assert label == "test_split[three-ways]"
+
+
+def test_the_label_of_a_method_is_its_class_and_its_name() -> None:
+    label = label_of("test_in_class", "tests.a_spec.TestK", "tests/a_spec.py")
+
+    assert label == "TestK.test_in_class"
+
+
+def test_the_label_keeps_a_classname_of_another_module_whole() -> None:
+    assert label_of("test_x", "other.mod", "tests/a_spec.py") == "other.mod.test_x"
+    assert label_of("test_x", "other.mod") == "other.mod.test_x"
+
+
+def test_the_label_of_a_case_without_a_classname_is_its_name() -> None:
+    assert label_of("test_x") == "test_x"
+    assert label_of("test_x", file="tests/a_spec.py") == "test_x"
+
+
+def test_the_module_of_a_label_is_the_file_without_its_extension_and_with_dots() -> (
+    None
+):
+    label = label_of(
+        "test_x", "tests.unit.a_spec.TestK", "/work/repo/tests/unit/a_spec.py"
+    )
+
+    assert label == "TestK.test_x"
+
+
+def test_a_classname_that_only_starts_like_the_module_is_kept_whole() -> None:
+    label = label_of("test_x", "tests.a_specs.TestK", "tests/a_spec.py")
+
+    assert label == "tests.a_specs.TestK.test_x"
+
+
+def test_the_label_of_a_case_whose_file_is_outside_the_worktree_keeps_the_classname() -> (
+    None
+):
+    data = junit(
+        "<testcase classname='etc.a' name='test_x' file='/etc/a.py'>"
+        "<failure message='x'/></testcase>"
+    )
+
+    (failure,) = junit_failures(data, "r.xml", TOP)
+
+    assert failure.case == "etc.a.test_x"
 
 
 def with_text(name: str, file: str, line: str, text: str, message: str = "boom") -> str:
@@ -1013,6 +1077,25 @@ def test_a_file_without_errors_or_a_failed_result_is_no_contradiction() -> None:
     )
 
 
+def test_a_long_label_is_cut_to_200_characters_in_the_title_and_the_summary() -> None:
+    (failure,) = junit_failures(
+        junit(located("test_" + "x" * 5000, "a.py", "3", "boom")), "r.xml", TOP
+    )
+
+    cut = "test_" + "x" * 194 + "…"
+    assert annotation(failure)["title"] == f"pytest: {cut}"
+    assert listed(summary(facts(failures=(failure,)))) == [
+        f"- pytest ` a.py:4 ` ` {cut} ` ` boom `"
+    ]
+
+
+def test_a_label_of_exactly_200_characters_is_whole() -> None:
+    name = "t" * 200
+    (failure,) = junit_failures(junit(located(name, "a.py", "3")), "r.xml", TOP)
+
+    assert annotation(failure)["title"] == f"pytest: {name}"
+
+
 def test_an_annotation_sits_on_its_line_with_the_tool_as_title() -> None:
     assert annotation(Failure("mypy", "bad  [code]", "src/a.py", 42)) == {
         "path": "src/a.py",
@@ -1024,7 +1107,7 @@ def test_an_annotation_sits_on_its_line_with_the_tool_as_title() -> None:
     }
 
 
-def test_the_annotation_of_a_failed_case_begins_with_the_name_of_the_case() -> None:
+def test_the_annotation_of_a_failed_case_is_titled_with_the_label_of_the_case() -> None:
     first, second = annotations(
         junit_failures(
             junit(
@@ -1036,12 +1119,13 @@ def test_the_annotation_of_a_failed_case_begins_with_the_name_of_the_case() -> N
         )
     )
 
-    assert first["message"] == "test_double[1]\nassert 2 == 1"
-    assert second["message"] == "test_double[2]\nassert 4 == 2"
-    assert first["title"] == second["title"] == "pytest"
+    assert first["message"] == "assert 2 == 1"
+    assert second["message"] == "assert 4 == 2"
+    assert first["title"] == "pytest: test_double[1]"
+    assert second["title"] == "pytest: test_double[2]"
 
 
-def test_the_list_of_failures_keeps_the_message_of_the_case_without_its_name() -> None:
+def test_the_list_of_failures_shows_the_label_and_the_message_of_the_case() -> None:
     (failure,) = junit_failures(
         junit(located("test_a", "a.py", "3", "AssertionError: assert a == b")),
         "r.xml",
@@ -1050,9 +1134,11 @@ def test_the_list_of_failures_keeps_the_message_of_the_case_without_its_name() -
 
     text = summary(facts(failures=(failure,)))
 
-    assert "` AssertionError: assert a == b `" in text
-    assert "test_a" not in text
-    assert str(annotation(failure)["message"]).startswith("test_a")
+    assert listed(text) == [
+        "- pytest ` a.py:4 ` ` test_a ` ` AssertionError: assert a == b `"
+    ]
+    assert annotation(failure)["title"] == "pytest: test_a"
+    assert annotation(failure)["message"] == "AssertionError: assert a == b"
 
 
 def test_an_annotation_message_is_cut_below_what_github_accepts() -> None:
@@ -1154,10 +1240,33 @@ def test_the_summary_of_a_red_run_begins_with_the_failures_and_then_names_what_r
     assert text.index("mypy") < text.index("sh scripts/ci")
 
 
-def test_a_failed_case_without_a_place_is_listed_by_its_name() -> None:
-    text = summary(facts(failures=(Failure("pytest", "test_a"),)))
+def test_a_failed_case_without_a_place_is_listed_by_its_label_alone() -> None:
+    (failure,) = junit_failures(
+        junit(
+            "<testcase classname='tests.a_spec.TestK' name='test_a' file='tests/a_spec.py'>"
+            "<failure message='x'/></testcase>"
+        ),
+        "r.xml",
+        TOP,
+    )
 
-    assert listed(text) == ["- pytest ` test_a `"]
+    assert listed(summary(facts(failures=(failure,)))) == ["- pytest ` TestK.test_a `"]
+
+
+def test_the_cases_of_one_parametrized_test_are_listed_with_their_own_label() -> None:
+    failures = junit_failures(
+        junit(
+            located("test_split[three-ways]", "a.py", "3"),
+            located("test_split[two]", "a.py", "3"),
+        ),
+        "r.xml",
+        TOP,
+    )
+
+    assert listed(summary(facts(failures=tuple(failures)))) == [
+        "- pytest ` a.py:4 ` ` test_split[three-ways] ` ` boom `",
+        "- pytest ` a.py:4 ` ` test_split[two] ` ` boom `",
+    ]
 
 
 def test_the_summary_lists_20_failures_then_the_number_of_the_others() -> None:
