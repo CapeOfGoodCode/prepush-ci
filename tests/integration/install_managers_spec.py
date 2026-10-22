@@ -96,10 +96,10 @@ def install(
 
 
 def pre_commit_install(
-    repo: Path, env: dict[str, str], pre_commit_locale: Locale
+    repo: Path, env: dict[str, str], pre_commit_locale: Locale, *args: str
 ) -> None:
     subprocess.run(
-        [sys.executable, "-m", "pre_commit", "install"],
+        [sys.executable, "-m", "pre_commit", "install", *args],
         cwd=repo,
         env=pre_commit_locale(env),
         capture_output=True,
@@ -537,6 +537,76 @@ def test_the_pre_commit_report_names_the_file_and_the_activation_step(
 
     assert PRE_COMMIT_CONFIG in result.stdout
     assert "pre-commit install" in result.stdout
+
+
+def put_hook(directory: Path, name: str, text: str) -> None:
+    """An executable hook script `name` in `directory`."""
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / name).write_text(text)
+    (directory / name).chmod(0o755)
+
+
+def test_the_pre_commit_report_names_no_activation_step_when_the_hooks_are_active(
+    pushing: Path, env: dict[str, str], pre_commit_locale: Locale
+) -> None:
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+    install(pushing, env, "--hooks", "pre-commit")
+    pre_commit_install(pushing, env, pre_commit_locale)
+
+    result = install(pushing, env, "--hooks", "pre-commit")
+
+    assert PRE_COMMIT_CONFIG in result.stdout
+    assert "pre-commit install" not in result.stdout
+
+
+def test_the_pre_commit_report_names_the_activation_step_when_one_hook_is_active(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+    put_hook(pushing / ".git" / "hooks", "commit-msg", "#!/bin/sh\nexec pre-commit\n")
+
+    result = install(pushing, env, "--hooks", "pre-commit")
+
+    assert "pre-commit install" in result.stdout
+
+
+def test_the_pre_commit_report_names_the_activation_step_when_only_the_default_type_is_active(
+    pushing: Path, env: dict[str, str], pre_commit_locale: Locale
+) -> None:
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+    install(pushing, env, "--hooks", "pre-commit")
+    pre_commit_install(pushing, env, pre_commit_locale, "--hook-type", "pre-commit")
+
+    result = install(pushing, env, "--hooks", "pre-commit")
+
+    assert "pre-commit install" in result.stdout
+
+
+def test_the_pre_commit_report_names_no_activation_step_for_hooks_in_another_directory(
+    pushing: Path, env: dict[str, str], git: Git
+) -> None:
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+    git(pushing, "config", "core.hooksPath", ".githooks")
+    for hook in ("commit-msg", "pre-push"):
+        put_hook(pushing / ".githooks", hook, "#!/bin/sh\nexec pre-commit\n")
+
+    result = install(pushing, env, "--hooks", "pre-commit")
+
+    assert "pre-commit install" not in result.stdout
+
+
+def test_a_relative_hooks_path_is_read_from_the_worktree_root_for_the_activation_step(
+    pushing: Path, env: dict[str, str], git: Git
+) -> None:
+    (pushing / PRE_COMMIT_CONFIG).write_text("repos:\n  - repo: local\n    hooks: []\n")
+    git(pushing, "config", "core.hooksPath", ".githooks")
+    for hook in ("commit-msg", "pre-push"):
+        put_hook(pushing / ".githooks", hook, "#!/bin/sh\nexec pre-commit\n")
+    (pushing / "sub").mkdir()
+
+    result = install(pushing / "sub", env, "--hooks", "pre-commit")
+
+    assert "pre-commit install" not in result.stdout
 
 
 # husky
@@ -1091,6 +1161,19 @@ def test_the_lefthook_report_names_the_file_and_the_activation_step(
 
     assert "lefthook.yml" in result.stdout
     assert "lefthook install" in result.stdout
+
+
+def test_the_lefthook_report_names_no_activation_step_when_the_hooks_are_active(
+    pushing: Path, env: dict[str, str]
+) -> None:
+    (pushing / "lefthook.yml").write_text(LEFTHOOK_CONFIG)
+    for hook in ("commit-msg", "pre-push"):
+        put_hook(pushing / ".git" / "hooks", hook, "#!/bin/sh\nexec lefthook run\n")
+
+    result = install(pushing, env)
+
+    assert "lefthook.yml" in result.stdout
+    assert "lefthook install" not in result.stdout
 
 
 def test_the_lefthook_block_holds_no_local_path_and_no_check_command(

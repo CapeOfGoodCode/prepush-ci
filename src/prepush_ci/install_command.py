@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from prepush_ci import text_io
+from prepush_ci.core.doctor_hooks import hooks_active
 from prepush_ci.core.hook_managers import (
     HUSKY_DIRECTORY,
     MANAGERS,
@@ -32,6 +33,7 @@ from prepush_ci.core.install import (
 )
 from prepush_ci.core.uv_cache import TEMPORARY_WARNING, is_temporary
 from prepush_ci.git import answer, git
+from prepush_ci.hook_scripts import git_hooks_directory, script
 
 
 class Unreadable(Exception):
@@ -213,10 +215,21 @@ def _install_manager(cwd: Path, root: Path | None, manager: str) -> int:
     changed = any(old != new for old, new in plan.values())
     print(
         manager_report(
-            outcome(was_installed=was_installed, changed=changed), manager, names
+            outcome(was_installed=was_installed, changed=changed),
+            manager,
+            names,
+            active=_activated(cwd, manager),
         )
     )
     return 0
+
+
+def _activated(cwd: Path, manager: str) -> bool:
+    """Whether the hooks of `manager` are activated, by the test `doctor` applies."""
+    if manager == "husky":  # it never printed an activation step
+        return False
+    directory = git_hooks_directory(cwd)
+    return hooks_active(manager, [script(directory / hook) for hook in HOOKS])
 
 
 def _put_back(root: Path, attempted: list[tuple[str, str | None]]) -> list[str]:

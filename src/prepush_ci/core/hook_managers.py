@@ -379,8 +379,11 @@ def holds_block(text: str) -> bool:
     return find_block(split_lines(text)[0]) is not None
 
 
-def manager_report(word: str, manager: str, files: Sequence[str]) -> str:
+def manager_report(
+    word: str, manager: str, files: Sequence[str], active: bool = False
+) -> str:
+    """The report of `install`; `active` says the manager's hooks are already activated."""
     lines = [f"{word}: {manager}", *(f"  {name}" for name in files)]
-    if manager in _ACTIVATION:
+    if manager in _ACTIVATION and not active:
         lines.append(f"next: run `{_ACTIVATION[manager]}` to activate the hooks")
     return "\n".join(lines)

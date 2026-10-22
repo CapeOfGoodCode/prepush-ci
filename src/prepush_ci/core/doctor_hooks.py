@@ -194,19 +194,29 @@ def _husky_problem(hook: str, facts: ManagerFacts) -> tuple[str, str] | None:
     return None
 
 
+def _inactive_reason(manager: str, script: Script) -> str | None:
+    """Why git would not run `manager` from `script`; None when it would."""
+    if not script.exists:
+        return "does not exist"
+    if not script.executable:
+        return "is not executable"
+    if _NAMED_IN_SCRIPT[manager] not in script.content:
+        return f"does not run {manager}"
+    return None
+
+
+def hooks_active(manager: str, scripts: Sequence[Script]) -> bool:
+    """Whether every one of the hook `scripts` is activated for `manager`: the test of the
+    activation check, which `install` uses to know whether to print the activation step."""
+    return all(_inactive_reason(manager, script) is None for script in scripts)
+
+
 def _activation_problem(hook: str, facts: ManagerFacts) -> tuple[str, str] | None:
     manager = facts.manager
-    where = f"{facts.hooks_directory}/{hook}"
-    script = facts.installed
-    if not script.exists:
-        reason = "does not exist"
-    elif not script.executable:
-        reason = "is not executable"
-    elif _NAMED_IN_SCRIPT[manager] not in script.content:
-        reason = f"does not run {manager}"
-    else:
+    reason = _inactive_reason(manager, facts.installed)
+    if reason is None:
         return None
     return (
-        f"{manager} is not activated: {where} {reason}",
+        f"{manager} is not activated: {facts.hooks_directory}/{hook} {reason}",
         f"run `{_ACTIVATION[manager]}`",
     )

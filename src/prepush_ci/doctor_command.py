@@ -11,7 +11,7 @@ from prepush_ci import text_io
 from prepush_ci.core import doctor, doctor_hooks
 from prepush_ci.core.config import Config, ConfigError
 from prepush_ci.core.config_source import PREPUSH_CI_FILE, PYPROJECT_FILE, ConfigMissing
-from prepush_ci.core.doctor_hooks import Binary, ManagerFacts, NativeFacts, Script
+from prepush_ci.core.doctor_hooks import Binary, ManagerFacts, NativeFacts
 from prepush_ci.core.hook_managers import (
     HUSKY_DIRECTORY,
     LEFTHOOK_FILES,
@@ -24,6 +24,7 @@ from prepush_ci.core.hook_managers import (
 from prepush_ci.core.install import HOOKS, HOOKS_DIRECTORY, PYTHON_FILE
 from prepush_ci.core.preflight import missing_env
 from prepush_ci.git import answer, git
+from prepush_ci.hook_scripts import git_hooks_directory, hooks_path, script
 from prepush_ci.repo_config import load_repository_config
 from prepush_ci.version_line import own_version_line
 
@@ -218,35 +219,16 @@ def _marker(root: Path, name: str) -> bool:
     return path.is_dir() if name == HUSKY_DIRECTORY else path.is_file()
 
 
-def _hooks_path(cwd: Path, root: Path) -> tuple[str, Path] | None:
-    """The effective `core.hooksPath` as configured and made absolute against the worktree root."""
-    configured = git(cwd, "config", "--type=path", "--get", "core.hooksPath")
-    value = answer(configured)
-    if configured.returncode != 0 or not value:
-        return None
-    return value, (root / text_io.to_path(value)).resolve()
-
-
-def _script(path: Path) -> Script:
-    if not path.is_file():
-        return Script(exists=False)
-    try:
-        text = text_io.read_text(path)
-    except OSError:  # a hook that cannot be read is still a hook git runs
-        text = ""
-    return Script(exists=True, executable=os.access(path, os.X_OK), content=text)
-
-
 def _native_facts(cwd: Path, root: Path, common: Path) -> NativeFacts:
     directory = common.joinpath(*HOOKS_DIRECTORY)
-    configured = _hooks_path(cwd, root)
-    interpreter = _script(directory / PYTHON_FILE)
+    configured = hooks_path(cwd, root)
+    interpreter = script(directory / PYTHON_FILE)
     recorded = interpreter.content.strip() if interpreter.exists else None
     return NativeFacts(
         configured=configured[0] if configured else None,
         ours=configured is not None and configured[1] == directory,
         directory=text_io.text_of(directory),
-        scripts={hook: _script(directory / hook) for hook in HOOKS},
+        scripts={hook: script(directory / hook) for hook in HOOKS},
         interpreter=recorded,
         interpreter_exists=recorded is not None
         and os.access(text_io.to_os(recorded), os.X_OK),
@@ -274,7 +256,7 @@ def _manager_facts(
         text = None
     except OSError:  # unreadable: it holds no block we could find
         text = ""
-    configured = _hooks_path(cwd, root)
+    configured = hooks_path(cwd, root)
     if configured is not None:
         directory = configured[1]
         inside = (
@@ -284,8 +266,7 @@ def _manager_facts(
         )
         shown = inside or text_io.text_of(configured[1])
     else:
-        git_path = git(cwd, "rev-parse", "--git-path", "hooks").stdout.strip()
-        directory = (cwd / text_io.to_path(git_path)).resolve()
+        directory = git_hooks_directory(cwd)
         shown = None
     return ManagerFacts(
         manager=manager,
@@ -294,5 +275,5 @@ def _manager_facts(
         content=text,
         hooks_path=shown,
         hooks_directory=text_io.text_of(directory),
-        installed=_script(directory / hook),
+        installed=script(directory / hook),
     )

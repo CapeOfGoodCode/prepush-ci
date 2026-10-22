@@ -7,6 +7,7 @@ from prepush_ci.core.doctor_hooks import (
     ManagerFacts,
     NativeFacts,
     Script,
+    hooks_active,
     native_check,
     none_check,
     refusal_check,
@@ -420,3 +421,30 @@ def test_other_managers_do_not_need_the_key() -> None:
     )
 
     assert check.status == "ok"
+
+
+def test_hooks_that_are_executable_and_name_the_manager_are_active() -> None:
+    for manager in ("pre-commit", "lefthook"):
+        script = Script(exists=True, executable=True, content=f"exec {manager} run\n")
+
+        assert hooks_active(manager, [script, script])
+
+
+def test_hooks_are_not_active_when_one_of_them_is_missing() -> None:
+    script = Script(exists=True, executable=True, content="exec pre-commit run\n")
+
+    assert not hooks_active("pre-commit", [script, Script(exists=False)])
+
+
+def test_hooks_are_not_active_when_one_of_them_is_not_executable() -> None:
+    script = Script(exists=True, executable=True, content="exec lefthook run\n")
+    plain = replace(script, executable=False)
+
+    assert not hooks_active("lefthook", [plain, script])
+
+
+def test_hooks_are_not_active_when_one_of_them_does_not_name_the_manager() -> None:
+    script = Script(exists=True, executable=True, content="exec pre-commit run\n")
+    other = replace(script, content="exec lefthook run\n")
+
+    assert not hooks_active("pre-commit", [script, other])
