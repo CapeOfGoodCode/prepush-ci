@@ -100,15 +100,16 @@ def _is_assignment(word: str) -> bool:
     return bool(separator) and name.isidentifier()
 
 
-def _after_wrapper(name: str, rest: list[str]) -> list[str]:
-    """What follows a wrapper once its options are skipped: the value of `env -u` and `timeout -k`
-    with them, and the duration `timeout` takes."""
+def _after_wrapper(name: str, words: list[str], start: int) -> int:
+    """The index of what follows a wrapper once its options are skipped: the value of `env -u` and
+    `timeout -k` with them, and the duration `timeout` takes."""
     values = _VALUE_OPTIONS.get(name, ())
-    while rest and rest[0].startswith("-"):
-        del rest[: 2 if rest[0] in values else 1]
+    index = start
+    while index < len(words) and words[index].startswith("-"):
+        index += 2 if words[index] in values else 1
     if name == "timeout":
-        del rest[:1]
-    return rest
+        index += 1
+    return min(index, len(words))
 
 
 def _is_c_option(word: str) -> bool:
@@ -130,31 +131,36 @@ def _script_of(args: list[str]) -> str | None:
     return None
 
 
-def _is_git_push(rest: list[str]) -> bool:
-    """Whether a command that starts with `git` is `git [options] push` that sends something."""
-    if rest[:1] != ["git"]:
+def _is_git_push(words: list[str], start: int) -> bool:
+    """Whether the command that starts at `start` is `git [options] push` that sends something."""
+    if words[start : start + 1] != ["git"]:
         return False
-    rest = rest[1:]
-    while rest and (rest[0] in ("-C", "-c") or rest[0].startswith("--")):
-        del rest[: 2 if rest[0] in ("-C", "-c") else 1]
-    if rest[:1] != ["push"]:
+    index = start + 1
+    while index < len(words) and (
+        words[index] in ("-C", "-c") or words[index].startswith("--")
+    ):
+        index += 2 if words[index] in ("-C", "-c") else 1
+    if words[index : index + 1] != ["push"]:
         return False
-    return not any(word in _NOT_A_PUSH for word in rest[1:])
+    return not any(word in _NOT_A_PUSH for word in words[index + 1 :])
 
 
 def _pushes(words: list[str]) -> bool:
     """Whether one command is a push, once the words that run another command are skipped."""
-    rest = list(words)
-    while rest and (
-        _is_assignment(rest[0]) or rest[0] in _KEYWORDS or rest[0] in _WRAPPERS
+    start = 0
+    while start < len(words) and (
+        _is_assignment(words[start])
+        or words[start] in _KEYWORDS
+        or words[start] in _WRAPPERS
     ):
-        name = rest.pop(0)
+        name = words[start]
+        start += 1
         if name in _WRAPPERS:
-            rest = _after_wrapper(name, rest)
-    if rest[:1] and rest[0] in _SHELLS:
-        script = _script_of(rest[1:])
+            start = _after_wrapper(name, words, start)
+    if words[start : start + 1] and words[start] in _SHELLS:
+        script = _script_of(words[start + 1 :])
         return script is not None and is_push(script)
-    return _is_git_push(rest)
+    return _is_git_push(words, start)
 
 
 def is_push(command: str) -> bool:
