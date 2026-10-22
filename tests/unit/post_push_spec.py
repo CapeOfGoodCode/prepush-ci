@@ -290,22 +290,31 @@ def test_a_long_option_word_after_a_shell_is_read_within_the_time_the_hook_has()
 
 
 @pytest.mark.parametrize(
-    ("repeated", "prefix", "suffix", "count"),
+    ("repeated", "prefix", "suffix"),
     [
-        pytest.param("env -u x ", "", "git push", 250_000, id="env options"),
-        pytest.param("time ", "", "git push", 600_000, id="wrappers"),
-        pytest.param("-k 1 ", "timeout ", " 5 git push", 350_000, id="timeout options"),
-        pytest.param("A=1 ", "", "git push", 600_000, id="assignments"),
-        pytest.param("-c a=b ", "git ", "push", 400_000, id="git options"),
+        pytest.param("env -u x ", "", "git push", id="env options"),
+        pytest.param("time ", "", "git push", id="wrappers"),
+        pytest.param("-k 1 ", "timeout ", " 5 git push", id="timeout options"),
+        pytest.param("A=1 ", "", "git push", id="assignments"),
+        pytest.param("-c a=b ", "git ", "push", id="git options"),
     ],
 )
-def test_a_command_of_many_words_is_read_within_the_time_the_hook_has(
-    repeated: str, prefix: str, suffix: str, count: int
+def test_a_command_of_many_words_is_read_in_time_linear_in_its_word_count(
+    repeated: str, prefix: str, suffix: str
 ) -> None:
-    command = prefix + repeated * count + suffix
-    started = time.monotonic()
-    assert is_push(command)
-    assert time.monotonic() - started < 5
+    def seconds_for(words: int) -> float:
+        command = prefix + repeated * words + suffix
+        durations = []
+        for _ in range(3):
+            started = time.process_time()
+            assert is_push(command)
+            durations.append(time.process_time() - started)
+        return min(durations)
+
+    # Four times the words cost about four times as long when linear and sixteen
+    # times as long when quadratic; the bound sits between them, so it holds on any
+    # machine, with or without tracing, where a fixed number of seconds does not.
+    assert seconds_for(100_000) < 8 * seconds_for(25_000)
 
 
 # --- Forms that are not recognized ------------------------------------------------------------
