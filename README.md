@@ -62,6 +62,8 @@ prepush-ci init
 
 `init` asks for the command that runs your full CI check, then writes `.prepush-ci.toml`, installs the git hooks (it finds `pre-commit`, husky and lefthook and edits their files instead of fighting them), writes a Claude Code SessionStart script that exports `PREPUSH_CI=full` in cloud sessions, and prints the CI gate snippet. Commit `.prepush-ci.toml` and the hook files you want shared. In a script, give it flags: `prepush-ci init --non-interactive --check "sh scripts/ci"`.
 
+With pre-commit, the hooks `init` writes set `verbose: true`, so that pre-commit shows what they print. The `pre-push` hook then prints the whole output of your check on every push that runs it, however long that is. To keep it short, make the check command print a summary and write the detail to a file, or use a quiet mode of your test runner, such as `pytest -q`.
+
 ### 4. Opt in with `PREPUSH_CI=full`
 
 Nothing happens until a machine opts in: set `PREPUSH_CI=full` in its environment (the SessionStart script does it in a cloud session; on your own machine, export it in your shell profile or leave it unset). The values are described [below](#prepush_ci).
