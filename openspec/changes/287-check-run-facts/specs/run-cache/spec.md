@@ -36,7 +36,7 @@ For each file named in `results` that the check wrote and the tool could read, t
 
 #### Scenario: Coverage and the tools
 - **WHEN** `results` names a coverage file of 94.5%, a ruff file with an empty array and a mypy file with `Success: no issues found in 12 source files`, and the check writes them
-- **THEN** the facts hold coverage 94.5, 0 ruff errors and 0 mypy errors
+- **THEN** the facts hold coverage `94.5` (the text of the file), 0 ruff errors and 0 mypy errors
 
 #### Scenario: Errors counted
 - **WHEN** the check passes and writes a ruff file with two errors and a mypy file with `Found 3 errors in 1 file`
@@ -47,7 +47,7 @@ For each file named in `results` that the check wrote and the tool could read, t
 - **THEN** the facts hold the duration and nothing else
 
 ### Requirement: The files of this run only
-Before it starts the check, the tool SHALL delete each file named in `results` that exists and is not tracked in `HEAD`, so that a file left by an earlier run is never read as a fact of this one. A named file that is tracked SHALL NOT be deleted and SHALL NOT be read: the tool SHALL print one line on standard error that names its `results` key and says it is tracked. A cached pass that skips the check SHALL delete nothing.
+When the cache is on, before it starts the check the tool SHALL delete each file named in `results` that exists and that it may delete (see "A path that is not safe to delete is left alone"), so that a file left by an earlier run is never read as a fact of this one. A cached pass that skips the check, and a repository with `cache = false`, SHALL delete nothing.
 
 #### Scenario: A stale file is not read
 - **WHEN** `results` names `out/a.xml`, an untracked `out/a.xml` with 4 failing cases exists, and the check passes without writing it
@@ -57,17 +57,51 @@ Before it starts the check, the tool SHALL delete each file named in `results` t
 - **WHEN** an untracked `out/a.xml` from an earlier run exists and the check writes it again with 3 passing cases
 - **THEN** the facts hold 3 passed
 
-#### Scenario: A tracked file is left alone
-- **WHEN** `results` names `docs/cov.json`, which is tracked, and the check passes
-- **THEN** the file is unchanged, the facts hold no coverage and standard error has one line naming `results.coverage` that says the file is tracked
-
 #### Scenario: A skipped check deletes nothing
 - **WHEN** a pass is cached and the push skips the check while an untracked `out/a.xml` exists
+- **THEN** `out/a.xml` is still there
+
+#### Scenario: No cache, no deletion
+- **WHEN** `cache = false`, `results` names `out/a.xml`, an untracked `out/a.xml` exists and the check passes
 - **THEN** `out/a.xml` is still there
 
 #### Scenario: A failing check
 - **WHEN** an untracked `out/a.xml` exists and the check fails
 - **THEN** no result ref is recorded
+
+### Requirement: A path that is not safe to delete is left alone
+A path named in `results` SHALL be deleted only when it is a regular file, not a symbolic link, that is not tracked (in `HEAD` or in the index), and no directory on its way is a symbolic link. A path that exists and is not safe, or whose deletion fails for any reason, SHALL NOT be deleted and SHALL NOT be read after the check, and the run SHALL go on.
+
+#### Scenario: A tracked file is left alone
+- **WHEN** `results` names `docs/cov.json`, which is tracked, and the check passes
+- **THEN** the file is unchanged, the facts hold no coverage and standard error has one line naming `results.coverage` that says the file is tracked
+
+#### Scenario: A file that is only staged is left alone
+- **WHEN** `results` names `out/a.xml`, which is added to the index and not committed, and the check passes
+- **THEN** the file is unchanged and standard error has one line naming `results.junit` that says the file is tracked
+
+#### Scenario: A directory
+- **WHEN** `results = { coverage = "out" }` and `out` is a directory
+- **THEN** `out` and what it holds are still there, standard error has one line naming `results.coverage` that says it is a directory, the exit status is 0 and the facts hold no coverage
+
+#### Scenario: A symbolic link on the way
+- **WHEN** `out` is a symbolic link to a directory outside the worktree that holds `a.xml`, `results = { junit = ["out/a.xml"] }` and the check passes
+- **THEN** the `a.xml` outside the worktree is still there, standard error has one line naming `results.junit` that says a symbolic link is on the way, and the facts hold no test counts
+
+#### Scenario: A symbolic link as the file
+- **WHEN** `results.coverage` names `cov.json`, a symbolic link to a file, and the check passes
+- **THEN** the link and its target are still there, standard error has one line naming `results.coverage` that says it is a symbolic link, and the facts hold no coverage
+
+### Requirement: A path that is left alone costs one line
+For each path that "A path that is not safe to delete is left alone" leaves alone, the tool SHALL print one line on standard error that names its `results` key and the entry and says why in a few words (a directory, a symbolic link, tracked, the deletion failed), never the content of any file.
+
+#### Scenario: A deletion that fails
+- **WHEN** an untracked `out/a.xml` exists in a directory the user cannot write to, and the check passes without writing it
+- **THEN** standard error has one line naming `results.junit` that says the deletion failed, the exit status is 0, the pass is recorded with its duration and the facts hold no test counts
+
+#### Scenario: The line holds no content
+- **WHEN** a named untracked directory `out` holds a file with the text `TOKEN=abc123`, and `results = { coverage = "out" }`
+- **THEN** standard error has one line naming `results.coverage` and it does not hold `abc123`
 
 ### Requirement: A fact that cannot be read costs a warning
 A file named in `results` that the check did not write, or that is not of the format of its key (`report`'s readers decide), SHALL yield no fact for it and SHALL cost one line on standard error that names the key and says why in a few words, never the content of the file. The run SHALL still pass and the pass SHALL still be recorded, with the other facts.
@@ -100,11 +134,19 @@ The facts SHALL name a test file only when the `file` of a case, taken from the 
 - **THEN** the facts list 50 of them and the cases of the other 10 are counted under `other`
 
 ### Requirement: Only numbers are kept
-Apart from the test-file names above, the facts SHALL hold numbers only: a coverage value is kept only when it is a decimal number, and no output of the check is part of the facts.
+Apart from the test-file names above, the facts SHALL hold numbers only: a coverage value is kept only when the text of `totals.percent_covered_display` (as `report` reads it, without a `%`) is digits with at most one `.` and a number from 0 to 100, and it SHALL be kept as that text, so that `100` stays `100`; `nan`, `inf`, an exponent, a sign and a space are not numbers. No output of the check is part of the facts.
 
 #### Scenario: A coverage value that is not a number
 - **WHEN** the coverage file's `percent_covered_display` is `see https://example.com`
 - **THEN** the facts hold no coverage and standard error has one line naming `results.coverage`
+
+#### Scenario: Forms that are not coverage
+- **WHEN** `percent_covered_display` is, in turn, `nan`, `inf`, `1e3`, `-5`, `101` and `9 4`
+- **THEN** in each case the facts hold no coverage and standard error has one line naming `results.coverage`
+
+#### Scenario: A whole number stays whole
+- **WHEN** `percent_covered_display` is `100`
+- **THEN** the facts hold coverage `100`, not `100.0`
 
 #### Scenario: Output is not kept
 - **WHEN** the check prints `TOKEN=abc123` to both streams and passes

@@ -41,7 +41,7 @@ The config SHALL accept exactly these keys: `check` (string, required), `preflig
 - **THEN** the tool reports `results.coverage` and exits non-zero
 
 ### Requirement: A result path stays inside the worktree
-Each path in `results` SHALL be relative to the top of the working tree, without a `..` component and not absolute (also not with a drive letter), because the tool deletes it before the check and reads it after. A path that breaks the rule SHALL be reported with its key and the entry, together with any other problem, and the tool SHALL exit non-zero.
+Each path in `results` SHALL be relative to the top of the working tree, because the tool deletes it before the check and reads it after. A path with a `..` component, an absolute path and a path with a drive letter SHALL be refused. A path that breaks this or the next requirement SHALL be reported with its key and the entry, together with any other problem, and the tool SHALL exit non-zero.
 
 #### Scenario: A path above the worktree
 - **WHEN** the config sets `results = { coverage = "../cov.json" }`
@@ -54,3 +54,26 @@ Each path in `results` SHALL be relative to the top of the working tree, without
 #### Scenario: A path with a drive letter
 - **WHEN** the config sets `results = { ruff = "C:\\out\\ruff.json" }`
 - **THEN** the tool reports `results.ruff` and exits non-zero
+
+#### Scenario: A path inside a directory is fine
+- **WHEN** the config sets `results = { coverage = "build/out/cov.json" }`
+- **THEN** the parsed config holds that path
+
+### Requirement: A result path reads the same on every operating system
+A path in `results` SHALL be written with `/` as its only separator, and SHALL be refused on every operating system when it contains a backslash, starts with `/`, or starts with a letter and `:` (a drive, also a drive-relative one).
+
+#### Scenario: A drive-relative path
+- **WHEN** the config sets `results = { ruff = "C:ruff.json" }`
+- **THEN** the tool reports `results.ruff` and exits non-zero
+
+#### Scenario: A backslash climbs
+- **WHEN** the config sets `results = { coverage = "..\\cov.json" }`
+- **THEN** the tool reports `results.coverage` and `..\\cov.json` and exits non-zero, on every operating system
+
+#### Scenario: A leading backslash
+- **WHEN** the config sets `results = { coverage = "\\out\\cov.json" }`
+- **THEN** the tool reports `results.coverage` and exits non-zero, on every operating system
+
+#### Scenario: A network path
+- **WHEN** the config sets `results = { junit = ["\\\\server\\share\\a.xml"] }`
+- **THEN** the tool reports `results.junit` and exits non-zero

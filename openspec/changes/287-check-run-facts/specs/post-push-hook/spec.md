@@ -17,8 +17,27 @@ The body of the comment SHALL begin with what `prepush-ci report --markdown --re
 
 ## ADDED Requirements
 
+### Requirement: The facts are those of the latest pass for the tree
+When the run cache holds more than one pass for the tree of `HEAD` (refs that differ in the part of the key after the tree), the facts SHALL be those of the pass whose result commit has the latest committer date; of equal dates, the last by ref name. The facts of an older pass SHALL NOT be shown, and when the latest pass holds no facts, the body SHALL have none, whatever the older ones hold.
+
+#### Scenario: Two passes for one tree
+- **WHEN** a unit run of `check = "pytest tests/unit"` passed on a tree with 40 passed cases, then `check` was changed to `scripts/ci`, which passed on the same tree with 812 passed cases, and the hook runs
+- **THEN** the body holds 812 passed and not 40
+
+#### Scenario: The latest pass has no facts
+- **WHEN** a pass with facts exists for the tree and a later pass for the same tree has none
+- **THEN** the body holds no facts
+
+#### Scenario: Equal dates
+- **WHEN** two passes for the tree have the same committer date
+- **THEN** the facts are those of the ref whose name sorts last
+
 ### Requirement: The facts are one line and a collapsed block
-The block of facts SHALL start with one visible line, `Facts of the run: ` followed by the entries that the facts hold, in this order and joined by `; `: `<n> passed, <n> failed, <n> skipped`, `coverage <n>%` and `duration <d>` (the form `report` shows a duration in, such as `8m 12s`). When the facts hold more than the duration, a collapsed block SHALL follow (see "The details are collapsed"). Nothing but the facts SHALL be in the block.
+The block of facts SHALL start with one visible line, `Facts of the run: ` followed by the entries that the facts hold, in this order and joined by `; `: `<n> passed, <n> failed, <n> skipped`, `coverage <n>%` (the text of the facts, as written) and `duration <d>` (the form `report` shows a duration in, such as `8m 12s`). When the facts hold more than the duration, a collapsed block SHALL follow (see "The details are collapsed"). Nothing but the facts SHALL be in the block.
+
+#### Scenario: Coverage as the file wrote it
+- **WHEN** the facts hold coverage `100`
+- **THEN** the visible line holds `coverage 100%`, not `coverage 100.0%`
 
 #### Scenario: The visible line
 - **WHEN** the facts hold 812 passed, 0 failed and 3 skipped, coverage 94.5 and 492 seconds
