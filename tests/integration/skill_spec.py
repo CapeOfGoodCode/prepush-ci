@@ -810,6 +810,9 @@ def test_a_no_leaves_the_check_and_the_report_call_as_they_are() -> None:
 
 # --- The documentation section has every session show its result on the pull request ----------
 
+TOP = '"$(git rev-parse --show-toplevel)/'
+JUNIT_PATH = TOP + '.prepush-ci/junit.xml"'
+COVERAGE_PATH = TOP + '.prepush-ci/coverage.json"'
 REPORT_COMMAND = (
     "`prepush-ci report --markdown --result passed "
     "--tree \"$(git rev-parse 'HEAD^{tree}')\"`"
@@ -851,6 +854,44 @@ def test_the_documentation_section_bans_edit_last_and_says_why() -> None:
     step = flat(section("Documentation"))
     assert "`--edit-last`" in step
     assert "whatever it says" in step
+
+
+def test_the_documentation_section_passes_the_result_files_each_only_if_written() -> (
+    None
+):
+    step = flat(section("Documentation"))
+    assert f"`--junit {JUNIT_PATH}`" in step
+    assert f"`--coverage {COVERAGE_PATH}`" in step
+    assert "for each of those files the check writes" in step
+
+
+def test_the_paths_of_the_documentation_section_do_not_depend_on_the_directory_of_the_call() -> (
+    None
+):
+    step = flat(section("Documentation"))
+    assert JUNIT_PATH.startswith(TOP) and COVERAGE_PATH.startswith(TOP)
+    assert step.count(TOP) == 2
+    assert "`--junit .prepush-ci" not in step
+    assert "`--coverage .prepush-ci" not in step
+    assert "from a subdirectory" in step
+
+
+def test_the_documentation_section_leaves_the_files_out_after_a_cached_pass() -> None:
+    step = flat(section("Documentation"))
+    assert (
+        "Leave out the result files when the push said the check passed earlier, "
+        "because the files on disk may belong to another tree" in step
+    )
+
+
+def test_the_documentation_section_says_the_hook_and_the_call_share_the_comment() -> (
+    None
+):
+    step = flat(section("Documentation"))
+    assert (
+        "The post-push hook, where the repository has it, writes the short comment "
+        "right after the push and your call then updates that comment" in step
+    )
 
 
 # --- The hook that shows the result after every push is proposed, never imposed -----------------
