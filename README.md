@@ -169,7 +169,7 @@ prepush-ci hook pre-push origin
 
 ### `hook post-push`
 
-Puts the result of the check on the pull request after a push. Claude Code runs this hook after each command of an agent, not a person: it reads the payload on standard input, and when the command was a `git push` that landed a commit with the trailer and a recorded pass of the check, it creates or updates the one comment of the check on the pull request of the branch, with the text `report --markdown` prints. In every other case it does nothing. It uses `GITHUB_TOKEN` or `GH_TOKEN` when one is set and sends no credentials otherwise, which is what a Claude Code cloud session needs. The setup skill proposes it.
+Puts the result of the check on the pull request after a push. Claude Code runs this hook after each command of an agent, not a person: it reads the payload on standard input, and when the command was a `git push` that landed a commit with the trailer and a recorded pass of the check, it creates or updates the one comment of the check on the pull request of the branch, with the text `report --markdown` prints. In every other case it does nothing. The comment it writes is the short one, with no test counts or coverage, because the hook passes no result files; an agent that puts the output of `report --markdown` with `--junit` and `--coverage` into the comment then updates that same comment, and the next push writes the short text again. It uses `GITHUB_TOKEN` or `GH_TOKEN` when one is set and sends no credentials otherwise, which is what a Claude Code cloud session needs. The setup skill proposes it.
 
 ```
 prepush-ci hook post-push
@@ -251,7 +251,7 @@ prepush-ci report --markdown --result passed|failed --tree TREE [--commit SHA] [
 prepush-ci report --result passed --tree "$(git rev-parse 'HEAD^{tree}')" --junit report.xml --coverage coverage.json
 ```
 
-`--markdown` posts nothing: it prints the same summary as Markdown on standard output, for a session that cannot reach the API to put into a comment on the pull request with the tools it has. It needs no token, no app, no `origin` and no network, takes the inputs of `--result`, and does not combine with `--start`. The text starts with a hidden marker `<!-- prepush-ci:NAME -->` that names the check (`NAME` is `--name`, default prepush-ci / full; a name with `--` or a line break is refused), a title line, and a line with the full sha of the commit it reports; whoever posts it finds the comment of that check by the marker and updates it.
+`--markdown` posts nothing: it prints the same summary as Markdown on standard output, for a session that cannot reach the API to put into a comment on the pull request with the tools it has. It needs no token, no app, no `origin` and no network, takes the inputs of `--result`, and does not combine with `--start`. The text starts with a hidden marker `<!-- prepush-ci:NAME -->` that names the check (`NAME` is `--name`, default prepush-ci / full; a name with `--` or a line break is refused), a title line, and a line with the full sha of the commit it reports; whoever posts it finds the comment of that check by the marker and updates it. With `--junit` and `--coverage` it shows test counts and coverage from the files it is given.
 
 **Exit status:** 0 means the result was posted (with `--markdown`, printed), 1 means it refused or failed, 2 means the parser rejected the command line.
 

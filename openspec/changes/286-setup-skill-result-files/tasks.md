@@ -8,7 +8,7 @@
 ## 2. The instruction passes them
 
 - [x] 2.1 Change the step 8 instruction: the call with `--junit` and `--coverage`, the rule for a file the push did not write, the hook and the call sharing the comment; verify with specs named after the scenarios of the three requirements for the instruction of the documentation step
-- [ ] 2.2 Add one sentence each under `hook post-push` and `report` in `README.md`; run both against the head and keep the README check green
+- [x] 2.2 Add one sentence each under `hook post-push` and `report` in `README.md`; run both against the head and keep the README check green
 
 ## 3. Paths anchored at the top of the worktree
 
