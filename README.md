@@ -17,7 +17,7 @@
 | src/prepush\_ci/core/config.py         |      103 |        0 |       42 |        0 |     100% |           |
 | src/prepush\_ci/core/config\_source.py |       31 |        0 |        8 |        0 |     100% |           |
 | src/prepush\_ci/core/doctor.py         |       92 |        0 |       34 |        0 |     100% |           |
-| src/prepush\_ci/core/doctor\_hooks.py  |      121 |        0 |       50 |        0 |     100% |           |
+| src/prepush\_ci/core/doctor\_hooks.py  |      125 |        0 |       52 |        0 |     100% |           |
 | src/prepush\_ci/core/hook\_managers.py |      203 |        0 |       76 |        0 |     100% |           |
 | src/prepush\_ci/core/init.py           |      187 |        0 |       70 |        0 |     100% |           |
 | src/prepush\_ci/core/install.py        |       54 |        0 |        8 |        0 |     100% |           |
@@ -30,11 +30,12 @@
 | src/prepush\_ci/core/strip.py          |       81 |        0 |       32 |        0 |     100% |           |
 | src/prepush\_ci/core/uv\_cache.py      |       32 |        0 |       10 |        0 |     100% |           |
 | src/prepush\_ci/core/verify.py         |       45 |        0 |       16 |        0 |     100% |           |
-| src/prepush\_ci/doctor\_command.py     |      151 |        0 |       30 |        0 |     100% |           |
+| src/prepush\_ci/doctor\_command.py     |      137 |        0 |       26 |        0 |     100% |           |
 | src/prepush\_ci/git.py                 |       60 |        0 |       14 |        0 |     100% |           |
 | src/prepush\_ci/github\_api.py         |      136 |        0 |        4 |        0 |     100% |           |
+| src/prepush\_ci/hook\_scripts.py       |       22 |        0 |        4 |        0 |     100% |           |
 | src/prepush\_ci/init\_command.py       |      199 |        0 |       56 |        0 |     100% |           |
-| src/prepush\_ci/install\_command.py    |      205 |        0 |       58 |        0 |     100% |           |
+| src/prepush\_ci/install\_command.py    |      212 |        0 |       60 |        0 |     100% |           |
 | src/prepush\_ci/pass\_cache.py         |      107 |        0 |       44 |        0 |     100% |           |
 | src/prepush\_ci/post\_push\_hook.py    |       77 |        0 |       16 |        0 |     100% |           |
 | src/prepush\_ci/pre\_push\_hook.py     |       86 |        0 |       30 |        0 |     100% |           |
@@ -48,7 +49,7 @@
 | src/prepush\_ci/text\_io.py            |      157 |        0 |       14 |        0 |     100% |           |
 | src/prepush\_ci/verify\_command.py     |       44 |        0 |       12 |        0 |     100% |           |
 | src/prepush\_ci/version\_line.py       |       20 |        0 |        0 |        0 |     100% |           |
-| **TOTAL**                              | **3745** |    **0** | **1080** |    **0** | **100%** |           |
+| **TOTAL**                              | **3764** |    **0** | **1084** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
