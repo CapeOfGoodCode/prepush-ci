@@ -549,6 +549,265 @@ def test_a_missing_service_fails_the_check_and_the_tests_are_never_skipped_for_i
     assert "--require-env" in step and "--preflight" in step
 
 
+# --- The skill has the check write its result files ----------------------------------------------
+
+ITEM = "6. **Have the check write its result files.**"
+
+
+def result_files_item() -> str:
+    """Item 6 of the first step, whitespace folded: the item that has the check write the files."""
+    step = section("Find the full check")
+    assert ITEM in step, "the first step has no item that has the check write its files"
+    return flat(step[step.index(ITEM) :])
+
+
+def test_the_result_files_item_comes_after_the_confirmation_and_before_init() -> None:
+    step = section("Find the full check")
+    assert step.index("4. **Ask the user**") < step.index(ITEM)
+    assert position("Find the full check") < position("Run init")
+
+
+def test_the_result_files_item_names_the_fixed_paths_at_the_top_of_the_worktree() -> (
+    None
+):
+    item = result_files_item()
+    assert "`.prepush-ci/junit.xml`" in item
+    assert "`.prepush-ci/coverage.json`" in item
+    assert "at the top of the worktree" in item
+
+
+def test_the_coverage_file_is_the_json_of_coverage_py_and_other_runners_get_none() -> (
+    None
+):
+    item = result_files_item()
+    assert "the JSON of coverage.py" in item
+    assert (
+        "a runner that cannot write it gets a JUnit file and no coverage file" in item
+    )
+
+
+def test_the_result_files_are_ignored_by_git_unless_they_are_already() -> None:
+    item = result_files_item()
+    assert "add `.prepush-ci/` to `.gitignore` unless it is ignored already" in item
+    assert (
+        "the pre-push hook refuses a worktree with untracked files that are not ignored"
+        in item
+    )
+
+
+def test_no_file_written_means_gitignore_stays_as_it_is() -> None:
+    item = result_files_item()
+    assert "only when at least one of the files is written" in item
+    assert "leave `.gitignore` as it is" in item
+    assert (
+        '(a "no", several test commands, an entry point, a test command that is not '
+        "a runner call, a test command that runs in another directory)" in item
+    )
+
+
+def test_the_files_use_an_option_the_runner_has_and_never_a_new_package() -> None:
+    item = result_files_item()
+    assert "use an option the runner has built in" in item
+    assert "never add a package or plugin to the project" in item
+
+
+def test_the_console_output_loses_nothing_to_the_junit_option() -> None:
+    item = result_files_item()
+    assert "adds the file and takes nothing from the console output" in item
+    assert "leaves the console output as it is" not in item
+
+
+def test_the_junit_example_names_the_file_it_writes() -> None:
+    item = result_files_item()
+    assert "pytest --junitxml=.prepush-ci/junit.xml -o junit_family=xunit1" in item
+
+
+def test_a_runner_that_chooses_its_reporters_from_the_environment_gets_no_junit_file() -> (
+    None
+):
+    item = result_files_item()
+    assert (
+        "A `vitest`, `jest` or `node --test` check gets no JUnit file, and you tell the user "
+        "that the comment will show no counts for that check" in item
+    )
+    assert (
+        "replaces the reporters that the runner chooses itself from the environment"
+        in item
+    )
+    assert (
+        "an agent reporter under an agent, `github-actions` in GitHub Actions" in item
+    )
+    assert (
+        "the console output of the check would change in the pre-push hook and in CI"
+        in item
+    )
+    assert "--reporter=default" not in item
+    assert "--reporters=default" not in item
+    assert "--test-reporter=junit" not in item
+    assert "does not create `.prepush-ci/`" in item
+    assert "the run fails with exit 7 and the check turns red" in item
+
+
+def test_coverage_is_written_only_where_the_check_already_measures_it() -> None:
+    item = result_files_item()
+    assert "only when the check already measures coverage with coverage.py" in item
+    assert "never add measurement" in item
+    assert (
+        "a coverage threshold in the project's configuration would then start to fail the check"
+        in item
+    )
+
+
+def test_the_coverage_table_stays_when_the_check_names_no_cov_report() -> None:
+    item = result_files_item()
+    assert "names `--cov` and no `--cov-report`" in item
+    assert "on its command line or in the runner's configuration" in item
+    assert "add `--cov-report=term` beside the JSON report" in item
+    assert (
+        "the JSON report alone replaces the table of uncovered lines that pytest-cov prints by default"
+        in item
+    )
+
+
+def test_a_file_the_check_already_writes_is_left_alone() -> None:
+    item = result_files_item()
+    assert "already writes a JUnit file" in item
+    assert "(`--junitxml` in `addopts`) or a coverage JSON file" in item
+    assert "or a coverage JSON file (`--cov-report=json`)" in item
+    assert "do not add yours, because the later option wins" in item
+    assert (
+        "tell the user that the check already writes its own file and the comment will show no counts for it"
+        in item
+    )
+
+
+def test_several_test_commands_get_no_file_and_the_user_is_told() -> None:
+    item = result_files_item()
+    assert (
+        "when the check runs tests with more than one command, neither file is written"
+        in item
+    )
+    assert "the comment will show no counts for that reason" in item
+
+
+def test_a_file_left_out_is_explained_and_dropped_from_the_report_call() -> None:
+    item = result_files_item()
+    assert "tell the user which file is left out and why" in item
+    assert "leave `--junit` or `--coverage` out of the step 8 call for it" in item
+
+
+def test_the_options_go_to_the_test_command_of_a_command_line_check() -> None:
+    item = result_files_item()
+    assert "a command line, such as a runner call or a chain of commands" in item
+    assert "add the options to the test command in that line" in item
+
+
+def test_the_options_go_to_the_test_line_of_a_script_written_in_this_run() -> None:
+    item = result_files_item()
+    assert "a `scripts/ci` you wrote in this run (item 3)" in item
+    assert "add the options to the line of the script that runs the tests" in item
+
+
+def test_an_entry_point_of_the_project_gets_no_file_and_no_change() -> None:
+    item = result_files_item()
+    assert (
+        "`make ci`, `npm run ci`, `just ci`, a `tox` or `nox` session, "
+        "or a script that existed before this run" in item
+    )
+    assert (
+        "write neither file, change no file of the project, and tell the user "
+        "that the entry point is the project's and the comment will show no counts"
+        in item
+    )
+
+
+def test_a_direct_call_of_the_runner_gets_the_options() -> None:
+    item = result_files_item()
+    assert "a call of `pytest`: `pytest` or `uv run pytest`" in item
+
+
+def test_a_test_command_that_is_an_entry_point_gets_no_file_and_no_change() -> None:
+    item = result_files_item()
+    for command in (
+        "`ruff check . && make test`",
+        "`npm run lint && npm test`",
+        "`tox -e py`",
+    ):
+        assert command in item, command
+    assert (
+        "the test command is not a call of the runner and the comment will show no counts"
+        in item
+    )
+
+
+def test_no_option_is_appended_to_an_entry_point() -> None:
+    item = result_files_item()
+    assert (
+        "never append `--junitxml`, `--reporter`, `--outputFile`, "
+        "`--test-reporter-destination`, `JEST_JUNIT_OUTPUT_FILE` or `--cov-report` "
+        "to a Makefile target, a package script or a tox session" in item
+    )
+
+
+def test_a_cd_before_the_test_command_gets_no_file_and_no_change() -> None:
+    item = result_files_item()
+    assert "Only where the test command starts at the top of the worktree" in item
+    assert (
+        "a `cd` or `pushd` in the chain or the script, `uv run --directory`, `make -C`"
+        in item
+    )
+    assert "`cd backend && pytest -q`" in item
+    assert "a `scripts/ci` whose test line follows a `cd`" in item
+    assert (
+        "write neither file, change no file of the project, and tell the user "
+        "that the test command runs in another directory and the comment will show no counts"
+        in item
+    )
+
+
+def test_a_cd_that_ended_before_the_test_command_does_not_count() -> None:
+    item = result_files_item()
+    assert "`(cd web && npm run build) && pytest -q`" in item
+    assert "the directory in which the test command starts" in item
+    assert "the options go to `pytest` here" in item
+
+
+def test_the_user_is_shown_the_change_and_asked_before_it_is_made() -> None:
+    item = result_files_item()
+    assert "show the user the change" in item
+    assert "ask for a yes before you make it" in item
+    assert "leave the check as it is without the yes" in item
+
+
+def test_the_change_never_touches_what_the_check_checks() -> None:
+    item = result_files_item()
+    assert (
+        "the change only adds the files and never changes the steps, the selection of tests "
+        "or the thresholds of the check" in item
+    )
+
+
+def test_init_gets_the_changed_command_line_after_a_yes() -> None:
+    step = flat(section("Run init"))
+    assert (
+        "after a yes, `<check command>` is the confirmed command line with the added options"
+        in step
+    )
+
+
+def test_init_gets_the_script_unchanged_when_the_script_holds_the_options() -> None:
+    step = flat(section("Run init"))
+    assert "`scripts/ci`, unchanged, when the options are in the script" in step
+
+
+def test_a_no_leaves_the_check_and_the_report_call_as_they_are() -> None:
+    step = flat(section("Run init"))
+    assert "without a yes `<check command>` is the confirmed check unchanged" in step
+    item = result_files_item()
+    assert "Without the yes the files count as not written" in item
+    assert "the step 8 call has neither `--junit` nor `--coverage`" in item
+
+
 # --- The documentation section has every session show its result on the pull request ----------
 
 REPORT_COMMAND = (
