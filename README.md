@@ -16,6 +16,8 @@ Run the full CI check in the `pre-push` hook of an AI agent's cloud session (or 
 
 The full check can run on any machine that opts in, for example on the VM of a [Claude Code cloud session](https://code.claude.com/docs/en/claude-code-on-the-web), which has no separate VM charge; pull request CI then does not repeat it on billed runners.
 
+The pull request does not look as if nothing ran: it shows what the session checked, as a comment the session posts and updates after each push (the hook that does it is proposed by step 9 of the setup skill, "Show the result after every push"), or, with a GitHub App (`prepush-ci app setup`), as a check run. [Step 7](#7-see-the-result-on-the-pull-request) shows the comment.
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/CapeOfGoodCode/prepush-ci/main/docs/assets/demo.svg" alt="Terminal recording: a repository is set up with prepush-ci init, a push is refused because the full check fails, and a passing push goes through once the check passes" width="720">
 </p>
@@ -76,7 +78,33 @@ A commit made with `PREPUSH_CI=full` gets the trailer `Prepush-CI: full` from th
 
 Add a first job to pull request CI that reads the trailer of the head commit with `prepush-ci verify <sha>`, and let the other jobs skip when it is verified. `init` prints the snippet for GitHub Actions, GitLab CI or any other CI (`--ci github|gitlab|generic`), and the same files are in [`docs/ci/`](https://github.com/CapeOfGoodCode/prepush-ci/tree/main/docs/ci). The default branch always runs CI in full, and pull requests from forks never skip.
 
-### 7. When a push is refused
+### 7. See the result on the pull request
+
+When pull request CI skips its jobs, the comment is what a reviewer sees of the check. The setup skill proposes the Claude Code hook that posts it after a push, in step 9, "Show the result after every push" (`prepush-ci hook post-push`; the [reference](#hook-post-push) says when it posts). The comment is the text `prepush-ci report --markdown` prints; for a commit that passed it looks like this, with a placeholder commit and tree:
+
+<details>
+<summary>The comment on a pull request</summary>
+
+> ### prepush-ci / full: Passed
+> Commit 0123456789abcdef0123456789abcdef01234567
+>
+> Result reported from a session: `prepush-ci report` posted it for the tree below, which the session says it checked. GitHub did not run the check.
+>
+> | Fact | Value |
+> | --- | --- |
+> | Commit | ` 0123456789abcdef0123456789abcdef01234567 ` |
+> | Tree | ` 89abcdef0123456789abcdef0123456789abcdef ` |
+> | Check | ` sh scripts/ci ` |
+> | Preflight | none |
+> | Tools | python 3.12 |
+> | System | Linux |
+> | Duration | 1m 34s |
+
+</details>
+
+The next push updates this comment instead of adding another. A hidden marker at the start of the comment, which names the check, lets the hook find it.
+
+### 8. When a push is refused
 
 - `prepush-ci run` runs the preflight and the check on `HEAD` the way the hook does, so you can see why it fails.
 - `prepush-ci doctor` finds a setup fault: a missing hook, a broken config, a variable that is not set.
