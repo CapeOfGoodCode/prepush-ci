@@ -22,6 +22,7 @@ from prepush_ci.core.run_cache import (
     message_not_cleaned_from_origin,
     message_not_shared,
     passed_commit,
+    passed_config,
     passed_facts,
     result_message,
     result_ref,
@@ -223,3 +224,16 @@ def _commit_of(
     if made.returncode != 0:
         raise GitError(made.stderr.strip())
     return made.stdout.strip()
+
+
+def passes_of_config(root: Path, listing: str, tree: str, digest: str) -> str:
+    """The lines of `listing` (`<ref> <date>`, as `dated_passes` prints them) whose result commit
+    records `digest` as the config it ran with: a ref that records another or none, or cannot be
+    read, is left out."""
+    kept = []
+    for line in listing.splitlines():
+        ref = line.rpartition(" ")[0]
+        log = git(root, "log", "-1", "--format=%T%n%b", ref, "--").stdout
+        if passed_config(log, tree) == digest:
+            kept.append(line)
+    return "\n".join(kept)

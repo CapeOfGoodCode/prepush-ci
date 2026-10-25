@@ -17,6 +17,10 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+from prepush_ci.core.config import ConfigError
+from prepush_ci.core.run_cache import config_digest
+from prepush_ci.git import committed_config
+
 Git = Callable[..., "subprocess.CompletedProcess[str]"]
 
 # Variables the developer's or Actions' own environment may set and a spec must decide itself.
@@ -36,6 +40,7 @@ CLEARED = (
     "all_proxy",
 )
 ORIGIN = "https://github.com/acme/widgets.git"
+COMMITTED = "the config committed in HEAD"
 MARKER = "<!-- prepush-ci:prepush-ci / full -->"
 TRAILER = "Prepush-CI: full"
 BRANCH = "feat/x"
@@ -243,11 +248,17 @@ class World:
         """Make it look as if `HEAD` was pushed to `origin` under the name of the branch."""
         self.git(self.repo, "update-ref", f"refs/remotes/origin/{BRANCH}", "HEAD")
 
+    def digest(self) -> str:
+        """The digest of the config committed in `HEAD` (zeros when there is none to read)."""
+        try:
+            committed = committed_config(self.sha, self.repo)
+        except ConfigError:
+            committed = None
+        return "0" * 32 if committed is None else config_digest(committed)
+
     def recorded(self) -> None:
         """Record a pass for the tree of `HEAD`, as the pre-push hook does."""
-        self.git(
-            self.repo, "update-ref", f"refs/prepush-ci/results/{self.tree}-feed", "HEAD"
-        )
+        self.forge_pass("feed", None, 1_700_000_000)
 
     def passes(self) -> list[str]:
         listing = self.git(
@@ -262,9 +273,11 @@ class World:
         date: int,
         *,
         commit: str | None = None,
+        digest: str | None = COMMITTED,
     ) -> None:
         """Record a pass for the tree of `HEAD` as the run cache does, with the facts given (none:
-        as an older version recorded it), made at `date`."""
+        as an older version recorded it), made at `date`, and the digest of the config committed in
+        `HEAD` unless another one (or none) is given."""
         sha = commit or self.sha
         message = ["-m", "prepush-ci: the check passed", "-m", f"commit {sha}"]
         if facts is not None:
@@ -274,6 +287,11 @@ class World:
                 else json.dumps({"v": 1, **facts}, separators=(",", ":"))
             )
             message += ["-m", f"facts {line}"]
+        if digest is not None:
+            message += [
+                "-m",
+                f"config {self.digest() if digest == COMMITTED else digest}",
+            ]
         stamp = f"{date} +0000"
         made = self.git(
             self.repo,
@@ -1152,3 +1170,76 @@ def test_the_hook_decides_by_the_commit_when_the_worktree_config_cannot_be_read(
     (world.repo / ".prepush-ci.toml").write_text("bogus = [\n")
     world.hook()
     assert len(world.api.comments) == 1
+
+
+# --- Only a pass of the committed config is shown -----------------------------------------------
+
+
+def push_with_ignored_config(
+    fresh: World, committed_check: str, *worktree_lines: str
+) -> None:
+    """Push a trailer commit whose committed config (in `pyproject.toml`) has `committed_check`,
+    while the ignored `.prepush-ci.toml` that wins in the worktree has the check that logs to
+    `ran.log`, with `worktree_lines` added."""
+    (fresh.repo / "pyproject.toml").write_text(
+        f"[tool.prepush-ci]\ncheck = '{committed_check}'\nrequire_up_to_date = false\n"
+    )
+    (fresh.repo / ".gitignore").write_text(".prepush-ci.toml\n")
+    fresh.git(fresh.repo, "rm", "-q", "--cached", ".prepush-ci.toml")
+    log = fresh.tmp_path / "ran.log"
+    (fresh.repo / ".prepush-ci.toml").write_text(
+        "\n".join(
+            [
+                f"check = 'echo ran >> {log.as_posix()}'",
+                "require_up_to_date = false",
+                *worktree_lines,
+                "",
+            ]
+        )
+    )
+    fresh.git(fresh.repo, "add", "pyproject.toml", ".gitignore")
+    fresh.commit()
+    fresh.push("origin", BRANCH)
+    fresh.landed()
+
+
+def test_a_pass_of_a_check_that_is_not_the_committed_one_shows_nothing(
+    fresh: World,
+) -> None:
+    push_with_ignored_config(fresh, "scripts/ci")
+
+    assert len(fresh.passes()) == 1
+    fresh.nothing(fresh.hook())
+
+
+def test_a_pass_with_another_require_env_shows_nothing(fresh: World) -> None:
+    push_with_ignored_config(
+        fresh,
+        f"echo ran >> {(fresh.tmp_path / 'ran.log').as_posix()}",
+        'require_env = ["PATH"]',
+    )
+
+    assert len(fresh.passes()) == 1
+    fresh.nothing(fresh.hook())
+
+
+def test_a_pass_without_a_digest_shows_nothing(world: World) -> None:
+    world.drop_passes()
+    world.forge_pass("feed", FACTS, 1_700_000_000, digest=None)
+
+    world.nothing(world.hook())
+
+
+def test_the_facts_of_an_older_pass_of_the_committed_config_are_shown_beside_a_later_pass_of_another(
+    world: World,
+) -> None:
+    world.drop_passes()
+    world.forge_pass("aaa", {"seconds": 5, "tests": [40, 0, 0]}, 1_700_000_000)
+    world.forge_pass(
+        "bbb", {"seconds": 6, "tests": [812, 0, 0]}, 1_700_000_100, digest="f" * 32
+    )
+
+    world.hook()
+
+    assert "40 passed" in world.comment_body()
+    assert "812 passed" not in world.comment_body()
