@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_1775bdf95c0e59b5_version_line_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-25 14:14 +0000
+            created at 2026-10-25 16:23 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -128,7 +128,7 @@
     <p class="run"><span class="n"><a id="t44" href="#t44">44</a></span><span class="t">    <span class="key">if</span> <span class="nam">sha</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t45" href="#t45">45</a></span><span class="t">        <span class="key">return</span> <span class="nam">argument</span><span class="op">,</span> <span class="nam">unresolved</span><span class="op">(</span><span class="nam">argument</span><span class="op">,</span> <span class="nam">_is_shallow</span><span class="op">(</span><span class="nam">cwd</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t46" href="#t46">46</a></span><span class="t">    <span class="key">try</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t47" href="#t47">47</a></span><span class="t">        <span class="key">return</span> <span class="nam">sha</span><span class="op">,</span> <span class="nam">_verdict</span><span class="op">(</span><span class="nam">sha</span><span class="op">,</span> <span class="nam">cwd</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t47" href="#t47">47</a></span><span class="t">        <span class="key">return</span> <span class="nam">sha</span><span class="op">,</span> <span class="nam">verdict_of</span><span class="op">(</span><span class="nam">sha</span><span class="op">,</span> <span class="nam">cwd</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t48" href="#t48">48</a></span><span class="t">    <span class="key">except</span> <span class="nam">ConfigError</span> <span class="key">as</span> <span class="nam">error</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t49" href="#t49">49</a></span><span class="t">        <span class="key">return</span> <span class="nam">sha</span><span class="op">,</span> <span class="nam">invalid_config</span><span class="op">(</span><span class="nam">error</span><span class="op">.</span><span class="nam">problems</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t50" href="#t50">50</a></span><span class="t">    <span class="key">except</span> <span class="nam">GitError</span> <span class="key">as</span> <span class="nam">error</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -139,7 +139,7 @@
     <p class="run"><span class="n"><a id="t55" href="#t55">55</a></span><span class="t">    <span class="key">return</span> <span class="nam">git</span><span class="op">(</span><span class="nam">cwd</span><span class="op">,</span> <span class="str">&quot;rev-parse&quot;</span><span class="op">,</span> <span class="str">&quot;--is-shallow-repository&quot;</span><span class="op">)</span><span class="op">.</span><span class="nam">stdout</span><span class="op">.</span><span class="nam">strip</span><span class="op">(</span><span class="op">)</span> <span class="op">==</span> <span class="str">&quot;true&quot;</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t56" href="#t56">56</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t57" href="#t57">57</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t58" href="#t58">58</a></span><span class="t"><span class="key">def</span> <span class="nam">_verdict</span><span class="op">(</span><span class="nam">sha</span><span class="op">:</span> <span class="nam">str</span><span class="op">,</span> <span class="nam">cwd</span><span class="op">:</span> <span class="nam">Path</span><span class="op">)</span> <span class="op">-&gt;</span> <span class="nam">Verdict</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t58" href="#t58">58</a></span><span class="t"><span class="key">def</span> <span class="nam">verdict_of</span><span class="op">(</span><span class="nam">sha</span><span class="op">:</span> <span class="nam">str</span><span class="op">,</span> <span class="nam">cwd</span><span class="op">:</span> <span class="nam">Path</span><span class="op">)</span> <span class="op">-&gt;</span> <span class="nam">Verdict</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t59" href="#t59">59</a></span><span class="t">    <span class="nam">refusal</span> <span class="op">=</span> <span class="nam">server_made</span><span class="op">(</span><span class="nam">_committer_email</span><span class="op">(</span><span class="nam">sha</span><span class="op">,</span> <span class="nam">cwd</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t60" href="#t60">60</a></span><span class="t">    <span class="key">if</span> <span class="nam">refusal</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t61" href="#t61">61</a></span><span class="t">        <span class="key">return</span> <span class="nam">refusal</span>&nbsp;</span><span class="r"></span></p>
@@ -164,7 +164,7 @@
             <a class="nav" href="z_1775bdf95c0e59b5_version_line_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-25 14:14 +0000
+            created at 2026-10-25 16:23 +0000
         </p>
     </div>
 </footer>
