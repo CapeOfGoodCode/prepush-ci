@@ -4,7 +4,7 @@
 
 ## 2. The README
 
-- [ ] 2.1 Add the README step "Land instead of running CI on the default branch" with only the sentences that `design.md` pins; add the drift check; verify with specs named after the scenarios of "The README names the landing example"
+- [x] 2.1 Add the README step "Land instead of running CI on the default branch" with only the sentences that `design.md` pins; add the drift check; verify with specs named after the scenarios of "The README names the landing example"
 
 ## 3. Archive
 

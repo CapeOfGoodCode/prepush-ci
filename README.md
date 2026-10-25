@@ -110,6 +110,12 @@ The next push updates this comment instead of adding another. A hidden marker at
 - `prepush-ci doctor` finds a setup fault: a missing hook, a broken config, a variable that is not set.
 - `prepush-ci strip` removes the trailer from the commits of your branch since the default branch, for a push that must go without the check; push them with `git push --force-with-lease`.
 
+### 9. Land instead of running CI on the default branch
+
+Copy [`docs/ci/land.yml`](https://github.com/CapeOfGoodCode/prepush-ci/blob/main/docs/ci/land.yml) to `.github/workflows/`; it needs the variable `PREPUSH_CI_APP_ID` and the secret `PREPUSH_CI_APP_KEY`. `prepush-ci app setup --land` makes the app and `prepush-ci app ruleset --app ID` the ruleset; a private repository needs a paid plan for the ruleset. An approval by someone who can write, of the current head, lands the pull request, if it is against the default branch and not a draft; a pull request from a fork never does, and a head that reaches the branch second is told that it moved. When it does not land, the workflow comments with the `not landed:` line and says what to do: rebase onto the default branch and push, then ask for a new approval; or change the workflow. To switch CI on the default branch off, remove the `push` trigger of the default branch from the CI workflow (the example `docs/ci/github-actions.yml` has it).
+
+`land` runs the `preflight` of the pull request with the app's token. Anyone who can write to the repository can read the app's key and change the workflow; the ruleset and the checks of the workflow bind the others.
+
 ## Command reference
 
 A command line the parser rejects makes `init`, `install`, `run`, `doctor`, `report`, `app setup`, `app ruleset` and `hook` exit 2; `verify` and `strip` check their own arguments and exit 1.
