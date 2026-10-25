@@ -189,17 +189,24 @@ def test_an_entry_without_a_synopsis_is_reported(invocations: Any) -> None:
     assert reference_problems(text, invocations) == ["strip has no synopsis"]
 
 
+def test_a_readme_without_an_entry_for_land_is_reported(invocations: Any) -> None:
+    text = reference(invocations, without="land")
+
+    assert reference_problems(text, invocations) == ["land has no entry"]
+
+
 def test_a_readme_without_an_entry_for_app_setup_is_reported(invocations: Any) -> None:
     text = reference(invocations, without="app setup")
 
     assert reference_problems(text, invocations) == ["app setup has no entry"]
 
 
-def test_the_reference_lists_the_twelve_commands(invocations: Any) -> None:
+def test_the_reference_lists_the_thirteen_commands(invocations: Any) -> None:
     assert command_names(invocations) == [
         "doctor",
         "init",
         "install",
+        "land",
         "report",
         "run",
         "skill",
@@ -264,6 +271,16 @@ def test_the_entry_of_report_says_zero_means_posted_one_refused_and_two_rejected
     entry = flat(entries(shipped())["report"])
 
     assert "0 means the result was posted" in entry
+    assert "1 means it refused or failed" in entry
+    assert "2 means the parser rejected the command line" in entry
+
+
+def test_the_entry_of_land_says_zero_means_landed_or_already_on_the_branch_one_refused_and_two_rejected() -> (
+    None
+):
+    entry = flat(entries(shipped())["land"])
+
+    assert "0 means it landed or the head was already on the branch" in entry
     assert "1 means it refused or failed" in entry
     assert "2 means the parser rejected the command line" in entry
 

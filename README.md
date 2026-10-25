@@ -207,6 +207,22 @@ prepush-ci verify HEAD
 
 **Exit status:** 0 means the commit is verified, 1 means it is not.
 
+### `land`
+
+Pushes the head of a pull request to the default branch of `origin` by a fast-forward, only when the tip of the branch is an ancestor of the head, the head carries the trailer and its tree has a pass for the check, in this clone or on `origin`. The head is `refs/pull/NUMBER/head` of `origin` and the branch is the one `origin`'s `HEAD` points to; both are fetched first. It never runs the check, never forces, and runs none of the repository's hooks. It prints one line, `landed: SHA on BRANCH` or `not landed: REASON`.
+
+```
+prepush-ci land NUMBER
+```
+
+```sh
+prepush-ci land 7
+```
+
+The `preflight` of the config committed in the head is code of the pull request: `land` runs it in a temporary checkout of the head, with your rights, and only after every refusal that needs none of the head's code. Land only pull requests you trust. A branch that a ruleset protects is moved by its bypass actors only.
+
+**Exit status:** 0 means it landed or the head was already on the branch, 1 means it refused or failed, 2 means the parser rejected the command line.
+
 ### `strip`
 
 Removes the trailer from the commits since a base (the merge base with the default branch unless you name one), so a push needs no check. It rewrites commits, so the next push needs `git push --force-with-lease`.
