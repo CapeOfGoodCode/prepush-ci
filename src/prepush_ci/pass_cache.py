@@ -13,6 +13,7 @@ from prepush_ci.core.run_cache import (
     Head,
     Key,
     batches,
+    config_digest,
     expired_refs,
     lists_ref,
     message_not_asked,
@@ -48,7 +49,7 @@ def record_pass(
     if not config.cache:
         return False
     try:
-        commit = _commit_of(root, key.tree, sha, facts)
+        commit = _commit_of(root, key.tree, sha, facts, config_digest(config))
         updated = git(root, "update-ref", result_ref(key), commit)
         if updated.returncode != 0:
             raise GitError(updated.stderr.strip())
@@ -198,8 +199,10 @@ def current_head(root: Path) -> Head:
     return Head(shas[0], shas[1])
 
 
-def _commit_of(root: Path, tree: str, sha: str, facts: RunFacts | None) -> str:
-    """A parentless commit of `tree` that names `sha`, made with a fixed identity so it needs no
+def _commit_of(
+    root: Path, tree: str, sha: str, facts: RunFacts | None, digest: str
+) -> str:
+    """A parentless commit of `tree` that names `sha` and the digest of the config, made with a fixed identity so it needs no
     `user.name` and no signing, and dated now: the environment cannot date it, for the date is
     what a cleanup ages the result by."""
     name, email = IDENTITY
@@ -213,7 +216,9 @@ def _commit_of(root: Path, tree: str, sha: str, facts: RunFacts | None) -> str:
         "GIT_COMMITTER_EMAIL": email,
     }
     line = None if facts is None else to_line(facts)
-    message = [part for text in result_message(sha, line) for part in ("-m", text)]
+    message = [
+        part for text in result_message(sha, line, digest) for part in ("-m", text)
+    ]
     made = git(root, "commit-tree", tree, *message, env={**os.environ, **identity})
     if made.returncode != 0:
         raise GitError(made.stderr.strip())

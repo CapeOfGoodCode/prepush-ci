@@ -1,4 +1,6 @@
 import dataclasses
+import hashlib
+import json
 
 import pytest
 
@@ -6,6 +8,7 @@ from prepush_ci.core.config import Config, Trailer
 from prepush_ci.core.run_cache import (
     Key,
     batches,
+    config_digest,
     expired_refs,
     fingerprint,
     lists_ref,
@@ -17,6 +20,7 @@ from prepush_ci.core.run_cache import (
     message_skipped,
     message_skipped_from_origin,
     passed_commit,
+    passed_config,
     passed_facts,
     pushes_to_origin,
     result_message,
@@ -453,3 +457,89 @@ def test_a_third_paragraph_that_is_not_facts_is_not_read() -> None:
     log = f"{TREE}\ncommit {'a' * 40}\n\n{FACTS}\n"
 
     assert passed_facts(log, KEY) is None
+
+
+# --- The config a pass ran with ----------------------------------------------------------------
+
+
+def test_the_digest_of_a_config_is_32_hex_digits() -> None:
+    digest = config_digest(CONFIG)
+
+    assert len(digest) == 32 and set(digest) <= set("0123456789abcdef")
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        pytest.param({"check": "make other"}, id="check"),
+        pytest.param({"preflight": None}, id="preflight"),
+        pytest.param({"require_env": ("DATABASE_URL", "TOKEN")}, id="require_env"),
+        pytest.param({"require_up_to_date": None}, id="require_up_to_date"),
+    ],
+)
+def test_a_key_of_the_run_changes_the_digest(changed: dict[str, object]) -> None:
+    assert config_digest(dataclasses.replace(CONFIG, **changed)) != config_digest(
+        CONFIG
+    )
+
+
+def test_keys_that_do_not_change_what_a_pass_means_leave_the_digest_alone() -> None:
+    changed = dataclasses.replace(CONFIG, default_branch="trunk", cache=False)
+
+    assert config_digest(changed) == config_digest(CONFIG)
+
+
+def test_the_digest_hashes_the_four_keys_the_fingerprint_hashes_before_the_output() -> (
+    None
+):
+    values = ["make test", "make up", ["DATABASE_URL"], "origin/main"]
+
+    assert (
+        config_digest(CONFIG)
+        == hashlib.sha256(json.dumps(values).encode("utf-8")).hexdigest()[:32]
+    )
+
+
+def test_the_message_of_a_result_commit_ends_with_the_digest_of_the_config() -> None:
+    assert result_message("a" * 40, FACTS, "d" * 32) == [
+        "prepush-ci: the check passed",
+        f"commit {'a' * 40}",
+        f"facts {FACTS}",
+        f"config {'d' * 32}",
+    ]
+
+
+def test_the_digest_follows_the_commit_when_there_are_no_facts() -> None:
+    assert result_message("a" * 40, None, "d" * 32)[2:] == [f"config {'d' * 32}"]
+
+
+def test_a_result_commit_gives_the_digest_it_ends_with() -> None:
+    log = f"{TREE}\ncommit {'a' * 40}\n\nfacts {FACTS}\n\nconfig {'d' * 32}\n"
+
+    assert passed_config(log, TREE) == "d" * 32
+
+
+def test_a_result_commit_without_facts_gives_the_digest_after_the_commit() -> None:
+    log = f"{TREE}\ncommit {'a' * 40}\n\nconfig {'d' * 32}\n"
+
+    assert passed_config(log, TREE) == "d" * 32
+
+
+def test_a_result_commit_with_no_digest_gives_none() -> None:
+    assert passed_config(FACTS_LOG, TREE) is None
+    assert passed_config(f"{TREE}\ncommit {'a' * 40}\n", TREE) is None
+
+
+def test_the_digest_of_a_commit_of_another_tree_or_naming_no_commit_is_none() -> None:
+    assert passed_config(f"{'c' * 40}\ncommit {'a' * 40}\n\nconfig abc\n", TREE) is None
+    assert passed_config(f"{TREE}\nsomething\n\nconfig abc\n", TREE) is None
+
+
+def test_the_facts_are_read_with_the_digest_after_them() -> None:
+    log = f"{TREE}\ncommit {'a' * 40}\n\nfacts {FACTS}\n\nconfig {'d' * 32}\n"
+
+    assert passed_facts(log, KEY) == RunFacts(seconds=492)
+
+
+def test_a_digest_with_no_facts_is_no_facts() -> None:
+    assert passed_facts(f"{TREE}\ncommit {'a' * 40}\n\nconfig abc\n", KEY) is None

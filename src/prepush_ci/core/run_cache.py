@@ -17,6 +17,7 @@ IDENTITY = ("prepush-ci", "prepush-ci@localhost")
 SUBJECT = "prepush-ci: the check passed"
 NAMES = "commit "
 FACTS = "facts "
+CONFIG = "config "
 EXPIRES_AFTER = 30 * 24 * 60 * 60  # seconds
 _STATUS = re.compile(r"(?:\bHTTP |\berror: )(?P<status>\d{3})\b")
 BATCH = 100  # refs per `git push` that deletes them, so the command line stays short on Windows
@@ -52,17 +53,36 @@ def fingerprint(config: Config, preflight_output: str) -> str:
     return hashlib.sha256(json.dumps(values).encode("utf-8")).hexdigest()[:LENGTH]
 
 
+def config_digest(config: Config) -> str:
+    """A hash of `check`, `preflight`, `require_env` and `require_up_to_date`: the inputs of the
+    key less the output of the preflight. A result commit records it, so that what a pass ran with
+    can be told from what is committed."""
+    values = [
+        config.check,
+        config.preflight,
+        list(config.require_env),
+        config.require_up_to_date,
+    ]
+    return hashlib.sha256(json.dumps(values).encode("utf-8")).hexdigest()[:LENGTH]
+
+
 def result_ref(key: Key) -> str:
     """The ref of the result of `key`: both parts are hex, so the name is safe on any system."""
     return f"{RESULTS}/{key.tree}-{key.config}"
 
 
-def result_message(sha: str, facts: str | None = None) -> list[str]:
+def result_message(
+    sha: str, facts: str | None = None, digest: str | None = None
+) -> list[str]:
     """The paragraphs of the message of the commit a result ref points at: they name the commit
-    that was checked, and then hold the facts of the run (see `run_facts.encode`) when there are
-    any."""
+    that was checked, then hold the facts of the run (see `run_facts.encode`) when there are any,
+    and end with the digest of the config the run used when there is one."""
     paragraphs = [SUBJECT, f"{NAMES}{sha}"]
-    return paragraphs if facts is None else [*paragraphs, f"{FACTS}{facts}"]
+    if facts is not None:
+        paragraphs.append(f"{FACTS}{facts}")
+    if digest is not None:
+        paragraphs.append(f"{CONFIG}{digest}")
+    return paragraphs
 
 
 def passed_commit(log: str, key: Key) -> str | None:
@@ -85,6 +105,20 @@ def passed_facts(log: str, key: Key) -> RunFacts | None:
     if len(paragraphs) < 2 or not paragraphs[1].startswith(FACTS):
         return None
     return from_line(paragraphs[1].removeprefix(FACTS))
+
+
+def passed_config(log: str, tree: str) -> str | None:
+    """The digest of the config a result ref records, read from the same log as `passed_commit`:
+    the last paragraph after the commit it names. None when the ref is of another tree, names no
+    commit or records no digest, as the refs of earlier versions do."""
+    found_tree, _, body = log.partition("\n")
+    paragraphs = body.strip().split("\n\n")
+    if found_tree != tree or not paragraphs[0].startswith(NAMES):
+        return None
+    last = paragraphs[-1]
+    if len(paragraphs) < 2 or not last.startswith(CONFIG):
+        return None
+    return last.removeprefix(CONFIG)
 
 
 def pushes_to_origin(args: Sequence[str], env: Mapping[str, str]) -> bool:
