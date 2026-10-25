@@ -36,13 +36,13 @@ def render(verdict: Verdict, sha: str | None) -> str:
     must not make a second line, least of all one that starts with `verified:`.
     """
     prefix = "verified:" if verdict.verified else "not verified:"
-    reason = _one_line(verdict.reason)
+    reason = one_line(verdict.reason)
     if sha is None:
         return f"{prefix} {reason}"
-    return f"{prefix} {_one_line(sha)} {reason}"
+    return f"{prefix} {one_line(sha)} {reason}"
 
 
-def _one_line(text: str) -> str:
+def one_line(text: str) -> str:
     return text if text.isprintable() else text.encode("unicode_escape").decode("ascii")
 
 

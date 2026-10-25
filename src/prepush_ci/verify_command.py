@@ -44,7 +44,7 @@ def _decide(argument: str, cwd: Path) -> tuple[str | None, Verdict]:
     if sha is None:
         return argument, unresolved(argument, _is_shallow(cwd))
     try:
-        return sha, _verdict(sha, cwd)
+        return sha, verdict_of(sha, cwd)
     except ConfigError as error:
         return sha, invalid_config(error.problems)
     except GitError as error:
@@ -55,7 +55,7 @@ def _is_shallow(cwd: Path) -> bool:
     return git(cwd, "rev-parse", "--is-shallow-repository").stdout.strip() == "true"
 
 
-def _verdict(sha: str, cwd: Path) -> Verdict:
+def verdict_of(sha: str, cwd: Path) -> Verdict:
     refusal = server_made(_committer_email(sha, cwd))
     if refusal is not None:
         return refusal
