@@ -20,8 +20,14 @@ from prepush_ci.core.post_push import (
 )
 from prepush_ci.core.pre_push import demand_keys, demands_check
 from prepush_ci.core.report import ReportError
+from prepush_ci.core.run_cache import config_digest
 from prepush_ci.git import GitError, answer, committed_config, git, trailers
-from prepush_ci.pass_cache import current_head, dated_passes, pass_facts
+from prepush_ci.pass_cache import (
+    current_head,
+    dated_passes,
+    pass_facts,
+    passes_of_config,
+)
 from prepush_ci.repo_config import load_repository_config
 
 BUDGET_SECONDS = 15.0
@@ -66,13 +72,15 @@ def _show(
     root = text_io.to_path(answer(toplevel))
     branch = _branch(root)
     head = current_head(root)
+    committed = committed_config(head.sha, root)
     if (
         branch is None
         or _pushed(root, branch) != head.sha
-        or not _demands(root, head.sha)
+        or committed is None
+        or not _demands(root, head.sha, committed)
     ):
         return
-    recorded = _latest_pass(root, head.tree)
+    recorded = _latest_pass(root, head.tree, committed)
     if recorded is None:
         return
     origin = git(root, "remote", "get-url", "origin")
@@ -122,12 +130,9 @@ def _pushed(root: Path, branch: str) -> str | None:
     return found.stdout.strip() if found.returncode == 0 else None
 
 
-def _demands(root: Path, sha: str) -> bool:
+def _demands(root: Path, sha: str, committed: Config) -> bool:
     """Whether the commit carries the trailer the pre-push hook demands the check for: the keys of
     the config committed in it and of the worktree's, when that can be read."""
-    committed = committed_config(sha, root)
-    if committed is None:
-        return False
     configs: list[Config] = [committed]
     # When the worktree's config cannot be read, the commit's keys decide.
     with contextlib.suppress(ConfigError):
@@ -135,6 +140,8 @@ def _demands(root: Path, sha: str) -> bool:
     return demands_check(trailers(sha, root), demand_keys(*configs))
 
 
-def _latest_pass(root: Path, tree: str) -> str | None:
-    """The result ref of the latest pass the run cache holds for the tree, or None."""
-    return latest_ref(dated_passes(root, results_pattern(tree)))
+def _latest_pass(root: Path, tree: str, committed: Config) -> str | None:
+    """The result ref of the latest pass of the config committed in `HEAD` that the run cache holds
+    for the tree, or None: a pass of another config says nothing about the check the comment names."""
+    passes = dated_passes(root, results_pattern(tree))
+    return latest_ref(passes_of_config(root, passes, tree, config_digest(committed)))
