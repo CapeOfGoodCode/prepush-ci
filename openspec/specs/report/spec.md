@@ -673,7 +673,7 @@ In the summary, the location and the text of a listed failure SHALL each be writ
 - **THEN** the Markdown has `2 failed` and lists the two cases
 
 ### Requirement: The Markdown is the check run's summary under a marker
-The Markdown SHALL be three consecutive lines, a blank line, and the summary of the check run unchanged (so that the failures come first in it as for a red check run). The lines are `<!-- prepush-ci:<name> -->`, `<name>` being `--name` or `prepush-ci / full`; a title line that holds the name and the title of the check run (the test counts, or `Passed` or `Failed`); and a line that names the full sha of the commit it reports.
+The Markdown SHALL be three consecutive lines, a blank line, and the summary of the check run unchanged (so that the failures come first in it as for a red check run). The lines are `<!-- prepush-ci:<name> -->`, `<name>` being `--name` or `prepush-ci / full`; a title line `### <name>: <text>`, `<text>` being the test counts, or `Passed` or `Failed` when there are none, and `Failed (<counts>)` for a failed result with counts; and a line that names the full sha of the commit it reports.
 
 #### Scenario: Default marker
 - **WHEN** `report --markdown` runs without `--name`
@@ -694,6 +694,10 @@ The Markdown SHALL be three consecutive lines, a blank line, and the summary of 
 #### Scenario: Failures first
 - **WHEN** `report --markdown --result failed` runs with a mypy file with one error
 - **THEN** the mypy error comes before the row `Check` of the table
+
+#### Scenario: A failed result with counts says so
+- **WHEN** `report --markdown --result failed` runs with a JUnit file of 3 passing cases
+- **THEN** the title line is `### prepush-ci / full: Failed (3 passed, 0 failed, 0 skipped)` and the title of the check run, unchanged, is `3 passed, 0 failed, 0 skipped`
 
 ### Requirement: The Markdown takes no start and no name that breaks the marker
 `--markdown` SHALL NOT be combined with `--start`, and a `--name` that holds `--` or a line break SHALL be refused with `--markdown`, because it would end the hidden marker early. A refusal SHALL exit 2, name the flag and print nothing on standard output. Without `--markdown`, such a name SHALL stay valid.
