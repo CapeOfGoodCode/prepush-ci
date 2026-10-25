@@ -1,7 +1,7 @@
 ## 1. The pure logic
 
 - [ ] 1.1 Add to `core/land.py` the reading of a comment: marker, title, `Tree`, `Check` and `Preflight` rows, the permission answer, and the lines of the refusals; verify with unit specs named after the scenarios of "A comment of the pull request is a pass when no result is found", "A comment states a pass", "A comment names this tree, check and preflight", "Only a comment of someone with write access counts", "A comment of an App does not count" and "A comment that cannot be read is not a pass"
-- [ ] 1.2 Make the title line of `report --markdown` for a failed result with counts say `Failed (<counts>)`; verify with the scenarios of "The Markdown is the check run's summary under a marker"
+- [x] 1.2 Make the title line of `report --markdown` for a failed result with counts say `Failed (<counts>)`; verify with the scenarios of "The Markdown is the check run's summary under a marker"
 
 - [x] 1.3 Record `config <digest>` in the result commit and make the post-push hook count only the refs of the committed config; verify with the scenarios of "A recorded pass names the config it ran with" and "Only a pass of the committed config is shown"
 

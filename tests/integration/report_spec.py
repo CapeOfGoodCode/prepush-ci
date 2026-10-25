@@ -2751,3 +2751,22 @@ def test_a_name_that_closes_the_marker_is_still_posted_without_the_markdown(
 
     assert result.returncode == 0, result.stderr
     assert world.api.status()["context"] == "a-->b"
+
+
+@needs_openssl
+def test_the_markdown_of_a_failed_result_with_counts_says_so_where_the_check_run_does_not(
+    world: World, tmp_path: Path
+) -> None:
+    junit = write_junit(tmp_path / "junit.xml", *passing(3))
+    inputs = ("--junit", str(junit))
+    posted = world.failed(*inputs, env=world.app_env())
+    assert posted.returncode == 0, posted.stderr
+    output = world.api.check_run()["output"]
+    assert isinstance(output, dict)
+
+    result = world.failed("--markdown", *inputs, env={})
+
+    assert result.stdout.splitlines()[1] == (
+        "### prepush-ci / full: Failed (3 passed, 0 failed, 0 skipped)"
+    )
+    assert output["title"] == "3 passed, 0 failed, 0 skipped"
