@@ -4,6 +4,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from prepush_ci.core.config_source import PREPUSH_CI_FILE
+from prepush_ci.core.ruleset import NAME as RULESET_NAME
+from prepush_ci.core.ruleset_audit import Audit
 
 CONFIG = "config"
 COMMIT_MSG = "commit-msg"
@@ -12,6 +14,7 @@ PREFLIGHT = "preflight"
 PREPUSH_CI = "PREPUSH_CI"
 UP_TO_DATE = "up-to-date"
 NAMES = (CONFIG, COMMIT_MSG, PRE_PUSH, PREFLIGHT, PREPUSH_CI, UP_TO_DATE)
+RULESET = "ruleset"  # a seventh check, run only with `--ruleset`
 
 OK = "ok"
 FAIL = "fail"
@@ -186,3 +189,49 @@ def up_to_date_check(
             f"check the URL (`git remote get-url {remote}`) and the network, or {_WAY_OUT}",
         )
     return ok(UP_TO_DATE, f"{ref} is on the remote `{remote}`")
+
+
+_NO_SETTINGS_ADDRESS = "the settings of the repository (Rules)"
+
+
+def ruleset_unread(reason: str) -> Check:
+    """The ruleset could not be read: no token, no repository, GitHub's refusal."""
+    return fail(
+        RULESET,
+        reason,
+        "set GITHUB_TOKEN or GH_TOKEN to a token with administration rights, and run it "
+        "in a repository whose `origin` is on GitHub (or set GITHUB_REPOSITORY)",
+    )
+
+
+def ruleset_missing() -> Check:
+    return fail(
+        RULESET,
+        f"the ruleset `{RULESET_NAME}` is missing",
+        "run `prepush-ci app ruleset --admin`, or `prepush-ci app ruleset --app <id>` "
+        "with the id of the app that lands",
+    )
+
+
+def ruleset_hidden() -> Check:
+    return fail(
+        RULESET,
+        "the token needs administration rights to read the bypass actors of the ruleset: "
+        "GitHub leaves them out of its answer for any other token",
+        "use a token with administration rights on the repository",
+    )
+
+
+def ruleset_check(audit: Audit) -> Check:
+    """`ok` naming the one actor that may bypass the ruleset, or `fail` with every problem."""
+    if not audit.problems:
+        return ok(
+            RULESET, f"`{RULESET_NAME}` is active; only {audit.actor} may bypass it"
+        )
+    where = audit.address or _NO_SETTINGS_ADDRESS
+    return fail(
+        RULESET,
+        "; ".join(audit.problems),
+        f"change the ruleset at {where}, or delete it there and run "
+        "`prepush-ci app ruleset` again",
+    )

@@ -226,12 +226,14 @@ prepush-ci strip origin/main
 Checks that the hooks and the config will do their job. Run it when a hook does not seem to fire.
 
 ```
-prepush-ci doctor [--hooks native|pre-commit|husky|lefthook|none] [--mode full|off|unset]
+prepush-ci doctor [--hooks native|pre-commit|husky|lefthook|none] [--mode full|off|unset] [--ruleset]
 ```
 
 ```sh
 prepush-ci doctor --mode full
 ```
+
+With `--ruleset`, `doctor` runs a seventh check, `ruleset`, after the others: the ruleset "prepush-ci landing" (made by `prepush-ci app ruleset`) exists, is active, has the rules `update`, `non_fast_forward` and `deletion` and lists one bypass actor, the repository-admin role or one app. It reads the ruleset with `GITHUB_TOKEN` or `GH_TOKEN`, which needs administration rights on the repository: GitHub shows the bypass actors to no other token. It changes nothing, and without the flag `doctor` sends no request to GitHub.
 
 **Exit status:** 0 means every check passed, 1 means at least one did not.
 

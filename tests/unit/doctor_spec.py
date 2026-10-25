@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 from prepush_ci.core.doctor import (
     NAMES,
+    RULESET,
     config_check,
     config_skip,
     exit_status,
@@ -10,9 +11,14 @@ from prepush_ci.core.doctor import (
     preflight_check,
     prepush_ci_check,
     render,
+    ruleset_check,
+    ruleset_hidden,
+    ruleset_missing,
+    ruleset_unread,
     skip,
     up_to_date_check,
 )
+from prepush_ci.core.ruleset_audit import Audit
 
 
 def test_the_six_checks_have_stable_names_in_a_fixed_order() -> None:
@@ -276,3 +282,69 @@ def test_an_unreachable_remote_without_a_reason_still_says_so() -> None:
 
     assert check.status == "fail"
     assert check.text.endswith("cannot be reached")
+
+
+def test_the_ruleset_check_is_a_seventh_name_that_comes_after_the_six() -> None:
+    assert RULESET == "ruleset"
+    assert RULESET not in NAMES
+
+
+def test_the_closing_line_counts_seven_checks_when_there_are_seven() -> None:
+    checks = [ok(name, "x") for name in (*NAMES, RULESET)]
+    checks[-1] = fail(RULESET, "x", "f")
+
+    assert render(checks)[-1] == "1 of 7 checks did not pass"
+
+
+def test_a_ruleset_without_a_problem_passes_and_names_the_actor() -> None:
+    check = ruleset_check(Audit((), "the repository-admin role", None))
+
+    assert check.status == "ok"
+    assert check.name == "ruleset"
+    assert "the repository-admin role" in check.text
+    assert check.fix is None
+
+
+def test_a_ruleset_with_problems_fails_with_all_of_them_and_the_address_in_the_fix() -> (
+    None
+):
+    audit = Audit(("a is wrong", "b is wrong"), "", "https://github.com/acme/w/rules/1")
+
+    check = ruleset_check(audit)
+
+    assert check.status == "fail"
+    assert "a is wrong" in check.text and "b is wrong" in check.text
+    assert check.fix is not None
+    assert "https://github.com/acme/w/rules/1" in check.fix
+
+
+def test_a_ruleset_with_problems_and_no_page_link_still_names_the_settings() -> None:
+    check = ruleset_check(Audit(("a is wrong",), "", None))
+
+    assert check.fix is not None and "settings" in check.fix
+
+
+def test_a_missing_ruleset_has_the_ruleset_command_as_its_fix() -> None:
+    check = ruleset_missing()
+
+    assert check.status == "fail"
+    assert "missing" in check.text
+    assert check.fix is not None and "prepush-ci app ruleset" in check.fix
+
+
+def test_hidden_bypass_actors_ask_for_administration_rights() -> None:
+    check = ruleset_hidden()
+
+    assert check.status == "fail"
+    assert "administration rights" in check.text
+    assert "bypass actors" in check.text
+
+
+def test_an_unread_ruleset_carries_the_reason_and_asks_for_a_token_and_a_repository() -> (
+    None
+):
+    check = ruleset_unread("GET /x answered 403: no")
+
+    assert check.status == "fail"
+    assert "403" in check.text
+    assert check.fix is not None and "GITHUB_TOKEN" in check.fix
