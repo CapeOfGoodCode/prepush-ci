@@ -800,6 +800,105 @@ def test_a_branch_that_moves_while_landing_gets_the_line_of_a_moved_branch(
     assert main_of(world, git) == world.sibling
 
 
+# --- A head that landed meanwhile is landed ----------------------------------------------------------------
+
+
+UNQUARANTINED = "env -u GIT_QUARANTINE_PATH -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES"
+
+
+def decline_after(world: World, command: str) -> None:
+    """A `pre-receive` hook of `origin` that runs `command` (it moves `main` the way another run
+    would, inside the window between the fetch and the push) and then declines the push. Git forbids
+    ref updates in the quarantine of a push, so `command` runs with that environment removed."""
+    install_hook(world.origin, "pre-receive", f"{UNQUARANTINED} {command}\nexit 1")
+
+
+def test_a_second_landing_of_the_same_head_is_landed_when_the_first_one_wins_the_push(
+    world: World, tmp_path: Path, git: Git
+) -> None:
+    # The first push to reach `origin` runs the winner, a whole `land 7` of the same clone, from the
+    # hook, then declines; the winner's own push finds the mark and is accepted. So the loser's push
+    # is refused after the winner landed the head.
+    mark = tmp_path / "first-push-seen"
+    winner = tmp_path / "winner"
+    install_hook(
+        world.origin,
+        "pre-receive",
+        f'if [ -e "{mark.as_posix()}" ]; then exit 0; fi\n'
+        f'touch "{mark.as_posix()}"\n'
+        f'cd "{world.clone.as_posix()}" || exit 1\n'
+        f"{UNQUARANTINED} -u GIT_DIR "
+        f'"{EXECUTABLE}" -m prepush_ci land 7 > "{winner.as_posix()}.out" 2>&1\n'
+        f'echo $? > "{winner.as_posix()}.status"\n'
+        "exit 1",
+    )
+
+    loser = land(world)
+
+    assert (winner.with_suffix(".status")).read_text().strip() == "0"
+    assert (
+        winner.with_suffix(".out").read_text().strip()
+        == f"landed: {world.head} on main"
+    )
+    assert landed(loser) == f"landed: {world.head} already on main"
+    assert main_of(world, git) == world.head
+
+
+def test_a_head_that_landed_under_a_later_commit_is_landed(
+    world: World, git: Git
+) -> None:
+    later = git(
+        world.clone,
+        "commit-tree",
+        f"{world.head}^{{tree}}",
+        "-p",
+        world.head,
+        "-m",
+        "later",
+    ).stdout.strip()
+    git(world.clone, "push", "-q", "origin", f"{later}:refs/pull/9/head")
+    decline_after(world, f"git update-ref refs/heads/main {later}")
+
+    line = landed(land(world))
+
+    assert line == f"landed: {world.head} already on main"
+    assert main_of(world, git) == later
+
+
+def test_a_branch_that_is_gone_after_a_refused_push_is_not_a_landing(
+    world: World,
+) -> None:
+    decline_after(world, "git update-ref -d refs/heads/main")
+
+    line = refused(land(world))
+
+    assert line.startswith("not landed: origin refused the push to main")
+    assert "landed:" not in line.removeprefix("not landed:")
+
+
+@POSIX_ONLY
+def test_a_tip_that_cannot_be_fetched_after_a_refused_push_keeps_the_line_of_a_moved_branch(
+    world: World, git: Git, tmp_path: Path
+) -> None:
+    asked = tmp_path / "asked"
+    stand_in = tmp_path / "upload-pack"
+    stand_in.write_text(
+        "#!/bin/sh\n"
+        f'echo x >> "{asked.as_posix()}"\n'
+        f'if [ "$(wc -l < "{asked.as_posix()}")" -ge 4 ]; then echo "gone" >&2; exit 1; fi\n'
+        'exec git-upload-pack "$@"\n',
+        newline="\n",
+    )
+    stand_in.chmod(stand_in.stat().st_mode | stat.S_IXUSR)
+    git(world.clone, "config", "remote.origin.uploadpack", str(stand_in))
+    decline_after(world, f"git update-ref refs/heads/main {world.head}")
+
+    line = refused(land(world))
+
+    assert "push again" in line
+    assert main_of(world, git) == world.head
+
+
 def test_a_moved_branch_is_never_overwritten(
     world: World, git: Git, tmp_path: Path
 ) -> None:
