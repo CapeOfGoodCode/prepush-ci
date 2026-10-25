@@ -27,6 +27,20 @@ def test_the_manifest_asks_for_checks_write_and_nothing_else() -> None:
     assert manifest("n", REDIRECT)["default_permissions"] == {"checks": "write"}
 
 
+def test_the_manifest_of_a_landing_app_asks_for_four_permissions_and_is_not_public() -> (
+    None
+):
+    made = manifest("n", REDIRECT, land=True)
+
+    assert made["default_permissions"] == {
+        "checks": "write",
+        "contents": "write",
+        "pull_requests": "read",
+        "workflows": "write",
+    }
+    assert made["public"] is False
+
+
 def test_the_manifest_names_the_homepage_and_the_redirect() -> None:
     made = manifest("Acme checks", REDIRECT)
 
@@ -195,6 +209,23 @@ def test_the_result_names_the_id_the_address_the_path_and_the_two_variables() ->
     assert "PREPUSH_CI_APP_ID" in text
     assert "PREPUSH_CI_APP_KEY" in text
     assert "KEY" not in text.replace("PREPUSH_CI_APP_KEY", "")
+
+
+def test_the_result_of_a_landing_app_names_the_ruleset_command_with_its_id() -> None:
+    text = result_text(
+        App("5401187", "prepush-ci-acme", "KEY"), "https://github.com", "key.pem", True
+    )
+
+    assert "prepush-ci app ruleset --app 5401187" in text
+    assert "installed" in text
+
+
+def test_the_result_of_an_app_without_the_flag_holds_no_ruleset_command() -> None:
+    text = result_text(
+        App("5401187", "prepush-ci-acme", "KEY"), "https://github.com", "key.pem"
+    )
+
+    assert "app ruleset" not in text
 
 
 def test_each_run_gets_its_own_state_that_is_safe_in_an_address() -> None:

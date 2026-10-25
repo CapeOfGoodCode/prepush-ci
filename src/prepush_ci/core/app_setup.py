@@ -47,16 +47,28 @@ def parse_timeout(text: str) -> int:
     return int(text)
 
 
-def manifest(name: str, redirect_url: str) -> dict[str, object]:
-    """What GitHub's manifest flow needs to create the app: `checks: write` and nothing else, no
-    webhook (it would need a server to point at), no events, private."""
+# What an app that moves the default branch asks for (`--land`): `contents` to push it,
+# `pull_requests` to read the pull request, `workflows` because GitHub refuses a push that changes
+# a workflow file without it.
+LAND_PERMISSIONS = {
+    "checks": "write",
+    "contents": "write",
+    "pull_requests": "read",
+    "workflows": "write",
+}
+
+
+def manifest(name: str, redirect_url: str, land: bool = False) -> dict[str, object]:
+    """What GitHub's manifest flow needs to create the app: `checks: write` and nothing else, or
+    with `land` the permissions of `LAND_PERMISSIONS`; no webhook (it would need a server to point
+    at), no events, private."""
     return {
         "name": name,
         "url": HOMEPAGE,
         "redirect_url": redirect_url,
         "public": False,
         "default_events": [],
-        "default_permissions": {"checks": "write"},
+        "default_permissions": dict(LAND_PERMISSIONS) if land else {"checks": "write"},
     }
 
 
@@ -121,13 +133,21 @@ def install_address(server: str, slug: str) -> str:
     return f"{server}/apps/{slug}/installations/new"
 
 
-def result_text(app: App, server: str, key_path: str) -> str:
-    """What `report` needs, without the key itself."""
-    return (
+def result_text(app: App, server: str, key_path: str, land: bool = False) -> str:
+    """What `report` needs, without the key itself; with `land` also the command that makes the
+    app the one actor that may move the default branch."""
+    text = (
         f"created the app {app.slug} (id {app.app_id})\n"
         f"key saved to {key_path}\n"
         f"install it on your repositories: {install_address(server, app.slug)}\n"
         "then give report these two variables:\n"
         f"  PREPUSH_CI_APP_ID={app.app_id}\n"
         "  PREPUSH_CI_APP_KEY=<the text of the key file>"
+    )
+    if not land:
+        return text
+    return (
+        f"{text}\n"
+        "once the app is installed on the repository, let it alone move the default branch:\n"
+        f"  prepush-ci app ruleset --app {app.app_id}"
     )
