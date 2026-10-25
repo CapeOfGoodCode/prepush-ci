@@ -215,6 +215,7 @@ def test_the_reference_lists_the_thirteen_commands(invocations: Any) -> None:
         "hook commit-msg",
         "hook post-push",
         "hook pre-push",
+        "app ruleset",
         "app setup",
     ]
 

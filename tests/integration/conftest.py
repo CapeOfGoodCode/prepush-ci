@@ -1,12 +1,15 @@
+import json
 import os
 import re
 import shlex
 import stat
 import subprocess
 import sys
+import threading
 from collections.abc import Callable, Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cache
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -409,3 +412,101 @@ def invocations() -> Invocations:
 def non_ascii_name(request: pytest.FixtureRequest) -> str:
     """The name of a directory with a non-ASCII character in it."""
     return str(request.param)
+
+
+# --- A double of GitHub's rulesets API ------------------------------------------------------------
+# `app ruleset` and `doctor --ruleset` talk to it through `GITHUB_API_URL`; every request is kept.
+
+RULESET_ID = 24893178
+LANDING_NAME = "prepush-ci landing"
+
+
+@dataclass
+class ApiRequest:
+    method: str
+    path: str
+    headers: dict[str, str]
+    body: str
+
+
+@dataclass
+class RulesetApi:
+    """Answers the three requests about rulesets as GitHub does. `listing` is what the listing
+    holds, `ruleset` what the request for one ruleset answers (None: 404), `answer` replaces the
+    answer of the first request whose `METHOD path` holds its text."""
+
+    url: str
+    requests: list[ApiRequest] = field(default_factory=list)
+    listing: list[dict[str, Any]] = field(default_factory=list)
+    ruleset: dict[str, Any] | None = None
+    answers: list[tuple[str, int, str]] = field(default_factory=list)
+
+    def answer(self, where: str, status: int, body: str) -> None:
+        self.answers.append((where, status, body))
+
+    def respond(self, request: ApiRequest) -> tuple[int, str]:
+        line = f"{request.method} {request.path}"
+        for where, status, body in self.answers:
+            if where in line:
+                return status, body
+        path = request.path.split("?")[0]
+        if request.method == "GET" and path.endswith("/rulesets"):
+            return 200, json.dumps(self.listing)
+        if request.method == "GET" and "/rulesets/" in path:
+            if self.ruleset is None:
+                return 404, json.dumps({"message": "Not Found"})
+            return 200, json.dumps(self.ruleset)
+        if request.method == "POST" and path.endswith("/rulesets"):
+            made = {
+                "id": RULESET_ID,
+                "name": LANDING_NAME,
+                "_links": {
+                    "html": {"href": f"{self.url}/acme/widgets/rules/{RULESET_ID}"}
+                },
+            }
+            return 201, json.dumps(made)
+        return 404, json.dumps({"message": "Not Found"})
+
+    def posts(self) -> list[ApiRequest]:
+        return [r for r in self.requests if r.method == "POST"]
+
+    def changes(self) -> list[ApiRequest]:
+        """The requests that would change something on GitHub."""
+        return [r for r in self.requests if r.method != "GET"]
+
+
+@pytest.fixture
+def ruleset_api() -> Iterator[RulesetApi]:
+    served: RulesetApi
+
+    class Handler(BaseHTTPRequestHandler):
+        def _serve(self) -> None:
+            length = int(self.headers.get("Content-Length", "0"))
+            request = ApiRequest(
+                self.command,
+                self.path,
+                {key.lower(): value for key, value in self.headers.items()},
+                self.rfile.read(length).decode("utf-8"),
+            )
+            served.requests.append(request)
+            status, body = served.respond(request)
+            data = body.encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = _serve  # noqa: N815
+
+        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    served = RulesetApi(f"http://127.0.0.1:{server.server_address[1]}")
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield served
+    server.shutdown()
+    server.server_close()
+    thread.join()

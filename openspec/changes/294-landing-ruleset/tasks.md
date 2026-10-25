@@ -1,6 +1,6 @@
 ## 1. The request
 
-- [ ] 1.1 The builder holds no administration rights, so the request is tested against a local API only; say in the proof that no ruleset was created on GitHub, and that the first real run is the owner's (#296), who checks the ids with `doctor --ruleset`
+- [x] 1.1 The builder holds no administration rights, so the request is tested against a local API only; say in the proof that no ruleset was created on GitHub, and that the first real run is the owner's (#296), who checks the ids with `doctor --ruleset`
 
 ## 2. The manifest
 
@@ -8,7 +8,7 @@
 
 ## 3. The ruleset command
 
-- [ ] 3.1 Add the pure body and its reading to `core/`, the three requests to `github_api.py` and `app_ruleset_command.py` with its subcommand in `cli.py`; verify with specs against a local API named after the scenarios of the requirements "The ruleset command takes one bypass actor", "The ruleset", "The bypass actor", "The token and the repository", "A ruleset that exists is kept" and "The exit status of the ruleset command"
+- [x] 3.1 Add the pure body and its reading to `core/`, the three requests to `github_api.py` and `app_ruleset_command.py` with its subcommand in `cli.py`; verify with specs against a local API named after the scenarios of the requirements "The ruleset command takes one bypass actor", "The ruleset", "The bypass actor", "The token and the repository", "A ruleset that exists is kept" and "The exit status of the ruleset command"
 
 ## 4. The doctor check
 
