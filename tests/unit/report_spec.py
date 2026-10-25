@@ -1489,3 +1489,19 @@ def test_a_name_that_would_end_the_marker_early_is_a_problem_that_names_the_flag
     problem = markdown_name_problem(name)
 
     assert problem is not None and "--name" in problem and "--markdown" in problem
+
+
+def test_the_markdown_title_of_a_failed_result_with_counts_says_failed_and_holds_them() -> (
+    None
+):
+    shown = facts(counts=Counts(passed=3))
+
+    title_line = markdown("n", shown, "failed").split("\n")[1]
+
+    assert title_line == "### n: Failed (3 passed, 0 failed, 0 skipped)"
+
+
+def test_the_title_of_the_check_run_of_a_failed_result_with_counts_is_the_bare_counts() -> (
+    None
+):
+    assert title("failed", Counts(passed=3)) == "3 passed, 0 failed, 0 skipped"

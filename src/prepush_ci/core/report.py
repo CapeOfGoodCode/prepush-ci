@@ -547,6 +547,14 @@ def title(result: str, counts: Counts | None) -> str:
     return "Passed" if result == "passed" else "Failed"
 
 
+def markdown_title(result: str, counts: Counts | None) -> str:
+    """The text of the title line of the Markdown: the check run's title, but a failed result with
+    counts says `Failed` and holds them, so that a comment states its result in one way only."""
+    if counts is not None and result != "passed":
+        return f"Failed ({counts.line()})"
+    return title(result, counts)
+
+
 MAX_LISTED = 20
 MAX_TEXT = 200
 
@@ -638,7 +646,7 @@ def markdown(name: str, facts: Facts, result: str) -> str:
     line that names the commit, without a final newline."""
     head = (
         f"<!-- prepush-ci:{name} -->\n"
-        f"### {name}: {title(result, facts.counts)}\n"
+        f"### {name}: {markdown_title(result, facts.counts)}\n"
         f"Commit {facts.sha}\n\n"
     )
     return (head + summary(facts)).rstrip("\n")
