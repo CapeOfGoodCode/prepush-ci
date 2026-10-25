@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from prepush_ci.core.config import REMOTE, Config
+from prepush_ci.core.run_facts import RunFacts, from_line
 
 SHORT = 12
 # 128 bits of the hash keep a ref file name short: Windows limits a path to 260 characters
@@ -15,6 +16,7 @@ RESULTS = "refs/prepush-ci/results"
 IDENTITY = ("prepush-ci", "prepush-ci@localhost")
 SUBJECT = "prepush-ci: the check passed"
 NAMES = "commit "
+FACTS = "facts "
 EXPIRES_AFTER = 30 * 24 * 60 * 60  # seconds
 _STATUS = re.compile(r"(?:\bHTTP |\berror: )(?P<status>\d{3})\b")
 BATCH = 100  # refs per `git push` that deletes them, so the command line stays short on Windows
@@ -55,20 +57,34 @@ def result_ref(key: Key) -> str:
     return f"{RESULTS}/{key.tree}-{key.config}"
 
 
-def result_message(sha: str) -> list[str]:
+def result_message(sha: str, facts: str | None = None) -> list[str]:
     """The paragraphs of the message of the commit a result ref points at: they name the commit
-    that was checked."""
-    return [SUBJECT, f"{NAMES}{sha}"]
+    that was checked, and then hold the facts of the run (see `run_facts.encode`) when there are
+    any."""
+    paragraphs = [SUBJECT, f"{NAMES}{sha}"]
+    return paragraphs if facts is None else [*paragraphs, f"{FACTS}{facts}"]
 
 
 def passed_commit(log: str, key: Key) -> str | None:
     """The commit a result ref names, read from `git log -1 --format=%T%n%b` of the ref; None
-    when the ref points at a commit of another tree or its message names no commit."""
+    when the ref points at a commit of another tree or its message names no commit. The commit is
+    the first line of the body: a paragraph of facts may follow."""
     tree, _, body = log.partition("\n")
-    body = body.strip()
-    if tree != key.tree or not body.startswith(NAMES):
+    first = body.strip().partition("\n")[0]
+    if tree != key.tree or not first.startswith(NAMES):
         return None
-    return body.removeprefix(NAMES)
+    return first.removeprefix(NAMES)
+
+
+def passed_facts(log: str, key: Key) -> RunFacts | None:
+    """The facts of the run a result ref records, read from the same log as `passed_commit`; None
+    when the pass has none or they cannot be read, which leaves it a pass."""
+    if passed_commit(log, key) is None:
+        return None
+    paragraphs = log.partition("\n")[2].strip().split("\n\n")
+    if len(paragraphs) < 2 or not paragraphs[1].startswith(FACTS):
+        return None
+    return from_line(paragraphs[1].removeprefix(FACTS))
 
 
 def pushes_to_origin(args: Sequence[str], env: Mapping[str, str]) -> bool:

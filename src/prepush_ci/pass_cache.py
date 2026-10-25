@@ -24,6 +24,7 @@ from prepush_ci.core.run_cache import (
     result_message,
     result_ref,
 )
+from prepush_ci.core.run_facts import RunFacts, to_line
 from prepush_ci.git import GitError, git
 
 
@@ -36,14 +37,17 @@ def has_pass(config: Config, root: Path, key: Key) -> str | None:
     return passed_commit(result.stdout, key)  # unreadable: git says nothing, a miss
 
 
-def record_pass(config: Config, root: Path, key: Key, sha: str) -> bool:
-    """Remember that the check passed on commit `sha`, whose tree is the key's; the key was read
-    before the check ran. A cache that cannot be written is a warning, never a reason to fail a
-    run that passed. True when the result is there to publish."""
+def record_pass(
+    config: Config, root: Path, key: Key, sha: str, facts: RunFacts | None = None
+) -> bool:
+    """Remember that the check passed on commit `sha`, whose tree is the key's, with the facts of
+    the run when there are any; the key was read before the check ran. A cache that cannot be
+    written is a warning, never a reason to fail a run that passed. True when the result is there
+    to publish."""
     if not config.cache:
         return False
     try:
-        commit = _commit_of(root, key.tree, sha)
+        commit = _commit_of(root, key.tree, sha, facts)
         updated = git(root, "update-ref", result_ref(key), commit)
         if updated.returncode != 0:
             raise GitError(updated.stderr.strip())
@@ -183,7 +187,7 @@ def current_head(root: Path) -> Head:
     return Head(shas[0], shas[1])
 
 
-def _commit_of(root: Path, tree: str, sha: str) -> str:
+def _commit_of(root: Path, tree: str, sha: str, facts: RunFacts | None) -> str:
     """A parentless commit of `tree` that names `sha`, made with a fixed identity so it needs no
     `user.name` and no signing, and dated now: the environment cannot date it, for the date is
     what a cleanup ages the result by."""
@@ -197,7 +201,8 @@ def _commit_of(root: Path, tree: str, sha: str) -> str:
         "GIT_COMMITTER_NAME": name,
         "GIT_COMMITTER_EMAIL": email,
     }
-    message = [part for text in result_message(sha) for part in ("-m", text)]
+    line = None if facts is None else to_line(facts)
+    message = [part for text in result_message(sha, line) for part in ("-m", text)]
     made = git(root, "commit-tree", tree, *message, env={**os.environ, **identity})
     if made.returncode != 0:
         raise GitError(made.stderr.strip())

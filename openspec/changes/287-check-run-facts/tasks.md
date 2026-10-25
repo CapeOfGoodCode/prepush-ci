@@ -6,8 +6,8 @@
 
 ## 2. Record the facts
 
-- [ ] 2.1 Add the pure logic in `core/`: the facts of a run from the contents of the named files (counts per test file, coverage, error counts), their one-line encoding and decoding, and the message of the result commit; verify with unit specs for "A recorded pass holds the facts of its run", "The files named in results become facts", "Test-file names are paths of the tree" and "Only numbers are kept"
-- [ ] 2.2 Delete the named untracked files before the check, time the check, read the files after a pass and record the facts with the pass, in `run` and in the pre-push hook; verify with integration specs for "The files of this run only", "A path that is not safe to delete is left alone", "A path in another repository or under a tracked name is left alone", "A path that is left alone costs one line" and "A fact that cannot be read costs a warning"
+- [x] 2.1 Add the pure logic in `core/`: the facts of a run from the contents of the named files (counts per test file, coverage, error counts), their one-line encoding and decoding, and the message of the result commit; verify with unit specs for "A recorded pass holds the facts of its run", "The files named in results become facts", "Test-file names are paths of the tree" and "Only numbers are kept"
+- [x] 2.2 Delete the named untracked files before the check, time the check, read the files after a pass and record the facts with the pass, in `run` and in the pre-push hook; verify with integration specs for "The files of this run only", "A path that is not safe to delete is left alone", "A path in another repository or under a tracked name is left alone", "A path that is left alone costs one line" and "A fact that cannot be read costs a warning"
 
 ## 3. Show them
 

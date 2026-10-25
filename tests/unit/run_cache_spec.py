@@ -17,10 +17,12 @@ from prepush_ci.core.run_cache import (
     message_skipped,
     message_skipped_from_origin,
     passed_commit,
+    passed_facts,
     pushes_to_origin,
     result_message,
     result_ref,
 )
+from prepush_ci.core.run_facts import RunFacts
 
 CONFIG = Config(
     check="make test",
@@ -405,3 +407,49 @@ def test_the_warning_for_a_cleanup_of_origin_that_failed_names_origin_and_the_re
     assert "origin" in text
     assert "old results could not be removed" in text
     assert "declined" in text
+
+
+FACTS = '{"v":1,"seconds":492}'
+FACTS_LOG = f"{TREE}\ncommit {'a' * 40}\n\nfacts {FACTS}\n"
+
+
+def test_the_message_of_a_pass_holds_the_facts_after_the_commit() -> None:
+    assert result_message("a" * 40, FACTS) == [
+        "prepush-ci: the check passed",
+        f"commit {'a' * 40}",
+        f"facts {FACTS}",
+    ]
+
+
+def test_the_commit_of_a_pass_is_the_first_line_of_its_second_paragraph() -> None:
+    assert passed_commit(FACTS_LOG, KEY) == "a" * 40
+
+
+def test_the_facts_of_a_pass_are_read_from_its_third_paragraph() -> None:
+    assert passed_facts(FACTS_LOG, KEY) == RunFacts(seconds=492)
+
+
+def test_a_pass_without_a_facts_paragraph_has_no_facts_and_is_still_a_pass() -> None:
+    log = f"{TREE}\ncommit {'a' * 40}\n"
+
+    assert passed_facts(log, KEY) is None
+    assert passed_commit(log, KEY) == "a" * 40
+
+
+def test_facts_that_cannot_be_read_leave_the_pass_valid() -> None:
+    log = f"{TREE}\ncommit {'a' * 40}\n\nfacts not json\n"
+
+    assert passed_facts(log, KEY) is None
+    assert passed_commit(log, KEY) == "a" * 40
+
+
+def test_the_facts_of_a_pass_of_another_tree_are_not_read() -> None:
+    log = f"{'c' * 40}\ncommit {'a' * 40}\n\nfacts {FACTS}\n"
+
+    assert passed_facts(log, KEY) is None
+
+
+def test_a_third_paragraph_that_is_not_facts_is_not_read() -> None:
+    log = f"{TREE}\ncommit {'a' * 40}\n\n{FACTS}\n"
+
+    assert passed_facts(log, KEY) is None

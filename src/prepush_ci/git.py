@@ -61,6 +61,21 @@ def hidden(cwd: Path) -> list[str]:
     return hidden_paths(_listing(cwd, "the index flags", "ls-files", "-v", "-z"))
 
 
+def tracked_listings(cwd: Path) -> tuple[str, str]:
+    """What `HEAD` and the index list, as `git ls-tree -r -z HEAD` and `git ls-files -s -z` print
+    it; a listing that cannot be read is an error, for a path missing from it would look free."""
+    return (
+        _listing(cwd, "the files of HEAD", "ls-tree", "-r", "-z", "HEAD"),
+        _listing(cwd, "the files of the index", "ls-files", "-s", "-z"),
+    )
+
+
+def tree_files(cwd: Path, tree: str) -> frozenset[str]:
+    """The paths of the files in a tree; empty when git cannot list it."""
+    result = git(cwd, "ls-tree", "-r", "-z", "--name-only", tree)
+    return frozenset(result.stdout.split("\0")) - {""}
+
+
 def _listing(cwd: Path, what: str, *args: str) -> str:
     result = git(cwd, *args)
     if result.returncode != 0:
