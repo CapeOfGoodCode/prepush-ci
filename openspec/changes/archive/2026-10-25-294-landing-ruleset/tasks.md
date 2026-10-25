@@ -16,4 +16,4 @@
 
 ## 5. Archive
 
-- [ ] 5.1 Run `sh scripts/ci` and verify it passes
+- [x] 5.1 Run `sh scripts/ci` and verify it passes
