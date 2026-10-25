@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from prepush_ci import (
+    app_ruleset_command,
     app_setup_command,
     commit_msg_hook,
     doctor_command,
@@ -37,6 +38,7 @@ from prepush_ci.core.report import (
     parse_name,
     parse_tool,
 )
+from prepush_ci.core.ruleset import ADMIN_ACTOR, app_actor, parse_app_id
 from prepush_ci.version_line import PrintVersionLine
 
 T = TypeVar("T")
@@ -269,7 +271,7 @@ def main(argv: list[str] | None = None) -> int:
     app = commands.add_parser(
         "app", help="the GitHub App that report posts check runs as"
     )
-    apps = app.add_subparsers(required=True)
+    apps = app.add_subparsers(dest="app_command", required=True)
     setup = apps.add_parser(
         "setup",
         help="create the app with one click in the browser and save its key outside the repository",
@@ -290,7 +292,36 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_TIMEOUT,
         help="seconds to wait for GitHub's answer (default: %(default)s)",
     )
+    ruleset = apps.add_parser(
+        "ruleset",
+        help="create the ruleset that lets only one actor move the default branch",
+        description="Create the ruleset `prepush-ci landing` on the default branch: only the "
+        "actor you name may update it (no pull request is required), and it cannot be deleted "
+        "or rewritten. It uses the token of GITHUB_TOKEN or GH_TOKEN, which needs "
+        "administration rights on the repository. A private repository needs a paid plan for "
+        "rulesets.",
+    )
+    # Not `required`: argparse would then report the missing flag before an unknown one.
+    who = ruleset.add_mutually_exclusive_group()
+    who.add_argument(
+        "--admin",
+        action="store_true",
+        help="the repository-admin role may bypass the ruleset (for landing by hand)",
+    )
+    who.add_argument(
+        "--app",
+        type=_parsed(parse_app_id),
+        metavar="ID",
+        help="the app with this id may bypass the ruleset (for the landing workflow); "
+        "it must be installed on the repository",
+    )
     args = parser.parse_args(args_in)
+    if args.command == "app" and args.app_command == "ruleset":
+        if not args.admin and args.app is None:
+            ruleset.error("one of the arguments --admin --app is required")
+        return app_ruleset_command.run(
+            ADMIN_ACTOR if args.admin else app_actor(args.app), env, Path.cwd()
+        )
     if args.command == "app":
         return app_setup_command.run(
             app_setup_command.Options(args.org, args.name, args.timeout),

@@ -112,7 +112,7 @@ The next push updates this comment instead of adding another. A hidden marker at
 
 ## Command reference
 
-A command line the parser rejects makes `init`, `install`, `run`, `doctor`, `report`, `app setup` and `hook` exit 2; `verify` and `strip` check their own arguments and exit 1.
+A command line the parser rejects makes `init`, `install`, `run`, `doctor`, `report`, `app setup`, `app ruleset` and `hook` exit 2; `verify` and `strip` check their own arguments and exit 1.
 
 ### `init`
 
@@ -270,6 +270,21 @@ prepush-ci app setup --org acme
 ```
 
 **Exit status:** 0 means the app was created and its key saved, 1 means it refused or failed, 2 means the parser rejected the command line.
+
+### `app ruleset`
+
+Creates the ruleset "prepush-ci landing" on the default branch of the repository, so that only one actor can move that branch: the rules `update`, `non_fast_forward` and `deletion` and no pull request rule, and one bypass actor, the repository-admin role with `--admin`, or the app with that id with `--app`. It uses the token of `GITHUB_TOKEN`, or of `GH_TOKEN` when that is unset or empty, which needs administration rights on the repository, and the repository that `origin` names, or `GITHUB_REPOSITORY` when `origin` names none. A private repository needs a paid plan for rulesets. An existing ruleset of that name is never changed: delete it in the settings of the repository and run the command again. The command prints the id of the ruleset and the address of its page, and names `doctor --ruleset` as the way to check it later.
+
+```
+prepush-ci app ruleset --admin
+prepush-ci app ruleset --app ID
+```
+
+```sh
+prepush-ci app ruleset --app 5401187
+```
+
+**Exit status:** 0 means the ruleset was created, 1 means it refused or failed, 2 means the parser rejected the command line.
 
 ### `skill`
 

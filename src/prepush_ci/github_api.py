@@ -273,3 +273,18 @@ class PullRequestClient:
     def update_comment(self, comment_id: int, body: str) -> None:
         path = f"{_repo_path(self._repository)}/issues/comments/{comment_id}"
         self._call("PATCH", path, {"body": body})
+
+
+def list_rulesets(api_url: str, repository: Repository, token: str) -> str:
+    """The answer to the listing of the repository's rulesets (GitHub allows 75 at most, so one
+    page of 100 holds them all); the listing has no rules and no bypass actors."""
+    path = f"{_repo_path(repository)}/rulesets?per_page={PER_PAGE}"
+    return text_io.decode(send("GET", api_url, path, token))
+
+
+def create_ruleset(
+    api_url: str, repository: Repository, token: str, body: object
+) -> str:
+    """Create a ruleset; GitHub's answer for it."""
+    path = f"{_repo_path(repository)}/rulesets"
+    return text_io.decode(send("POST", api_url, path, token, body))

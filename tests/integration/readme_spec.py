@@ -195,7 +195,7 @@ def test_a_readme_without_an_entry_for_app_setup_is_reported(invocations: Any) -
     assert reference_problems(text, invocations) == ["app setup has no entry"]
 
 
-def test_the_reference_lists_the_twelve_commands(invocations: Any) -> None:
+def test_the_reference_lists_the_thirteen_commands(invocations: Any) -> None:
     assert command_names(invocations) == [
         "doctor",
         "init",
@@ -208,6 +208,7 @@ def test_the_reference_lists_the_twelve_commands(invocations: Any) -> None:
         "hook commit-msg",
         "hook post-push",
         "hook pre-push",
+        "app ruleset",
         "app setup",
     ]
 
