@@ -7,8 +7,8 @@ from functools import cache
 from importlib import metadata
 from pathlib import Path
 
-from prepush_ci import text_io
-from prepush_ci.core import doctor, doctor_hooks
+from prepush_ci import app_ruleset_command, github_api, text_io
+from prepush_ci.core import doctor, doctor_hooks, report, ruleset
 from prepush_ci.core.config import Config, ConfigError
 from prepush_ci.core.config_source import PREPUSH_CI_FILE, PYPROJECT_FILE, ConfigMissing
 from prepush_ci.core.doctor_hooks import Binary, ManagerFacts, NativeFacts
@@ -23,7 +23,9 @@ from prepush_ci.core.hook_managers import (
 )
 from prepush_ci.core.install import HOOKS, HOOKS_DIRECTORY, PYTHON_FILE
 from prepush_ci.core.preflight import missing_env
-from prepush_ci.git import answer, git
+from prepush_ci.core.report import ReportError
+from prepush_ci.core.ruleset_audit import ActorsHidden, audit
+from prepush_ci.git import GitError, answer, git
 from prepush_ci.hook_scripts import git_hooks_directory, hooks_path, script
 from prepush_ci.repo_config import load_repository_config
 from prepush_ci.version_line import own_version_line
@@ -39,6 +41,7 @@ def run(
     env: Mapping[str, str],
     hooks: str | None = None,
     mode: str | None = None,
+    check_ruleset: bool = False,
 ) -> int:
     try:
         common_dir = git(cwd, "rev-parse", "--git-common-dir")
@@ -65,8 +68,32 @@ def run(
         doctor.UP_TO_DATE: _up_to_date(config, root, env),
     }
     checks = [found[name] for name in doctor.NAMES]
+    if check_ruleset:
+        checks.append(_ruleset(cwd, env))
     print("\n".join(doctor.render(checks)))
     return doctor.exit_status(checks)
+
+
+def _ruleset(cwd: Path, env: Mapping[str, str]) -> doctor.Check:
+    """The `ruleset` verdict: the landing ruleset is read with the user's token, nothing is changed."""
+    secrets: tuple[str, ...] = ()
+    try:
+        found = app_ruleset_command.access(cwd, env)
+        secrets = (found.token,)
+        listing = github_api.list_rulesets(found.api_url, found.repository, found.token)
+        ruleset_id = ruleset.listed_id(listing)
+        if ruleset_id is None:
+            return doctor.ruleset_missing()
+        detail = github_api.get_ruleset(
+            found.api_url, found.repository, found.token, ruleset_id
+        )
+        return doctor.ruleset_check(
+            audit(detail, report.value(env, "PREPUSH_CI_APP_ID"))
+        )
+    except ActorsHidden:
+        return doctor.ruleset_hidden()
+    except (ReportError, GitError, OSError) as error:
+        return doctor.ruleset_unread(report.redact(str(error), secrets))
 
 
 def _config(root: Path) -> tuple[Config | None, doctor.Check]:

@@ -12,7 +12,7 @@
 
 ## 4. The doctor check
 
-- [ ] 4.1 Add `--ruleset` to `doctor` and the seventh check; verify with specs named after the scenarios of "The report", "The closing line and the exit status" and "The ruleset check reads the ruleset", "The ruleset check passes only for the landing ruleset" and "The ruleset check passes only for one bypass actor that can push"
+- [x] 4.1 Add `--ruleset` to `doctor` and the seventh check; verify with specs named after the scenarios of "The report", "The closing line and the exit status" and "The ruleset check reads the ruleset", "The ruleset check passes only for the landing ruleset" and "The ruleset check passes only for one bypass actor that can push"
 
 ## 5. Archive
 

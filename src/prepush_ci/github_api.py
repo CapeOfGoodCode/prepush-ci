@@ -282,6 +282,14 @@ def list_rulesets(api_url: str, repository: Repository, token: str) -> str:
     return text_io.decode(send("GET", api_url, path, token))
 
 
+def get_ruleset(
+    api_url: str, repository: Repository, token: str, ruleset_id: str
+) -> str:
+    """One ruleset with its rules; its bypass actors only for an administrator's token."""
+    path = f"{_repo_path(repository)}/rulesets/{quote(ruleset_id, safe='')}"
+    return text_io.decode(send("GET", api_url, path, token))
+
+
 def create_ruleset(
     api_url: str, repository: Repository, token: str, body: object
 ) -> str:

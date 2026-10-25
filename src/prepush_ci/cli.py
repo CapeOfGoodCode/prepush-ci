@@ -174,6 +174,12 @@ def main(argv: list[str] | None = None) -> int:
         choices=MODES,
         help="also require PREPUSH_CI to have this value (unset: not set or empty)",
     )
+    diagnose.add_argument(
+        "--ruleset",
+        action="store_true",
+        help="also check that the ruleset `prepush-ci landing` lets only one actor move the "
+        "default branch (needs GITHUB_TOKEN or GH_TOKEN with administration rights)",
+    )
     commit_msg = hooks.add_parser(
         "commit-msg", help="write the trailer when PREPUSH_CI=full"
     )
@@ -394,7 +400,7 @@ def main(argv: list[str] | None = None) -> int:
             Path.cwd(),
         )
     if args.command == "doctor":
-        return doctor_command.run(Path.cwd(), env, args.hooks, args.mode)
+        return doctor_command.run(Path.cwd(), env, args.hooks, args.mode, args.ruleset)
     if args.command == "install":
         return install_command.run(Path.cwd(), args.hooks)
     if args.command == "hook" and args.hook == "pre-push":
