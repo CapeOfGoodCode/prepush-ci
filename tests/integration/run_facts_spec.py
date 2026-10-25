@@ -6,6 +6,7 @@ dirtying the worktree, as a real project ignores its build output.
 
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -188,7 +189,7 @@ def test_run_records_a_duration_even_when_no_results_are_named(
     assert set(facts) == {"v", "seconds"}
 
 
-def test_the_message_of_a_pass_names_the_commit_in_its_second_paragraph_and_holds_the_facts_in_its_third(
+def test_the_message_of_a_pass_names_the_commit_in_its_second_paragraph_and_holds_the_facts_in_its_third_and_the_config_in_its_fourth(
     project: Project,
 ) -> None:
     project.configure()
@@ -197,10 +198,11 @@ def test_the_message_of_a_pass_names_the_commit_in_its_second_paragraph_and_hold
 
     project.run()
 
-    subject, commit, facts = project.message().strip().split("\n\n")
+    subject, commit, facts, digest = project.message().strip().split("\n\n")
     assert subject == "prepush-ci: the check passed"
     assert commit == f"commit {sha}"
     assert facts.startswith("facts {")
+    assert re.fullmatch(r"config [0-9a-f]{32}", digest)
 
 
 def test_the_pre_push_hook_records_a_duration_as_well(

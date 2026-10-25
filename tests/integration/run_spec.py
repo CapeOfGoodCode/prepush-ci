@@ -1,6 +1,7 @@
 """`prepush-ci run`: the pre-push hook's sequence started by hand, against real repositories."""
 
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -283,6 +284,34 @@ def test_a_pass_of_run_is_recorded_as_a_result_ref_of_the_tree_of_head(
     [ref] = results(configured, git)
     assert ref.startswith(f"refs/prepush-ci/results/{tree}-")
     assert git(configured, "rev-parse", f"{ref}^{{tree}}").stdout.strip() == tree
+
+
+def digest_of(repo: Path, git: Git, ref: str) -> str:
+    """The `config <digest>` paragraph that ends the message of a result ref."""
+    message = git(repo, "log", "-1", "--format=%B", ref).stdout.strip()
+    return message.split("\n\n")[-1]
+
+
+def test_the_digest_is_recorded(configured: Path, git: Git) -> None:
+    run_cli(configured)
+
+    [ref] = results(configured, git)
+    assert re.fullmatch(r"config [0-9a-f]{32}", digest_of(configured, git, ref))
+
+
+def test_another_check_another_digest(repo: Path, git: Git, log: Path) -> None:
+    # the config is an ignored file, so changing it leaves the worktree clean
+    (repo / ".gitignore").write_text(".prepush-ci.toml\n")
+    git(repo, "add", ".gitignore")
+    git(repo, "commit", "-q", "-m", "init")
+    config = repo / ".prepush-ci.toml"
+    config.write_text('check = "true"\nrequire_up_to_date = false\n')
+    run_cli(repo)
+    config.write_text('check = "true && true"\nrequire_up_to_date = false\n')
+    run_cli(repo)
+
+    first, second = results(repo, git)
+    assert digest_of(repo, git, first) != digest_of(repo, git, second)
 
 
 def test_a_failing_run_records_nothing(repo: Path, git: Git, log: Path) -> None:
