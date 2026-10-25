@@ -32,7 +32,7 @@ The rulebook for everyone who changes this repository, human or agent. `README.m
 - **Specs use SHALL and scenarios** (`#### Scenario:` with WHEN/THEN). Every scenario is covered by at least one test whose name says the same thing.
 - **Docs say only what is pinned or run.** A sentence in `README.md`, `SKILL.md` or `docs/` that says what prepush-ci does, prints or exits with names, in the change's `design.md`, the requirement in `openspec/specs/` that pins it; one that no requirement pins is run against the head before review, with the command and its output. A sentence neither backs is cut. This holds for the spec that asks for the text and for the text the builder writes.
 - **Archive before merge.** The implementation pull request ends with archiving its change (`openspec archive <change>`), so specs in `openspec/specs/` always describe `main`.
-- `npx openspec validate --all --strict` must pass (part of `scripts/ci`).
+- `npx openspec validate --all --strict` must pass (part of `scripts/ci`), and before a spec goes to build it must also pass with the change archived: in a scratch worktree of the head, `npx openspec archive <change> -y`, then the same validation. A delta can pass on its own while the spec it merges into fails (a requirement over 500 characters), and the builder would find out only at the archive, with the code done. Bruce-lee runs this before each hand-over to spec review, and robocop checks it before approving a spec.
 
 ## Commits
 
