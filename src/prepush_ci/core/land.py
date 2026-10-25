@@ -108,6 +108,25 @@ def already_on(sha: str, branch: str) -> Answer:
     return Answer(True, f"{sha} already on {branch}")
 
 
+def after_refusal(
+    head: str,
+    tip: str,
+    now: str | None,
+    branch: str,
+    reason: str | None,
+    head_is_behind_now: bool,
+) -> Answer:
+    """The answer once `origin` refused the push of `head`, which sat on top of `tip`: `now` is the
+    tip it lists then (None for a branch it no longer lists), `head_is_behind_now` whether the head
+    is that tip or an ancestor of it. A head on the branch by then is landed, whoever pushed it;
+    otherwise a tip that changed is a moved branch and one that did not is the refusal."""
+    if now is not None and head_is_behind_now:
+        return already_on(head, branch)
+    if now not in (None, tip):
+        return branch_moved(branch)
+    return push_refused(branch, reason)
+
+
 def refused(detail: str) -> Answer:
     return Answer(False, detail)
 

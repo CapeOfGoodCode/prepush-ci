@@ -208,6 +208,46 @@ def test_the_line_of_a_refused_push_without_a_reason_still_says_it_was_refused()
     assert "ruleset" in line
 
 
+# --- A head that landed meanwhile is landed ------------------------------------------------------
+
+
+def after_refusal(now: str | None, *, behind_now: bool) -> land.Answer:
+    return land.after_refusal(
+        SHA, OTHER, now, "main", "pre-receive hook declined", behind_now
+    )
+
+
+def test_a_head_behind_the_tip_listed_after_a_refusal_is_already_on_the_branch() -> (
+    None
+):
+    answer = after_refusal("f" * 40, behind_now=True)
+
+    assert answer == land.already_on(SHA, "main")
+    assert answer.line == f"landed: {SHA} already on main"
+
+
+def test_a_head_that_is_the_tip_listed_after_a_refusal_is_already_on_the_branch() -> (
+    None
+):
+    assert after_refusal(SHA, behind_now=True) == land.already_on(SHA, "main")
+
+
+def test_a_tip_that_moved_without_the_head_after_a_refusal_is_a_moved_branch() -> None:
+    assert after_refusal("f" * 40, behind_now=False) == land.branch_moved("main")
+
+
+def test_a_tip_that_did_not_move_after_a_refusal_is_the_refusal() -> None:
+    assert after_refusal(OTHER, behind_now=False) == land.push_refused(
+        "main", "pre-receive hook declined"
+    )
+
+
+def test_a_branch_no_longer_listed_after_a_refusal_is_the_refusal() -> None:
+    assert after_refusal(None, behind_now=False) == land.push_refused(
+        "main", "pre-receive hook declined"
+    )
+
+
 # --- A comment of the pull request is a pass ------------------------------------------------------
 
 TREE = "a" * 40

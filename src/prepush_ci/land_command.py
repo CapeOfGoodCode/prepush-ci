@@ -53,7 +53,7 @@ def _land(number: int, env: Mapping[str, str], cwd: Path) -> Answer:
     head = land.listed_commit(asked.stdout, ref)
     if head is None:
         return land.no_pull_request(number)
-    problem = _fetch(branch, ref, (tip, head), env, cwd)
+    problem = _fetch((f"refs/heads/{branch}", ref), (tip, head), env, cwd)
     if problem is not None:
         return problem
     where = _position(tip, head, cwd)
@@ -80,13 +80,13 @@ def _land(number: int, env: Mapping[str, str], cwd: Path) -> Answer:
         searched = land_comments.search(number, config, tree, env, cwd)
         if not searched.found:
             return land.no_pass(tree, searched.why_not_asked)
-    return _push(head, tip, branch, cwd)
+    return _push(head, tip, branch, env, cwd)
 
 
 def _fetch(
-    branch: str, ref: str, commits: tuple[str, ...], env: Mapping[str, str], cwd: Path
+    refs: tuple[str, ...], commits: tuple[str, ...], env: Mapping[str, str], cwd: Path
 ) -> Answer | None:
-    """Fetch the branch and the head into `FETCH_HEAD`. Git may also move `refs/remotes/origin/<branch>`
+    """Fetch the refs into `FETCH_HEAD`. Git may also move `refs/remotes/origin/<branch>`
     by itself; none of the repository's hooks (`reference-transaction`) runs for it. A damaged ref of
     another name must not fail it, as for the result cache."""
     with _no_hooks() as no_hooks:
@@ -98,8 +98,7 @@ def _fetch(
             "--no-auto-maintenance",
             "--",
             REMOTE,
-            f"refs/heads/{branch}",
-            ref,
+            *refs,
             env={**env, "GIT_REF_PARANOIA": "0"},
         )
     if fetched.returncode != 0:
@@ -177,7 +176,9 @@ def _no_hooks() -> Iterator[list[str]]:
         yield ["-c", f"core.hooksPath={Path(empty).as_posix()}"]
 
 
-def _push(head: str, tip: str, branch: str, cwd: Path) -> Answer:
+def _push(
+    head: str, tip: str, branch: str, env: Mapping[str, str], cwd: Path
+) -> Answer:
     """The tool's own push: a fast-forward, never forced, without the repository's hooks (`--no-verify`
     skips only `pre-push`; `reference-transaction` is silenced by an empty `core.hooksPath`) and
     without the tags it may be configured to follow. The push is the compare-and-swap: a branch
@@ -197,10 +198,20 @@ def _push(head: str, tip: str, branch: str, cwd: Path) -> Answer:
         )
     if pushed.returncode == 0:
         return land.landed(head, branch)
-    now = git(cwd, "ls-remote", REMOTE, f"refs/heads/{branch}")
-    if land.listed_commit(now.stdout, f"refs/heads/{branch}") not in (None, tip):
-        return land.branch_moved(branch)
-    return land.push_refused(branch, land.refusal_reason(pushed.stdout))
+    # the refusal may come from a run that landed the head meanwhile: ask the branch, not the refusal
+    listed = git(cwd, "ls-remote", REMOTE, f"refs/heads/{branch}")
+    now = land.listed_commit(listed.stdout, f"refs/heads/{branch}")
+    return land.after_refusal(
+        head,
+        tip,
+        now,
+        branch,
+        land.refusal_reason(pushed.stdout),
+        now is not None
+        and now != tip
+        and _fetch((f"refs/heads/{branch}",), (now,), env, cwd) is None
+        and _is_ancestor(head, now, cwd),
+    )
 
 
 def _first_line(text: str) -> str:
