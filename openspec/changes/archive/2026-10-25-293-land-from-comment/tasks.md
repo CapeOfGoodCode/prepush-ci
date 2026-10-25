@@ -15,4 +15,4 @@
 
 ## 4. Archive
 
-- [ ] 4.1 Run `sh scripts/ci` and verify it passes
+- [x] 4.1 Run `sh scripts/ci` and verify it passes
