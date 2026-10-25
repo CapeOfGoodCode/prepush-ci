@@ -5,7 +5,10 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from prepush_ci.core.run_cache import RESULTS
+from prepush_ci.core import report
+from prepush_ci.core.report import Counts
+from prepush_ci.core.run_cache import RESULTS, SHORT
+from prepush_ci.core.run_facts import RunFacts
 
 TOOL = "Bash"
 _NOT_A_PUSH = ("--dry-run", "-n", "--delete", "-d")
@@ -188,3 +191,75 @@ def find_comment(
 def results_pattern(tree: str) -> str:
     """The pattern of the result refs of a tree, whatever the config part of the key is."""
     return f"{RESULTS}/{tree}-*"
+
+
+def latest_ref(listing: str) -> str | None:
+    """The latest pass among result refs, from `<ref> <committer date>` lines: the latest date,
+    and of equal dates the last ref by name. A ref without a readable date is not a pass."""
+    dated: list[tuple[int, str]] = []
+    for line in listing.splitlines():
+        ref, _, stamp = line.rpartition(" ")
+        if ref and stamp.isascii() and stamp.isdigit():
+            dated.append((int(stamp), ref))
+    return max(dated)[1] if dated else None
+
+
+def facts_block(facts: RunFacts, checked: str, head: str) -> str:
+    """The facts of a run for the comment: one visible line, the line that says which run they come
+    from (`checked` is the commit the pass names, `head` the commit the comment is about), and
+    collapsed details when the facts hold more than the duration."""
+    where = (
+        "Checked on this commit."
+        if checked == head
+        else f"Reused from the run on {checked[:SHORT]}, same tree."
+    )
+    lines = [f"Facts of the run: {_summary(facts)}", where]
+    details = _details(facts)
+    if details:
+        lines += ["", "<details><summary>Details</summary>", "", details, "</details>"]
+    return "\n".join(lines)
+
+
+def _summary(facts: RunFacts) -> str:
+    entries = []
+    if facts.tests is not None:
+        entries.append(facts.tests.line())
+    if facts.coverage is not None:
+        entries.append(f"coverage {facts.coverage}%")
+    entries.append(f"duration {report.format_duration(facts.seconds)}")
+    return "; ".join(entries)
+
+
+def _errors(count: int) -> str:
+    return f"{count} error" if count == 1 else f"{count} errors"
+
+
+def _details(facts: RunFacts) -> str:
+    tools = []
+    if facts.tests is not None:
+        tools.append(("Tests", facts.tests.line()))
+    if facts.coverage is not None:
+        tools.append(("Coverage", f"{facts.coverage}%"))
+    if facts.ruff is not None:
+        tools.append(("Ruff", _errors(facts.ruff)))
+    if facts.mypy is not None:
+        tools.append(("Mypy", _errors(facts.mypy)))
+    if not tools:
+        return ""
+    text = "| Tool | Result |\n| --- | --- |\n"
+    text += "".join(f"| {tool} | {result} |\n" for tool, result in tools)
+    rows = [(report.code_span(name), counts) for name, counts in facts.files]
+    if facts.other is not None:
+        rows.append(("other", facts.other))
+    if rows:
+        text += (
+            "\n| Test file | Passed | Failed | Skipped |\n| --- | --- | --- | --- |\n"
+        )
+        text += "".join(_file_row(name, counts) for name, counts in rows)
+    return text
+
+
+def _file_row(name: str, counts: Counts) -> str:
+    # A pipe ends a table cell, also inside a code span: GitHub reads `\|` as the pipe.
+    shown = name.replace("|", "\\|")
+    return f"| {shown} | {counts.passed} | {counts.failed} | {counts.skipped} |\n"

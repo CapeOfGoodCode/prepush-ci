@@ -80,7 +80,7 @@ Add a first job to pull request CI that reads the trailer of the head commit wit
 
 ### 7. See the result on the pull request
 
-When pull request CI skips its jobs, the comment is what a reviewer sees of the check. The setup skill proposes the Claude Code hook that posts it after a push, in step 9, "Show the result after every push" (`prepush-ci hook post-push`; the [reference](#hook-post-push) says when it posts). The comment is the text `prepush-ci report --markdown` prints; for a commit that passed it looks like this, with a placeholder commit and tree:
+When pull request CI skips its jobs, the comment is what a reviewer sees of the check. The setup skill proposes the Claude Code hook that posts it after a push, in step 9, "Show the result after every push" (`prepush-ci hook post-push`; the [reference](#hook-post-push) says when it posts). The comment starts with the text `prepush-ci report --markdown` prints, and the facts of the run follow it (see the [reference](#hook-post-push)); for a commit that passed, the start looks like this, with a placeholder commit and tree:
 
 <details>
 <summary>The comment on a pull request</summary>
@@ -169,7 +169,7 @@ prepush-ci hook pre-push origin
 
 ### `hook post-push`
 
-Puts the result of the check on the pull request after a push. Claude Code runs this hook after each command of an agent, not a person: it reads the payload on standard input, and when the command was a `git push` that landed a commit with the trailer and a recorded pass of the check, it creates or updates the one comment of the check on the pull request of the branch, with the text `report --markdown` prints. In every other case it does nothing. The comment it writes is the short one, with no test counts or coverage, because the hook passes no result files; an agent that puts the output of `report --markdown` with `--junit` and `--coverage` into the comment then updates that same comment, and the next push writes the short text again. It uses `GITHUB_TOKEN` or `GH_TOKEN` when one is set and sends no credentials otherwise, which is what a Claude Code cloud session needs. The setup skill proposes it.
+Puts the result of the check on the pull request after a push. Claude Code runs this hook after each command of an agent, not a person: it reads the payload on standard input, and when the command was a `git push` that landed a commit with the trailer and a recorded pass of the check, it creates or updates the one comment of the check on the pull request of the branch, with the text `report --markdown` prints, then the facts of the run that the pass recorded. In every other case it does nothing. The facts are one visible line (tests, coverage and duration) and a collapsed `<details>` block with the counts per tool and per test file; the tests and the coverage come from the files that `results` names in the config, so without `results` the line holds only the duration. The comment says whether the run was on this commit or an earlier one with the same tree. An agent that puts the output of `report --markdown` with `--junit` and `--coverage` into the comment then updates that same comment, and the next push writes the comment of the hook again. It uses `GITHUB_TOKEN` or `GH_TOKEN` when one is set and sends no credentials otherwise, which is what a Claude Code cloud session needs. The setup skill proposes it.
 
 ```
 prepush-ci hook post-push

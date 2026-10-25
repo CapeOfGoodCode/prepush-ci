@@ -4,6 +4,7 @@ documented to."""
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import threading
@@ -247,6 +248,50 @@ class World:
         self.git(
             self.repo, "update-ref", f"refs/prepush-ci/results/{self.tree}-feed", "HEAD"
         )
+
+    def passes(self) -> list[str]:
+        listing = self.git(
+            self.repo, "for-each-ref", "--format=%(refname)", "refs/prepush-ci/results"
+        )
+        return listing.stdout.split()
+
+    def forge_pass(
+        self,
+        suffix: str,
+        facts: dict[str, object] | str | None,
+        date: int,
+        *,
+        commit: str | None = None,
+    ) -> None:
+        """Record a pass for the tree of `HEAD` as the run cache does, with the facts given (none:
+        as an older version recorded it), made at `date`."""
+        sha = commit or self.sha
+        message = ["-m", "prepush-ci: the check passed", "-m", f"commit {sha}"]
+        if facts is not None:
+            line = (
+                facts
+                if isinstance(facts, str)
+                else json.dumps({"v": 1, **facts}, separators=(",", ":"))
+            )
+            message += ["-m", f"facts {line}"]
+        stamp = f"{date} +0000"
+        made = self.git(
+            self.repo,
+            "commit-tree",
+            self.tree,
+            *message,
+            env={"GIT_COMMITTER_DATE": stamp, "GIT_AUTHOR_DATE": stamp},
+        ).stdout.strip()
+        self.git(
+            self.repo,
+            "update-ref",
+            f"refs/prepush-ci/results/{self.tree}-{suffix}",
+            made,
+        )
+
+    def drop_passes(self) -> None:
+        for ref in self.passes():
+            self.git(self.repo, "update-ref", "-d", ref)
 
     def on_github(self) -> None:
         """Let `origin` name the repository on GitHub, after the pushes that need a real remote."""
@@ -585,10 +630,7 @@ def test_the_hook_takes_the_repository_from_the_environment(world: World) -> Non
 # --- The comment is the Markdown of report ---------------------------------------------------------
 
 
-def test_the_comment_is_what_report_prints_as_markdown(
-    world: World, printed: Callable[[str], str]
-) -> None:
-    world.hook()
+def markdown_of_report(world: World) -> str:
     # On Windows the ascii variant changes nothing, so report writes its stdout in the ANSI code
     # page; ask for UTF-8 there so the spec reads it back whole.
     utf8_out = {"PYTHONIOENCODING": "utf-8"} if sys.platform == "win32" else {}
@@ -611,13 +653,247 @@ def test_the_comment_is_what_report_prints_as_markdown(
         encoding="utf-8",
         check=True,
     ).stdout
-    assert printed(world.comment_body()) == shown.rstrip("\n")
+    return shown.rstrip("\n")
+
+
+def test_the_comment_is_what_report_prints_as_markdown(
+    world: World, printed: Callable[[str], str]
+) -> None:
+    world.drop_passes()
+    world.forge_pass("feed", None, 1_700_000_000)
+    world.hook()
+    assert printed(world.comment_body()) == markdown_of_report(world)
 
 
 def test_the_comment_names_the_commit(world: World) -> None:
     world.hook()
     assert world.sha in world.comment_body()
     assert world.comment_body().startswith(MARKER + "\n")
+
+
+# --- The facts of the run follow the markdown ---------------------------------------------------
+
+FACTS = {
+    "seconds": 492,
+    "tests": [812, 0, 3],
+    "files": [["tests/a_spec.py", 3, 0, 1], ["tests/b_spec.py", 2, 1, 0]],
+    "other": [806, 0, 2],
+    "coverage": "94.5",
+    "ruff": 2,
+}
+VISIBLE = (
+    "Facts of the run: 812 passed, 0 failed, 3 skipped; coverage 94.5%; duration 8m 12s"
+)
+
+
+def test_the_facts_follow_the_markdown_after_a_blank_line(
+    world: World, printed: Callable[[str], str]
+) -> None:
+    world.drop_passes()
+    world.forge_pass("feed", FACTS, 1_700_000_000)
+
+    world.hook()
+
+    body = printed(world.comment_body())
+    assert body.startswith(markdown_of_report(world) + "\n\n" + VISIBLE + "\n")
+
+
+def test_the_facts_are_those_of_the_latest_pass_for_the_tree(world: World) -> None:
+    world.drop_passes()
+    world.forge_pass("aaa", {"seconds": 5, "tests": [40, 0, 0]}, 1_700_000_000)
+    world.forge_pass("bbb", {"seconds": 6, "tests": [812, 0, 0]}, 1_700_000_100)
+
+    world.hook()
+
+    assert "812 passed" in world.comment_body()
+    assert "40 passed" not in world.comment_body()
+
+
+def test_the_facts_of_an_older_pass_are_not_shown_when_the_latest_pass_has_none(
+    world: World,
+) -> None:
+    world.drop_passes()
+    world.forge_pass("aaa", FACTS, 1_700_000_000)
+    world.forge_pass("bbb", None, 1_700_000_100)
+
+    world.hook()
+
+    assert "Facts of the run" not in world.comment_body()
+    assert "<details>" not in world.comment_body()
+
+
+def test_of_equal_dates_the_facts_are_those_of_the_ref_whose_name_sorts_last(
+    world: World,
+) -> None:
+    world.drop_passes()
+    world.forge_pass("ccc", {"seconds": 3, "tests": [3, 0, 0]}, 1_700_000_000)
+    world.forge_pass("aaa", {"seconds": 1, "tests": [1, 0, 0]}, 1_700_000_000)
+
+    world.hook()
+
+    assert "3 passed" in world.comment_body()
+
+
+def test_the_visible_line_holds_the_tests_the_coverage_and_the_duration(
+    world: World,
+) -> None:
+    world.drop_passes()
+    world.forge_pass("feed", FACTS, 1_700_000_000)
+
+    world.hook()
+
+    assert VISIBLE in world.comment_body().split("\n")
+
+
+def test_the_visible_line_of_a_pass_with_only_a_duration_has_no_details(
+    world: World,
+) -> None:
+    world.drop_passes()
+    world.forge_pass("feed", {"seconds": 492}, 1_700_000_000)
+
+    world.hook()
+
+    assert "Facts of the run: duration 8m 12s" in world.comment_body().split("\n")
+    assert "<details>" not in world.comment_body()
+
+
+def test_a_pass_without_facts_adds_neither_the_line_nor_the_details(
+    world: World,
+) -> None:
+    world.drop_passes()
+    world.forge_pass("feed", None, 1_700_000_000)
+
+    world.hook()
+
+    assert "Facts of the run" not in world.comment_body()
+    assert "<details>" not in world.comment_body()
+
+
+def test_a_pass_whose_facts_cannot_be_read_adds_neither_the_line_nor_the_details(
+    world: World,
+) -> None:
+    world.drop_passes()
+    world.forge_pass("feed", "not json", 1_700_000_000)
+
+    world.hook()
+
+    assert "Facts of the run" not in world.comment_body()
+    assert "<details>" not in world.comment_body()
+
+
+def test_the_details_are_collapsed_and_hold_the_tools_and_the_test_files(
+    world: World,
+) -> None:
+    world.drop_passes()
+    world.forge_pass("feed", FACTS, 1_700_000_000)
+
+    world.hook()
+
+    body = world.comment_body()
+    visible, details = body.split("<details>", 1)
+    assert VISIBLE in visible
+    assert "<summary>Details</summary>" in details
+    assert VISIBLE not in details
+    for row in (
+        "| Tests |",
+        "| Coverage |",
+        "| Ruff |",
+        "tests/a_spec.py",
+        "tests/b_spec.py",
+    ):
+        assert row in details
+
+
+def test_nothing_the_check_printed_reaches_the_comment(fresh: World) -> None:
+    shout = fresh.tmp_path / "shout.py"
+    shout.write_text(
+        'print("TOKEN=" + "abc" + "123")\n'
+    )  # the command never holds the text
+    python = Path(sys.executable).as_posix()
+    fresh.config(check=f'"{python}" "{shout.as_posix()}"')
+    fresh.commit()
+    fresh.push("origin", BRANCH)
+
+    fresh.hook()
+
+    assert "abc123" not in fresh.comment_body()
+    assert "Facts of the run" in fresh.comment_body()
+
+
+def test_a_pass_on_this_commit_says_so_on_the_second_line_of_the_facts(
+    world: World,
+) -> None:
+    world.hook()
+
+    lines = world.comment_body().split("\n")
+    start = next(
+        n for n, line in enumerate(lines) if line.startswith("Facts of the run")
+    )
+    assert lines[start + 1] == "Checked on this commit."
+
+
+def test_a_pass_recorded_for_an_amended_commit_names_the_earlier_commit(
+    world: World,
+) -> None:
+    earlier = world.sha
+    world.git(
+        world.repo,
+        "commit",
+        "--amend",
+        "--allow-empty",
+        "-q",
+        "-m",
+        "amended",
+        "-m",
+        TRAILER,
+    )
+    world.push("--force", "--no-verify", "origin", BRANCH)
+
+    world.hook()
+
+    lines = world.comment_body().split("\n")
+    start = next(
+        n for n, line in enumerate(lines) if line.startswith("Facts of the run")
+    )
+    assert lines[start + 1] == f"Reused from the run on {earlier[:12]}, same tree."
+
+
+def test_a_commit_pushed_twice_keeps_the_facts_of_its_first_run(world: World) -> None:
+    world.push("origin", "HEAD:other")
+
+    world.hook()
+
+    lines = world.comment_body().split("\n")
+    start = next(
+        n for n, line in enumerate(lines) if line.startswith("Facts of the run")
+    )
+    assert lines[start + 1] == "Checked on this commit."
+
+
+def test_a_pass_fetched_from_origin_brings_its_facts(
+    world: World, git: Git, tmp_path: Path, api: Api
+) -> None:
+    clone = tmp_path / "clone"
+    git(tmp_path, "clone", "-q", str(tmp_path / "remote.git"), str(clone))
+    git(clone, "config", "user.name", "Test")
+    git(clone, "config", "user.email", "test@example.com")
+    git(clone, "config", "commit.gpgsign", "false")
+    hook = clone / ".git" / "hooks" / "pre-push"
+    hook.write_text(
+        f'#!/bin/sh\nexec "{Path(sys.executable).as_posix()}" -m prepush_ci hook pre-push "$@"\n'
+    )
+    hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
+    git(clone, "switch", "-q", BRANCH)
+    there = World(clone, git, api, tmp_path)
+    assert there.passes() == []  # the clone has no pass of its own
+
+    pushed = git(clone, "push", "origin", "HEAD:other")
+    there.on_github()
+
+    assert "origin holds a result" in pushed.stderr
+    there.hook()
+    assert "Facts of the run" in there.comment_body()
+    assert "Checked on this commit." in there.comment_body()
 
 
 # --- One comment per check, found by its marker ----------------------------------------------------
