@@ -391,6 +391,7 @@ def loaded_defaults() -> dict[str, str]:
         "trailer.value": canonical(config.trailer.value),
         "legacy_keys": canonical(config.legacy_keys),
         "cache": canonical(config.cache),
+        "results": canonical(config.results),
     }
 
 

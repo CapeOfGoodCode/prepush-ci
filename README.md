@@ -308,6 +308,7 @@ The environment variable `PREPUSH_CI` decides what commits get:
 | `trailer.value` | `full` | the trailer's value |
 | `legacy_keys` | `[]` | trailer keys of an older setup that still count as verified |
 | `cache` | `true` | remember a passed check for its tree and inputs, so a retried or amended push of the same tree does not run it again; `false` if the check reads the commit message or history; `false` also keeps `origin` out of it |
+| `results` | `none` | a table that names the files the check writes, as paths from the top of the worktree written with `/`: `junit` (a list), `coverage`, `ruff` and `mypy` |
 
 ## How this repository is built
 

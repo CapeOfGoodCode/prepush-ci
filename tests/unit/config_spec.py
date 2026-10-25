@@ -6,6 +6,7 @@ import pytest
 from prepush_ci.core.config import (
     Config,
     ConfigError,
+    Results,
     Trailer,
     is_env_name,
     parse_config,
@@ -41,6 +42,7 @@ def test_every_key_is_given_and_the_parsed_config_holds_exactly_those_values() -
         "trailer": {"key": "Full-Check", "value": "yes"},
         "legacy_keys": ["Full-Pre-Push"],
         "cache": False,
+        "results": {"coverage": "out/cov.json"},
     }
 
     assert parse_config(table) == Config(
@@ -52,6 +54,7 @@ def test_every_key_is_given_and_the_parsed_config_holds_exactly_those_values() -
         trailer=Trailer(key="Full-Check", value="yes"),
         legacy_keys=("Full-Pre-Push",),
         cache=False,
+        results=Results(coverage="out/cov.json"),
     )
 
 
