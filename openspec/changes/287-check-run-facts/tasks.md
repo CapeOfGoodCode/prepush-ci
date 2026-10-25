@@ -11,8 +11,8 @@
 
 ## 3. Show them
 
-- [ ] 3.1 Add the facts to the comment of the post-push hook: the visible line, the collapsed block, the note for a reused pass, and the choice of the latest pass; verify with integration specs for "The comment is the Markdown of report", "The facts are those of the latest pass for the tree", "The facts are one line and a collapsed block", "The details are collapsed" and "The facts say which run they come from"
-- [ ] 3.2 Name `results` in the config reference of the README, and say in one sentence under `hook post-push` what the comment adds; run the drift checks against the head
+- [x] 3.1 Add the facts to the comment of the post-push hook: the visible line, the collapsed block, the note for a reused pass, and the choice of the latest pass; verify with integration specs for "The comment is the Markdown of report", "The facts are those of the latest pass for the tree", "The facts are one line and a collapsed block", "The details are collapsed" and "The facts say which run they come from"
+- [x] 3.2 Name `results` in the config reference of the README, and say in one sentence under `hook post-push` what the comment adds; run the drift checks against the head
 
 ## 4. Close
 

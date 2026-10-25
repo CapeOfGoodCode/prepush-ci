@@ -10,8 +10,10 @@ from prepush_ci import github_api, report_command, text_io
 from prepush_ci.core import report
 from prepush_ci.core.config import Config, ConfigError
 from prepush_ci.core.post_push import (
+    facts_block,
     find_comment,
     is_push,
+    latest_ref,
     marker_of,
     parse_payload,
     results_pattern,
@@ -19,7 +21,7 @@ from prepush_ci.core.post_push import (
 from prepush_ci.core.pre_push import demand_keys, demands_check
 from prepush_ci.core.report import ReportError
 from prepush_ci.git import GitError, answer, committed_config, git, trailers
-from prepush_ci.pass_cache import current_head
+from prepush_ci.pass_cache import current_head, dated_passes, pass_facts
 from prepush_ci.repo_config import load_repository_config
 
 BUDGET_SECONDS = 15.0
@@ -68,8 +70,10 @@ def _show(
         branch is None
         or _pushed(root, branch) != head.sha
         or not _demands(root, head.sha)
-        or not _recorded(root, head.tree)
     ):
+        return
+    recorded = _latest_pass(root, head.tree)
+    if recorded is None:
         return
     origin = git(root, "remote", "get-url", "origin")
     target = report.target(answer(origin) if origin.returncode == 0 else None, env)
@@ -80,6 +84,9 @@ def _show(
     if not pulls:
         return
     body = report_command.passed_markdown(head.sha, head.tree, root)
+    facts = pass_facts(root, recorded, head.tree)
+    if facts is not None:
+        body += "\n\n" + facts_block(facts[1], facts[0], head.sha)
     found = _comment_of(client, pulls[0], marker_of(body))
     if found is None:
         client.create_comment(pulls[0], body)
@@ -128,9 +135,6 @@ def _demands(root: Path, sha: str) -> bool:
     return demands_check(trailers(sha, root), demand_keys(*configs))
 
 
-def _recorded(root: Path, tree: str) -> bool:
-    """Whether the run cache holds a pass for the tree."""
-    listing = git(
-        root, "for-each-ref", "--count=1", "--format=%(refname)", results_pattern(tree)
-    )
-    return listing.returncode == 0 and bool(listing.stdout.strip())
+def _latest_pass(root: Path, tree: str) -> str | None:
+    """The result ref of the latest pass the run cache holds for the tree, or None."""
+    return latest_ref(dated_passes(root, results_pattern(tree)))

@@ -21,6 +21,7 @@ from prepush_ci.core.run_cache import (
     message_not_cleaned_from_origin,
     message_not_shared,
     passed_commit,
+    passed_facts,
     result_message,
     result_ref,
 )
@@ -57,6 +58,15 @@ def record_pass(
     return True
 
 
+def pass_facts(root: Path, ref: str, tree: str) -> tuple[str, RunFacts] | None:
+    """The commit a result ref names and the facts it holds, or None when it holds no facts that
+    can be read (or is not a result of `tree`)."""
+    key = Key(tree, ref.rpartition("-")[2])
+    log = git(root, "log", "-1", "--format=%T%n%b", ref, "--").stdout
+    sha, facts = passed_commit(log, key), passed_facts(log, key)
+    return None if sha is None or facts is None else (sha, facts)
+
+
 def publish_pass(root: Path, key: Key) -> None:
     """Push the result ref of `key` to `origin`, without the repository's hooks: the push is the
     tool's own. Only the pre-push hook calls it, for a push to `origin`, so the tree the ref holds
@@ -82,21 +92,22 @@ def expire_passes(root: Path, to_origin: bool) -> None:
     has_origin = _has_origin(root)
     if has_origin and not to_origin:
         return
-    expired = expired_refs(_dated_results(root), int(time.time()))
+    expired = expired_refs(dated_passes(root, RESULTS), int(time.time()))
     if has_origin:
         expired = _delete_from_origin(root, expired)
     if expired:
         _delete_local(root, expired)
 
 
-def _dated_results(root: Path) -> str:
-    """Each result ref and its commit date, one per line. One ref git cannot date (its object is
-    missing) makes git refuse the whole listing, so the refs are asked for in batches, and a batch
-    that fails is halved until the ref that fails is alone; that one is left out, so it stays."""
-    listing = _dated(root, [RESULTS])
+def dated_passes(root: Path, pattern: str) -> str:
+    """Each result ref that matches `pattern` and its commit date, one per line. One ref git cannot
+    date (its object is missing) makes git refuse the whole listing, so the refs are asked for in
+    batches, and a batch that fails is halved until the ref that fails is alone; that one is left
+    out, so it stays."""
+    listing = _dated(root, [pattern])
     if listing is not None:
         return listing
-    names = git(root, "for-each-ref", "--format=%(refname)", RESULTS).stdout.split()
+    names = git(root, "for-each-ref", "--format=%(refname)", pattern).stdout.split()
     return "".join(_dated_among(root, batch) for batch in batches(names))
 
 
