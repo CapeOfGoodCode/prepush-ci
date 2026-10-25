@@ -274,9 +274,10 @@ def test_the_packaged_gates_equal_the_examples_in_docs() -> None:
         assert (PACKAGED / name).read_bytes() == (DOCS_CI / name).read_bytes()
 
 
-def test_the_packaged_gates_are_the_three_files_of_docs() -> None:
+def test_the_packaged_gates_are_the_three_gate_files_of_docs() -> None:
+    # `land.yml` is the landing example, not a gate: `init` does not print it
     assert sorted(p.name for p in PACKAGED.iterdir()) == sorted(
-        p.name for p in DOCS_CI.iterdir()
+        p.name for p in DOCS_CI.iterdir() if p.name != "land.yml"
     )
 
 

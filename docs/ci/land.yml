@@ -1,0 +1,124 @@
+# A workflow that lands an approved pull request with `prepush-ci land`, so that nobody needs
+# admin rights to move the default branch. Copy it to `.github/workflows/`.
+#
+# It needs: the app that `prepush-ci app setup --land` creates, installed on the repository; its id
+# as the variable PREPUSH_CI_APP_ID and its private key as the secret PREPUSH_CI_APP_KEY; and the
+# ruleset that `prepush-ci app ruleset --app <id>` creates, which lets only that app move the
+# default branch. The built-in GITHUB_TOKEN cannot be that app, so the job makes the app's token.
+# It needs a release of prepush-ci that has `land`: pin a version in PREPUSH_CI_CMD below.
+#
+# An approving review by someone who can write, of the pull request's current head, lands it, if
+# the pull request is open, against the default branch, not a draft and from this repository; the
+# job reads the pull request and the review from the API when it runs, so a re-run sees the
+# present. Every approval gets its own run, and `land`'s fast-forward push is the order: a head
+# that reaches the branch second is told that it moved. When `land` refuses, the job comments on
+# the pull request with its line and what to do, and stays green. The `land` step runs with the token of the app and nothing
+# else: a config with `require_env` needs those variables in the `env:` of that step, and a
+# `preflight` that runs a tool needs the tool in the job, or it refuses on every approval.
+#
+# What it costs: `land` runs the `preflight` of the pull request with the app's token, so an
+# approval is a decision about that code too. And anyone who can push to the repository can read
+# the secret PREPUSH_CI_APP_KEY and change this workflow: the ruleset and the checks below bind
+# only those who cannot write. Store the key only if you accept that.
+name: Land
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions: {}
+
+jobs:
+  land:
+    if: >-
+      ${{ github.event.review.state == 'approved'
+      && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - id: decide
+        # Land only for a reviewer who can write, on the head that was approved, of an open pull
+        # request that is not a draft and is against the default branch, while the review still
+        # approves. The pull request and the review are read now: the event is a copy from the time
+        # of the review, which a re-run reuses. Any doubt, including a failed call, means no.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          REVIEWER: ${{ github.event.review.user.login }}
+          REVIEW_ID: ${{ github.event.review.id }}
+          REVIEW_COMMIT: ${{ github.event.review.commit_id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          land=false
+          permission=$(gh api "repos/$REPOSITORY/collaborators/$REVIEWER/permission" --jq .permission) || permission=
+          pull=$(gh api "repos/$REPOSITORY/pulls/$NUMBER" --jq '"\(.head.sha) \(.base.ref) \(.draft) \(.state)"') || pull=
+          review=$(gh api "repos/$REPOSITORY/pulls/$NUMBER/reviews/$REVIEW_ID" --jq .state) || review=
+          # head sha, base branch, draft flag and state: no word has a space or a wildcard
+          set -f
+          # shellcheck disable=SC2086 # the split is the point
+          set -- $pull
+          case $permission in
+            admin|write)
+              if [ "$1" = "$REVIEW_COMMIT" ] && [ "$2" = "$DEFAULT_BRANCH" ] \
+                && [ "$3" = false ] && [ "$4" = open ] && [ "$review" = APPROVED ]; then
+                land=true
+              fi
+              ;;
+          esac
+          echo "land=$land" >> "$GITHUB_OUTPUT"
+
+      - id: token
+        if: ${{ steps.decide.outputs.land == 'true' }}
+        # v3.3.0. The token has the permissions the app was given by `app setup --land`.
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # zizmor: ignore[github-app]
+        with:
+          app-id: ${{ vars.PREPUSH_CI_APP_ID }}
+          private-key: ${{ secrets.PREPUSH_CI_APP_KEY }}
+
+      - if: ${{ steps.decide.outputs.land == 'true' }}
+        # zizmor: ignore[artipacked] -- `land` pushes through `origin`, which needs the token kept
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          token: ${{ steps.token.outputs.token }}
+
+      - id: land
+        if: ${{ steps.decide.outputs.land == 'true' }}
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ steps.token.outputs.token }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          # How to start the tool, split into words. Pin a version: pipx run prepush-ci==X.Y.Z
+          PREPUSH_CI_CMD: pipx run prepush-ci
+        run: |
+          status=0
+          # Unquoted on purpose: the command may be several words.
+          output=$($PREPUSH_CI_CMD land "$NUMBER") || status=$?
+          printf '%s\n' "$output"
+          printf 'line=%s\n' "$(printf '%s\n' "$output" | head -n 1)" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      - id: comment
+        if: ${{ steps.decide.outputs.land == 'true' && steps.land.outcome == 'failure' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          LINE: ${{ steps.land.outputs.line }}
+        run: |
+          line=$(printf '%s' "$LINE" | tr -d '`')
+          [ -n "$line" ] || line="not landed: the step failed without a line"
+          body=$(printf '%s\n' \
+            'This pull request was approved, and it did not land:' \
+            '' '```' "$line" '```' '' \
+            "If the branch moved or the pass is missing: rebase onto \`$DEFAULT_BRANCH\` and push, so that the pre-push hook checks the new tree, then ask for a new approval. The old approval is on another commit." \
+            '' \
+            "If the line names a missing variable or tool: change the workflow. Add the variable to the \`env:\` of the \`land\` step, or the tool to the job. A rebase cannot help." \
+            '' "[The run]($RUN_URL)")
+          gh pr comment "$NUMBER" --body "$body"

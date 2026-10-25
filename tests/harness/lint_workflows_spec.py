@@ -34,10 +34,11 @@ CLEAN_SCRIPT = '#!/bin/sh\nset -eu\necho "$1"\n'
 
 @pytest.fixture
 def tree(tmp_path: Path) -> Path:
-    """A clean repository layout: one workflow, `docs/ci/gate.sh` and `scripts/ci`."""
+    """A clean repository layout: one workflow, the two examples, `docs/ci/gate.sh`, `scripts/ci`."""
     for name, text in (
         (".github/workflows/ok.yml", CLEAN_WORKFLOW),
         ("docs/ci/github-actions.yml", CLEAN_WORKFLOW),
+        ("docs/ci/land.yml", CLEAN_WORKFLOW),
         ("docs/ci/gate.sh", CLEAN_SCRIPT),
         ("scripts/ci", CLEAN_SCRIPT),
     ):
@@ -82,6 +83,29 @@ def test_an_injection_in_the_github_actions_example_fails_the_workflow_lint(
 
     assert result.returncode != 0
     assert "template-injection" in result.stdout + result.stderr
+
+
+def test_an_injection_in_the_landing_example_fails_the_workflow_lint(
+    tree: Path,
+) -> None:
+    (tree / "docs" / "ci" / "land.yml").write_text(INJECTION, newline="\n")
+
+    result = lint(tree)
+
+    assert result.returncode != 0
+    assert "template-injection" in result.stdout + result.stderr
+
+
+def test_an_unquoted_expansion_in_the_landing_example_fails_the_workflow_lint(
+    tree: Path,
+) -> None:
+    unquoted = CLEAN_WORKFLOW.replace("echo hi", "echo $HOME")
+    (tree / "docs" / "ci" / "land.yml").write_text(unquoted, newline="\n")
+
+    result = lint(tree)
+
+    assert result.returncode != 0
+    assert "SC2086" in result.stdout + result.stderr
 
 
 def test_a_broken_expression_that_zizmor_does_not_read_fails_the_workflow_lint(
