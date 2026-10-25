@@ -11,6 +11,8 @@ from typing import Any
 
 import pytest
 
+DEEP = pytest.param("[" * 100_000, id="nested-too-deep")
+
 Git = Callable[..., "subprocess.CompletedProcess[str]"]
 
 # Variables the developer's or Actions' own environment may set and a spec must decide itself.
@@ -360,10 +362,11 @@ def test_the_token_stays_out_of_the_output_of_a_failure_that_quotes_it(
     assert TOKEN not in result.stdout + result.stderr
 
 
+@pytest.mark.parametrize("answer", ["not json", DEEP])
 def test_an_answer_that_is_not_what_the_api_documents_exits_1_and_says_to_look(
-    work: Path, ruleset_api: Any
+    work: Path, ruleset_api: Any, answer: str
 ) -> None:
-    ruleset_api.answer("POST", 201, "not json")
+    ruleset_api.answer("POST", 201, answer)
 
     result = ruleset(work, ruleset_api, "--admin")
 
@@ -431,14 +434,16 @@ def test_an_api_that_cannot_be_reached_exits_1(work: Path, ruleset_api: Any) -> 
     assert "could not be sent" in result.stderr
 
 
+@pytest.mark.parametrize("answer", ["not json", DEEP])
 def test_a_listing_that_is_not_what_the_api_documents_exits_1_and_posts_nothing(
-    work: Path, ruleset_api: Any
+    work: Path, ruleset_api: Any, answer: str
 ) -> None:
-    ruleset_api.answer("GET", 200, "not json")
+    ruleset_api.answer("GET", 200, answer)
 
     result = ruleset(work, ruleset_api, "--admin")
 
     assert result.returncode == 1
+    assert result.stderr.startswith("prepush-ci: ") and "Traceback" not in result.stderr
     assert ruleset_api.posts() == []
 
 

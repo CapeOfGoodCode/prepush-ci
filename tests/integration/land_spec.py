@@ -15,6 +15,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+DEEP = pytest.param("[" * 100_000, id="nested-too-deep")
+
 Git = Callable[..., "subprocess.CompletedProcess[str]"]
 
 TRAILER = "\n\nPrepush-CI: full"
@@ -1203,7 +1205,7 @@ def test_a_permission_that_cannot_be_read_is_no_pass(
     assert "no pass was found" in line and "404" in line
 
 
-@pytest.mark.parametrize("answer", ["[]", '{"permission": 3}', "not json"])
+@pytest.mark.parametrize("answer", ["[]", '{"permission": 3}', "not json", DEEP])
 def test_an_answer_without_a_permission_is_no_pass(
     unrecorded: World, api: Api, answer: str
 ) -> None:
@@ -1341,10 +1343,11 @@ def test_an_api_that_fails_leaves_the_line_with_its_status_and_pushes_nothing(
     assert main_of(unrecorded, git) == unrecorded.base
 
 
+@pytest.mark.parametrize("answer", ['{"not": "a list"}', DEEP])
 def test_an_answer_the_api_does_not_document_is_no_pass(
-    unrecorded: World, api: Api
+    unrecorded: World, api: Api, answer: str
 ) -> None:
-    api.answer(COMMENTS, 200, '{"not": "a list"}')
+    api.answer(COMMENTS, 200, answer)
 
     line = refused(land(unrecorded, env=github(api)))
 

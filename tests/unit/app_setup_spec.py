@@ -20,6 +20,8 @@ from prepush_ci.core.app_setup import (
 )
 from prepush_ci.core.report import Malformed, ReportError
 
+DEEP = pytest.param("[" * 100_000, id="nested-too-deep")
+
 REDIRECT = "http://127.0.0.1:5000/callback"
 
 
@@ -168,6 +170,7 @@ def test_an_answer_without_one_of_the_three_is_incomplete(missing: str) -> None:
     "body",
     [
         "not json",
+        DEEP,
         "[]",
         "null",
         answer(id="../x"),

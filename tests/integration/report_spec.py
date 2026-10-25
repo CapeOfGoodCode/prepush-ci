@@ -19,6 +19,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+DEEP = pytest.param("[" * 100_000, id="nested-too-deep")
+
 Git = Callable[..., "subprocess.CompletedProcess[str]"]
 
 # The signer is the program `openssl`, which Git for Windows ships but a runner may not put on the
@@ -933,8 +935,11 @@ def test_a_check_run_that_is_rejected_exits_1_and_posts_no_status(
 
 
 @needs_openssl
-def test_an_installation_answer_without_an_id_exits_1(world: World) -> None:
-    world.api.answer("/installation", 200, "{}")
+@pytest.mark.parametrize("answer", ["{}", DEEP])
+def test_an_installation_answer_without_an_id_exits_1(
+    world: World, answer: str
+) -> None:
+    world.api.answer("/installation", 200, answer)
 
     result = world.passed(env=world.app_env())
 
@@ -2348,7 +2353,8 @@ def test_a_start_whose_lookup_is_refused_exits_1_and_creates_nothing(
 
 
 @pytest.mark.parametrize(
-    "answer", ["{}", '{"check_runs": [{"name": "x"}]}', "[]", "text"]
+    "answer",
+    ["{}", '{"check_runs": [{"name": "x"}]}', "[]", "text", DEEP],
 )
 @needs_openssl
 def test_a_lookup_answered_without_runs_or_ids_exits_1_and_creates_nothing(

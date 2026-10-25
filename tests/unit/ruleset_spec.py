@@ -17,6 +17,8 @@ from prepush_ci.core.ruleset import (
     parse_app_id,
 )
 
+DEEP = pytest.param("[" * 100_000, id="nested-too-deep")
+
 LANDING: dict[str, Any] = {
     "id": 24893178,
     "name": NAME,
@@ -109,7 +111,13 @@ def test_a_listing_without_the_landing_ruleset_gives_none() -> None:
 
 @pytest.mark.parametrize(
     "text",
-    ["not json", "{}", '["x"]', '[{"name": "prepush-ci landing"}]'],
+    [
+        "not json",
+        "{}",
+        '["x"]',
+        '[{"name": "prepush-ci landing"}]',
+        DEEP,
+    ],
 )
 def test_a_listing_that_is_not_what_the_api_documents_is_refused(text: str) -> None:
     with pytest.raises(ReportError):
