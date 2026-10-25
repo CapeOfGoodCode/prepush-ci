@@ -22,8 +22,15 @@ _KEYS = (
     "trailer",
     "legacy_keys",
     "cache",
+    "results",
 )
 _TRAILER_KEYS = ("key", "value")
+_RESULTS_KEYS = ("junit", "coverage", "ruff", "mypy")
+# a drive (`C:\x`) or a drive-relative path (`C:x`), which means something only on Windows
+_DRIVE = re.compile(r"[A-Za-z]:")
+# the git directory in every spelling a file system folds to it: another case, trailing dots and
+# spaces (Windows), and its 8.3 short name
+_GIT_DIRECTORY = ("git~1", ".git")
 
 
 @dataclass(frozen=True)
@@ -36,6 +43,16 @@ class Trailer:
 
 
 @dataclass(frozen=True)
+class Results:
+    """The files the check writes, as paths from the top of the worktree written with `/`."""
+
+    junit: tuple[str, ...] = ()
+    coverage: str | None = None
+    ruff: str | None = None
+    mypy: str | None = None
+
+
+@dataclass(frozen=True)
 class Config:
     check: str
     preflight: str | None
@@ -45,6 +62,7 @@ class Config:
     trailer: Trailer
     legacy_keys: tuple[str, ...]
     cache: bool
+    results: Results | None = None
 
 
 class ConfigError(Exception):
@@ -152,6 +170,8 @@ def parse_config(table: Mapping[str, Any]) -> Config:
     if not isinstance(cache, bool):
         problems.append("`cache` must be a boolean")
 
+    results = _parse_results(table["results"], problems) if "results" in table else None
+
     if problems or check is None or default_branch is None:
         raise ConfigError(problems)
     return Config(
@@ -163,6 +183,7 @@ def parse_config(table: Mapping[str, Any]) -> Config:
         trailer=trailer,
         legacy_keys=legacy_keys,
         cache=bool(cache),
+        results=results,
     )
 
 
@@ -197,3 +218,52 @@ def _parse_trailer(table: Any, problems: list[str]) -> Trailer:
         key if isinstance(key, str) else default.key,
         value if isinstance(value, str) else default.value,
     )
+
+
+def _parse_results(table: Any, problems: list[str]) -> Results:
+    if not isinstance(table, dict):
+        problems.append("`results` must be a table of result files")
+        return Results()
+    problems.extend(
+        f"unknown key `results.{key}` (known keys: {', '.join(_RESULTS_KEYS)})"
+        for key in table
+        if key not in _RESULTS_KEYS
+    )
+    junit = table.get("junit")
+    if junit is not None and (
+        not isinstance(junit, list) or not all(isinstance(v, str) for v in junit)
+    ):
+        problems.append("`results.junit` must be a list of strings")
+        junit = None
+    entries = [("junit", path) for path in junit or []]
+    single: dict[str, str | None] = {}
+    for key in ("coverage", "ruff", "mypy"):
+        value = table.get(key)
+        if value is not None and not isinstance(value, str):
+            problems.append(f"`results.{key}` must be a string")
+            value = None
+        single[key] = value
+        if value is not None:
+            entries.append((key, value))
+    for key, path in entries:
+        if why := result_path_problem(path):
+            problems.append(f"`results.{key}` is {path!r}, which {why}")
+    return Results(junit=tuple(junit or ()), **single)
+
+
+def result_path_problem(path: str) -> str | None:
+    """Why `path` cannot name a result file (the tool deletes it before the check and reads it
+    after), or None. The same on every operating system, so one config reads the same everywhere."""
+    if not path:
+        return "is empty"
+    if "\\" in path or path.startswith("/") or _DRIVE.match(path):
+        return (
+            "is not a path from the top of the worktree written with `/` only "
+            "(no backslash, no leading `/`, no drive)"
+        )
+    components = path.split("/")
+    if ".." in components:
+        return "leaves the worktree (a `..` component)"
+    if any(c.rstrip(". ").lower() in _GIT_DIRECTORY for c in components):
+        return "names the git directory"
+    return None

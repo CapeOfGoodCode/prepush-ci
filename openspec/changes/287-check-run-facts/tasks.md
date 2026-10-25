@@ -2,7 +2,7 @@
 
 ## 1. The config
 
-- [ ] 1.1 Add `results` to the keys of the config, with its checks (type, relative path, no `..`); verify with unit specs named after the scenarios of "Config keys and defaults", "The result files are named in results", "A result path stays inside the worktree", "A result path reads the same on every operating system" and "A result path never names the git directory"
+- [x] 1.1 Add `results` to the keys of the config, with its checks (type, relative path, no `..`); verify with unit specs named after the scenarios of "Config keys and defaults", "The result files are named in results", "A result path stays inside the worktree", "A result path reads the same on every operating system" and "A result path never names the git directory"
 
 ## 2. Record the facts
 
