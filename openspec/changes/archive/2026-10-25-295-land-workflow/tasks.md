@@ -8,4 +8,4 @@
 
 ## 3. Archive
 
-- [ ] 3.1 Run `sh scripts/ci` and verify it passes
+- [x] 3.1 Run `sh scripts/ci` and verify it passes
