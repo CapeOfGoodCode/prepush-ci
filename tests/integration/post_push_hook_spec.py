@@ -21,6 +21,8 @@ from prepush_ci.core.config import ConfigError
 from prepush_ci.core.run_cache import config_digest
 from prepush_ci.git import committed_config
 
+DEEP = pytest.param("[" * 100_000, id="nested-too-deep")
+
 Git = Callable[..., "subprocess.CompletedProcess[str]"]
 
 # Variables the developer's or Actions' own environment may set and a spec must decide itself.
@@ -1144,8 +1146,11 @@ def test_the_token_appears_on_neither_stream(world: World) -> None:
     assert "401" in result.stderr
 
 
-def test_an_answer_that_is_not_what_the_api_documents_is_one_line(world: World) -> None:
-    world.api.answer(PULLS, 200, '{"not": "a list"}')
+@pytest.mark.parametrize("answer", ['{"not": "a list"}', DEEP])
+def test_an_answer_that_is_not_what_the_api_documents_is_one_line(
+    world: World, answer: str
+) -> None:
+    world.api.answer(PULLS, 200, answer)
     result = world.hook()
     assert result.returncode == 0
     (line,) = result.stderr.splitlines()
@@ -1153,10 +1158,11 @@ def test_an_answer_that_is_not_what_the_api_documents_is_one_line(world: World) 
     assert world.api.asked(COMMENTS) == []
 
 
+@pytest.mark.parametrize("answer", ['[{"id": 1}]', DEEP])
 def test_a_page_of_comments_that_is_not_what_the_api_documents_is_one_line(
-    world: World,
+    world: World, answer: str
 ) -> None:
-    world.api.answer(f"GET {COMMENTS}", 200, '[{"id": 1}]')
+    world.api.answer(f"GET {COMMENTS}", 200, answer)
     result = world.hook()
     assert result.returncode == 0
     (line,) = result.stderr.splitlines()

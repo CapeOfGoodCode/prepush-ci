@@ -54,7 +54,7 @@ def _message(body: bytes) -> str:
     text = text_io.decode(body).strip()
     try:
         message = json.loads(text)["message"]
-    except (ValueError, KeyError, TypeError):
+    except (ValueError, KeyError, TypeError, RecursionError):
         message = text
     return " ".join(str(message).split()) or "(no message)"
 
@@ -121,7 +121,7 @@ def send(
 def _field(body: bytes, name: str, what: str) -> str:
     try:
         return str(json.loads(text_io.decode(body))[name])
-    except (ValueError, KeyError, TypeError) as error:
+    except (ValueError, KeyError, TypeError, RecursionError) as error:
         raise ReportError(f"the answer to {what} has no {name}") from error
 
 
@@ -165,7 +165,7 @@ def in_progress_run(
         ids = [
             int(run["id"]) for run in json.loads(text_io.decode(found))["check_runs"]
         ]
-    except (ValueError, KeyError, TypeError) as error:
+    except (ValueError, KeyError, TypeError, RecursionError) as error:
         raise ReportError(
             "the answer to the check run lookup has no check_runs with an id each"
         ) from error
@@ -270,7 +270,7 @@ class PullRequestClient:
         found = self._call("GET", path)
         try:
             return [int(pull["number"]) for pull in json.loads(text_io.decode(found))]
-        except (ValueError, KeyError, TypeError) as error:
+        except (ValueError, KeyError, TypeError, RecursionError) as error:
             raise _unexpected("GET", path) from error
 
     def issue_comments(self, number: int, page: int) -> list[tuple[int, str]]:
@@ -282,7 +282,7 @@ class PullRequestClient:
                 (int(comment["id"]), str(comment["body"]))
                 for comment in json.loads(text_io.decode(found))
             ]
-        except (ValueError, KeyError, TypeError) as error:
+        except (ValueError, KeyError, TypeError, RecursionError) as error:
             raise _unexpected("GET", path) from error
 
     def authored_comments(self, number: int, page: int) -> list[Comment]:
@@ -291,7 +291,7 @@ class PullRequestClient:
         found = self._call("GET", path)
         try:
             return [_authored(comment) for comment in json.loads(text_io.decode(found))]
-        except (ValueError, KeyError, TypeError) as error:
+        except (ValueError, KeyError, TypeError, RecursionError) as error:
             raise _unexpected("GET", path) from error
 
     def permission(self, login: str) -> str:
@@ -300,7 +300,7 @@ class PullRequestClient:
         found = self._call("GET", path)
         try:
             permission = json.loads(text_io.decode(found))["permission"]
-        except (ValueError, KeyError, TypeError) as error:
+        except (ValueError, KeyError, TypeError, RecursionError) as error:
             raise _unexpected("GET", path) from error
         if not isinstance(permission, str):
             raise _unexpected("GET", path)

@@ -111,7 +111,7 @@ def parse_app(body: str) -> App:
     try:
         found = json.loads(body)
         app_id, slug, key = found["id"], found["slug"], found["pem"]
-    except (ValueError, KeyError, TypeError) as error:
+    except (ValueError, KeyError, TypeError, RecursionError) as error:
         raise ReportError(_INCOMPLETE) from error
     if isinstance(app_id, int) and not isinstance(app_id, bool):
         app_id = str(app_id)

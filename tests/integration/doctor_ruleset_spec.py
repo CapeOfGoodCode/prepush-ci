@@ -12,6 +12,8 @@ from typing import Any
 
 import pytest
 
+DEEP = pytest.param("[" * 100_000, id="nested-too-deep")
+
 Git = Callable[..., "subprocess.CompletedProcess[str]"]
 
 # Variables the developer's or Actions' own environment may set and a spec must decide itself.
@@ -288,6 +290,16 @@ def test_a_ruleset_that_github_does_not_answer_for_fails_with_the_status(
     assert "404" in line
 
 
+def test_a_refusal_whose_body_is_nested_too_deep_still_fails_with_the_status(
+    work: Path, ruleset_api: Any
+) -> None:
+    ruleset_api.answer("GET", 500, "[" * 100_000)
+
+    line = ruleset_line(doctor(work, ruleset_api, "--ruleset"))
+
+    assert line.startswith("fail ruleset:") and "500" in line
+
+
 def test_the_token_stays_out_of_a_failure_that_quotes_it(
     work: Path, ruleset_api: Any
 ) -> None:
@@ -300,10 +312,11 @@ def test_the_token_stays_out_of_a_failure_that_quotes_it(
     assert "t0k" not in result.stdout + result.stderr
 
 
+@pytest.mark.parametrize("answer", ["not json", DEEP])
 def test_an_answer_that_is_not_what_the_api_documents_fails(
-    work: Path, ruleset_api: Any
+    work: Path, ruleset_api: Any, answer: str
 ) -> None:
-    ruleset_api.answer("GET", 200, "not json")
+    ruleset_api.answer("GET", 200, answer)
 
     assert ruleset_line(doctor(work, ruleset_api, "--ruleset")).startswith(
         "fail ruleset:"

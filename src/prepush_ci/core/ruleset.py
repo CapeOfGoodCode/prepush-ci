@@ -69,7 +69,7 @@ def body(actor: Actor) -> dict[str, object]:
 def load_object(text: str) -> dict[str, Any]:
     try:
         found = json.loads(text)
-    except ValueError as error:
+    except (ValueError, RecursionError) as error:
         raise ReportError(_UNDOCUMENTED) from error
     return as_dict(found, strict=True)
 
@@ -102,7 +102,7 @@ def listed_id(text: str) -> str | None:
     """The id of the ruleset named `NAME` in the listing of a repository's rulesets, else None."""
     try:
         listing = json.loads(text)
-    except ValueError as error:
+    except (ValueError, RecursionError) as error:
         raise ReportError(_UNDOCUMENTED) from error
     if not isinstance(listing, list):
         raise ReportError(_UNDOCUMENTED)
