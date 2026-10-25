@@ -552,3 +552,55 @@ def test_the_plugin_commands_match_the_manifests() -> None:
 
     assert marketplace == manifest["name"]
     assert plugin in [entry["name"] for entry in manifest["plugins"]]
+
+
+# --- The landing example -----------------------------------------------------------------
+
+ROOT = README.parent
+LANDING = "docs/ci/land.yml"
+
+
+def landing_problems(text: str, root: Path = ROOT) -> list[str]:
+    """What the README leaves out of the landing example or names that is not there: the example
+    itself, each `docs/ci/` file it names, each variable and secret the example reads."""
+    found: list[str] = []
+    named = dict.fromkeys(re.findall(r"docs/ci/[\w.-]+\.\w+", text))
+    found.extend(
+        f"{path} does not exist" for path in named if not (root / path).is_file()
+    )
+    if LANDING not in named:
+        found.append(f"{LANDING} is not named")
+    example = root / LANDING
+    if example.is_file():
+        read = dict.fromkeys(
+            re.findall(r"\b(?:vars|secrets)\.(\w+)", example.read_text("utf-8"))
+        )
+        found.extend(f"{name} is missing" for name in read if name not in text)
+    return found
+
+
+def test_the_shipped_readme_names_the_landing_example_and_what_it_reads() -> None:
+    assert landing_problems(shipped()) == []
+
+
+def test_a_name_the_landing_example_reads_that_the_readme_leaves_out_is_reported() -> (
+    None
+):
+    text = f"Copy `{LANDING}`; it needs the variable `PREPUSH_CI_APP_ID`."
+
+    assert landing_problems(text) == ["PREPUSH_CI_APP_KEY is missing"]
+
+
+def test_a_docs_ci_file_the_readme_names_that_does_not_exist_is_reported() -> None:
+    text = (
+        f"Copy `{LANDING}` and `docs/ci/merge.yml`: `PREPUSH_CI_APP_ID`, "
+        "`PREPUSH_CI_APP_KEY`."
+    )
+
+    assert landing_problems(text) == ["docs/ci/merge.yml does not exist"]
+
+
+def test_a_readme_that_does_not_name_the_landing_example_is_reported() -> None:
+    assert landing_problems("`PREPUSH_CI_APP_ID` `PREPUSH_CI_APP_KEY`") == [
+        f"{LANDING} is not named"
+    ]
