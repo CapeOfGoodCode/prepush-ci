@@ -9,6 +9,8 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import Any
 from urllib.parse import quote
 
 from prepush_ci import text_io
@@ -201,6 +203,23 @@ def _unexpected(method: str, path: str) -> ApiError:
     return ApiError(f"{method} {path}: the answer is not what the API documents", None)
 
 
+@dataclass(frozen=True)
+class Comment:
+    """A comment with its author: `login` is None when the author is unknown, `bot` when it is a
+    GitHub App."""
+
+    body: str
+    login: str | None
+    bot: bool
+
+
+def _authored(comment: Any) -> Comment:
+    user = comment["user"]
+    if user is None:
+        return Comment(str(comment["body"]), None, False)
+    return Comment(str(comment["body"]), str(user["login"]), user["type"] == "Bot")
+
+
 class PullRequestClient:
     """The requests about the pull request of a pushed branch. All of them together end by one
     deadline: `timeout` bounds each step of a request, not the request, so a server that sends a
@@ -265,6 +284,27 @@ class PullRequestClient:
             ]
         except (ValueError, KeyError, TypeError) as error:
             raise _unexpected("GET", path) from error
+
+    def authored_comments(self, number: int, page: int) -> list[Comment]:
+        """One page of the comments of an issue or pull request, with their authors."""
+        path = f"{_repo_path(self._repository)}/issues/{number}/comments?per_page={PER_PAGE}&page={page}"
+        found = self._call("GET", path)
+        try:
+            return [_authored(comment) for comment in json.loads(text_io.decode(found))]
+        except (ValueError, KeyError, TypeError) as error:
+            raise _unexpected("GET", path) from error
+
+    def permission(self, login: str) -> str:
+        """The permission of a collaborator on the repository (`admin`, `write`, `read` or `none`)."""
+        path = f"{_repo_path(self._repository)}/collaborators/{quote(login, safe='')}/permission"
+        found = self._call("GET", path)
+        try:
+            permission = json.loads(text_io.decode(found))["permission"]
+        except (ValueError, KeyError, TypeError) as error:
+            raise _unexpected("GET", path) from error
+        if not isinstance(permission, str):
+            raise _unexpected("GET", path)
+        return permission
 
     def create_comment(self, number: int, body: str) -> None:
         path = f"{_repo_path(self._repository)}/issues/{number}/comments"

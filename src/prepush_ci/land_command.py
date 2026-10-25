@@ -7,7 +7,7 @@ import tempfile
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 
-from prepush_ci import text_io
+from prepush_ci import land_comments, text_io
 from prepush_ci.core import land
 from prepush_ci.core.config import REMOTE, Config, ConfigError
 from prepush_ci.core.land import Answer, Position
@@ -77,7 +77,9 @@ def _land(number: int, env: Mapping[str, str], cwd: Path) -> Answer:
     tree = _tree(head, cwd)
     key = Key(tree, fingerprint(config, output))
     if has_pass(config, cwd, key) is None and fetch_pass(config, cwd, key) is None:
-        return land.no_pass(tree)
+        searched = land_comments.search(number, config, tree, env, cwd)
+        if not searched.found:
+            return land.no_pass(tree, searched.why_not_asked)
     return _push(head, tip, branch, cwd)
 
 

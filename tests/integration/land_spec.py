@@ -1,13 +1,17 @@
 """`prepush-ci land`: real git repositories, a bare `origin` that holds `refs/pull/<n>/head`, and a
 result recorded by the tool's own `run`. Nothing of git is mocked; the CLI starts as a module."""
 
+import json
 import os
 import stat
 import subprocess
 import sys
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+import threading
+from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass, field
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -23,6 +27,20 @@ PROBE = (
     "if action == 'exists':\n"
     "    sys.exit(0 if target.exists() else 1)\n"
     "target.touch()\n"
+)
+# What the developer's or Actions' own environment may set and a spec must decide itself.
+CLEARED = (
+    "PREPUSH_CI",
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
+    "GITHUB_REPOSITORY",
+    "GITHUB_API_URL",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
 )
 RESULTS = "refs/prepush-ci/results"
 POSIX_ONLY = pytest.mark.skipif(
@@ -58,7 +76,7 @@ def cli(
     inherited = {
         key: value
         for key, value in os.environ.items()
-        if key != "PREPUSH_CI" and not key.startswith("PRE_COMMIT_")
+        if key not in CLEARED and not key.startswith("PRE_COMMIT_")
     }
     return subprocess.run(
         [sys.executable, "-m", "prepush_ci", *args],
@@ -821,3 +839,546 @@ def test_a_pull_request_that_is_no_commit_is_refused(world: World, git: Git) -> 
     line = refused(land(world, "9"))
 
     assert "did not send" in line
+
+
+# --- A comment of the pull request is a pass when no result is found ------------------------------
+
+COMMENTS = "/repos/acme/widgets/issues/7/comments"
+WRITER = {"login": "alice", "type": "User"}
+
+
+@dataclass
+class Request:
+    method: str
+    path: str
+    headers: dict[str, str]
+
+    @property
+    def route(self) -> str:
+        return urlsplit(self.path).path
+
+    @property
+    def query(self) -> dict[str, str]:
+        return {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
+
+
+@dataclass
+class Api:
+    """A server that answers as GitHub's API is documented to, and notes every request."""
+
+    url: str
+    requests: list[Request] = field(default_factory=list)
+    comments: list[dict[str, object]] = field(default_factory=list)
+    permissions: dict[str, str] = field(default_factory=lambda: {"alice": "write"})
+    answers: list[tuple[str, int, str]] = field(default_factory=list)
+
+    def comment(
+        self, body: str, user: dict[str, str] | None = None
+    ) -> dict[str, object]:
+        made: dict[str, object] = {
+            "id": 100 + len(self.comments),
+            "body": body,
+            "user": user or WRITER,
+        }
+        self.comments.append(made)
+        return made
+
+    def answer(self, where: str, status: int, body: str = "{}") -> None:
+        """Answer a request whose `METHOD path` holds `where` with `status` and `body`."""
+        self.answers.append((where, status, body))
+
+    def respond(self, request: Request) -> tuple[int, str]:
+        line = f"{request.method} {request.path}"
+        for where, status, body in self.answers:
+            if where in line:
+                return status, body
+        if request.method == "GET" and request.route == COMMENTS:
+            page, size = int(request.query["page"]), int(request.query["per_page"])
+            return 200, json.dumps(self.comments[(page - 1) * size : page * size])
+        prefix = "/repos/acme/widgets/collaborators/"
+        if request.method == "GET" and request.route.startswith(prefix):
+            login = request.route.removeprefix(prefix).removesuffix("/permission")
+            if login in self.permissions:
+                return 200, json.dumps({"permission": self.permissions[login]})
+        return 404, json.dumps({"message": "Not Found"})
+
+    def asked(self, route: str) -> list[Request]:
+        return [r for r in self.requests if r.route == route]
+
+    def permission_asked_for(self) -> list[str]:
+        prefix = "/repos/acme/widgets/collaborators/"
+        return [
+            r.route.removeprefix(prefix).removesuffix("/permission")
+            for r in self.requests
+            if r.route.startswith(prefix)
+        ]
+
+
+@pytest.fixture
+def api() -> Iterator[Api]:
+    served: Api
+
+    class Handler(BaseHTTPRequestHandler):
+        def _serve(self) -> None:
+            length = int(self.headers.get("Content-Length", "0"))
+            self.rfile.read(length)
+            request = Request(
+                self.command,
+                self.path,
+                {key.lower(): value for key, value in self.headers.items()},
+            )
+            served.requests.append(request)
+            status, body = served.respond(request)
+            data = body.encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        do_GET = do_POST = do_PATCH = _serve  # noqa: N815
+
+        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    served = Api(f"http://127.0.0.1:{server.server_address[1]}")
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield served
+    server.shutdown()
+    server.server_close()
+    thread.join()
+
+
+def github(api: Api, **extra: str) -> dict[str, str]:
+    """The environment of a lander that can read the pull request."""
+    return {
+        "GITHUB_TOKEN": "tok",
+        "GITHUB_REPOSITORY": "acme/widgets",
+        "GITHUB_API_URL": api.url,
+        "NO_PROXY": "127.0.0.1,localhost",
+        **extra,
+    }
+
+
+def report_comment(world: World, result: str = "passed", *args: str) -> str:
+    """The comment a session posts: what `report --markdown` prints for the head's tree."""
+    printed = cli(
+        world.clone,
+        "report",
+        "--markdown",
+        "--result",
+        result,
+        "--tree",
+        world.tree,
+        "--commit",
+        world.head,
+        *args,
+    )
+    assert printed.returncode == 0, printed.stderr
+    return printed.stdout
+
+
+@pytest.fixture
+def unrecorded(repo: Path, tmp_path: Path, git: Git) -> World:
+    """Pull request 7 with no result ref anywhere."""
+    return build(repo, tmp_path, git, record=False)
+
+
+def test_a_comment_of_a_session_is_a_pass(
+    unrecorded: World, api: Api, git: Git
+) -> None:
+    api.comment(report_comment(unrecorded))
+
+    result = land(unrecorded, env=github(api))
+
+    assert landed(result) == f"landed: {unrecorded.head} on main"
+    assert main_of(unrecorded, git) == unrecorded.head
+
+
+def test_a_result_ref_wins_over_a_comment(world: World, api: Api) -> None:
+    api.comment(report_comment(world))
+
+    landed(land(world, env=github(api)))
+
+    assert api.requests == []
+
+
+def test_a_comment_past_the_first_page_is_found(unrecorded: World, api: Api) -> None:
+    for number in range(100):
+        api.comment(f"chatter {number}")
+    api.comment(report_comment(unrecorded))
+
+    landed(land(unrecorded, env=github(api)))
+
+    assert [r.query["page"] for r in api.asked(COMMENTS)] == ["1", "2"]
+
+
+def test_nothing_is_written_when_a_landing_succeeds_on_a_comment(
+    unrecorded: World, api: Api, git: Git
+) -> None:
+    api.comment(report_comment(unrecorded))
+    before = refs_of(unrecorded, git)
+
+    landed(land(unrecorded, env=github(api)))
+
+    assert {r.method for r in api.requests} == {"GET"}
+    assert refs_of(unrecorded, git) == {**before, "refs/heads/main": unrecorded.head}
+    assert git(unrecorded.clone, "for-each-ref", RESULTS).stdout == ""
+    assert not [ref for ref in refs_of(unrecorded, git) if ref.startswith(RESULTS)]
+
+
+def test_the_comments_are_asked_for_with_the_token_the_page_size_and_the_page(
+    unrecorded: World, api: Api
+) -> None:
+    api.comment(report_comment(unrecorded))
+
+    landed(land(unrecorded, env=github(api, GITHUB_TOKEN="s3cr3t")))
+
+    [asked] = api.asked(COMMENTS)
+    assert asked.query == {"per_page": "100", "page": "1"}
+    assert asked.headers["authorization"] == "Bearer s3cr3t"
+
+
+# --- A comment states a pass ---------------------------------------------------------------------
+
+
+def with_title(comment: str, title: str) -> str:
+    lines = comment.split("\n")
+    lines[1] = f"### prepush-ci / full: {title}"
+    return "\n".join(lines)
+
+
+def test_a_failed_result_is_not_a_pass(
+    unrecorded: World, api: Api, tmp_path: Path
+) -> None:
+    junit = tmp_path / "junit.xml"
+    junit.write_text("<testsuite><testcase classname='a' name='t'/></testsuite>")
+    api.comment(report_comment(unrecorded, "failed", "--junit", str(junit)))
+    api.comment(report_comment(unrecorded, "failed"))
+
+    assert "no pass was found" in refused(land(unrecorded, env=github(api)))
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        pytest.param("3 passed, 1 failed, 0 skipped", id="failing cases"),
+        pytest.param(
+            "Failed (3 passed, 0 failed, 0 skipped)", id="failed, none failed"
+        ),
+        pytest.param("Failed", id="failed"),
+    ],
+)
+def test_a_title_that_is_not_a_pass_is_not_a_pass(
+    unrecorded: World, api: Api, title: str
+) -> None:
+    api.comment(with_title(report_comment(unrecorded), title))
+
+    assert "no pass was found" in refused(land(unrecorded, env=github(api)))
+
+
+def test_a_comment_with_a_failures_section_is_not_a_pass(
+    unrecorded: World, api: Api
+) -> None:
+    api.comment(
+        report_comment(unrecorded).replace("\n\n", "\n\n### Failures\n\n- x\n\n", 1)
+    )
+
+    assert "no pass was found" in refused(land(unrecorded, env=github(api)))
+
+
+def test_a_title_of_another_name_is_not_a_pass(unrecorded: World, api: Api) -> None:
+    api.comment(report_comment(unrecorded).replace("full: ", "unit: ", 1))
+
+    assert "no pass was found" in refused(land(unrecorded, env=github(api)))
+
+
+def test_another_checks_comment_is_not_a_pass(unrecorded: World, api: Api) -> None:
+    api.comment(report_comment(unrecorded, "passed", "--name", "prepush-ci / unit"))
+
+    assert "no pass was found" in refused(land(unrecorded, env=github(api)))
+
+
+def test_a_marker_in_the_middle_of_a_comment_does_not_count(
+    unrecorded: World, api: Api
+) -> None:
+    api.comment("my notes\n" + report_comment(unrecorded))
+
+    assert "no pass was found" in refused(land(unrecorded, env=github(api)))
+
+
+# --- A comment names this tree, check and preflight ---------------------------------------------
+
+
+def test_a_comment_of_another_tree_is_not_a_pass(
+    unrecorded: World, api: Api, git: Git
+) -> None:
+    earlier = git(unrecorded.clone, "rev-parse", f"{unrecorded.middle}^{{tree}}").stdout
+    api.comment(report_comment(unrecorded).replace(unrecorded.tree, earlier.strip()))
+
+    line = refused(land(unrecorded, env=github(api)))
+
+    assert "no pass was found" in line and unrecorded.tree[:12] in line
+    assert main_of(unrecorded, git) == unrecorded.base
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [
+        pytest.param("exit 0", "make test", id="check"),
+        pytest.param(
+            "| Preflight | none |", "| Preflight | ` uv sync ` |", id="preflight"
+        ),
+    ],
+)
+def test_a_comment_of_another_check_or_preflight_is_not_a_pass(
+    unrecorded: World, api: Api, old: str, new: str
+) -> None:
+    assert old in report_comment(unrecorded)
+    api.comment(report_comment(unrecorded).replace(old, new))
+
+    assert "no pass was found" in refused(land(unrecorded, env=github(api)))
+
+
+def test_a_check_with_a_pipe_and_a_backtick_lands_on_the_comment_report_printed(
+    repo: Path, tmp_path: Path, git: Git, api: Api
+) -> None:
+    world = build(
+        repo,
+        tmp_path,
+        git,
+        check="sh scripts/ci | tee ci.log && echo `x`",
+        record=False,
+    )
+    api.comment(report_comment(world))
+
+    landed(land(world, env=github(api)))
+
+
+def test_a_preflight_that_printed_something_else_does_not_stop_a_comment(
+    repo: Path, tmp_path: Path, git: Git, api: Api
+) -> None:
+    printing = f'"{EXECUTABLE}" -c "import os; print(os.getpid())"'
+    world = build(
+        repo, tmp_path, git, lines=[f"preflight = '{printing}'"], record=False
+    )
+    api.comment(report_comment(world))
+
+    landed(land(world, env=github(api)))
+
+
+# --- Only a comment of someone with write access counts ------------------------------------------
+
+
+@pytest.mark.parametrize("permission", ["write", "admin"])
+def test_a_writer_s_comment_counts(
+    unrecorded: World, api: Api, permission: str
+) -> None:
+    api.permissions["alice"] = permission
+    api.comment(report_comment(unrecorded))
+
+    landed(land(unrecorded, env=github(api)))
+
+
+@pytest.mark.parametrize("permission", ["read", "none"])
+def test_a_comment_of_someone_who_cannot_write_is_not_a_pass(
+    unrecorded: World, api: Api, permission: str
+) -> None:
+    api.permissions["alice"] = permission
+    api.comment(report_comment(unrecorded))
+
+    assert "no pass was found" in refused(land(unrecorded, env=github(api)))
+
+
+def test_a_permission_that_cannot_be_read_is_no_pass(
+    unrecorded: World, api: Api
+) -> None:
+    api.permissions.clear()  # the stub answers 404
+    api.comment(report_comment(unrecorded))
+
+    line = refused(land(unrecorded, env=github(api)))
+
+    assert "no pass was found" in line and "404" in line
+
+
+@pytest.mark.parametrize("answer", ["[]", '{"permission": 3}', "not json"])
+def test_an_answer_without_a_permission_is_no_pass(
+    unrecorded: World, api: Api, answer: str
+) -> None:
+    api.answer("/permission", 200, answer)
+    api.comment(report_comment(unrecorded))
+
+    assert "no pass was found" in refused(land(unrecorded, env=github(api)))
+
+
+def test_a_readers_comment_beside_a_writers_lands(unrecorded: World, api: Api) -> None:
+    api.permissions.update({"mallory": "read", "alice": "write"})
+    api.comment(report_comment(unrecorded), {"login": "mallory", "type": "User"})
+    api.comment(report_comment(unrecorded), {"login": "alice", "type": "User"})
+
+    landed(land(unrecorded, env=github(api)))
+
+    assert api.permission_asked_for() == ["mallory", "alice"]
+
+
+def test_an_author_is_asked_about_once(unrecorded: World, api: Api) -> None:
+    api.permissions["alice"] = "read"
+    api.comment(report_comment(unrecorded))
+    api.comment(report_comment(unrecorded))
+
+    refused(land(unrecorded, env=github(api)))
+
+    assert api.permission_asked_for() == ["alice"]
+
+
+def test_only_matching_comments_are_asked_about(unrecorded: World, api: Api) -> None:
+    api.comment(
+        report_comment(unrecorded).replace(unrecorded.tree, "b" * 40),
+        {"login": "bob", "type": "User"},
+    )
+    api.comment(report_comment(unrecorded))
+
+    landed(land(unrecorded, env=github(api)))
+
+    assert api.permission_asked_for() == ["alice"]
+
+
+def test_a_comment_whose_author_is_unknown_is_no_pass(
+    unrecorded: World, api: Api
+) -> None:
+    made = api.comment(report_comment(unrecorded))
+    made["user"] = None
+
+    assert "no pass was found" in refused(land(unrecorded, env=github(api)))
+    assert api.permission_asked_for() == []
+
+
+# --- A comment of an App does not count -----------------------------------------------------------
+
+
+def test_a_comment_of_an_app_is_not_a_pass_and_its_permission_is_not_asked(
+    unrecorded: World, api: Api
+) -> None:
+    api.permissions["acme-ci[bot]"] = "write"
+    api.comment(report_comment(unrecorded), {"login": "acme-ci[bot]", "type": "Bot"})
+
+    refused(land(unrecorded, env=github(api)))
+
+    assert api.permission_asked_for() == []
+
+
+# --- The comments are read as report reaches GitHub -----------------------------------------------
+
+
+def test_the_repository_comes_from_the_environment_when_origin_names_none(
+    unrecorded: World, api: Api
+) -> None:
+    api.comment(report_comment(unrecorded))
+
+    landed(land(unrecorded, env=github(api)))
+
+    assert [r.route for r in api.asked(COMMENTS)] == [COMMENTS]
+
+
+def test_the_token_of_gh_token_is_used_when_github_token_is_empty(
+    unrecorded: World, api: Api
+) -> None:
+    api.comment(report_comment(unrecorded))
+
+    landed(land(unrecorded, env=github(api, GITHUB_TOKEN="", GH_TOKEN="from-gh")))
+
+    assert api.asked(COMMENTS)[0].headers["authorization"] == "Bearer from-gh"
+
+
+def test_a_cache_that_is_off_reads_no_comment(
+    repo: Path, tmp_path: Path, git: Git, api: Api
+) -> None:
+    world = build(repo, tmp_path, git, lines=["cache = false"], record=False)
+    api.comment(report_comment(world))
+
+    line = refused(land(world, env=github(api)))
+
+    assert "the cache is off" in line
+    assert api.requests == []
+
+
+# --- A comment that cannot be read is not a pass --------------------------------------------------
+
+
+def test_without_a_token_no_request_is_sent_and_the_line_names_the_variable(
+    unrecorded: World, api: Api
+) -> None:
+    api.comment(report_comment(unrecorded))
+
+    line = refused(land(unrecorded, env=github(api, GITHUB_TOKEN="")))
+
+    assert "no pass was found" in line and "GITHUB_TOKEN" in line
+    assert api.requests == []
+
+
+def test_without_a_repository_the_line_says_none_could_be_read_from_origin(
+    unrecorded: World, api: Api
+) -> None:
+    env = github(api)
+    del env["GITHUB_REPOSITORY"]
+
+    line = refused(land(unrecorded, env=env))
+
+    assert "no repository could be read from `origin`" in line
+    assert api.requests == []
+
+
+def test_an_api_that_fails_leaves_the_line_with_its_status_and_pushes_nothing(
+    unrecorded: World, api: Api, git: Git
+) -> None:
+    api.answer(COMMENTS, 500, '{"message": "Server Error"}')
+
+    line = refused(land(unrecorded, env=github(api)))
+
+    assert "500" in line
+    assert main_of(unrecorded, git) == unrecorded.base
+
+
+def test_an_answer_the_api_does_not_document_is_no_pass(
+    unrecorded: World, api: Api
+) -> None:
+    api.answer(COMMENTS, 200, '{"not": "a list"}')
+
+    line = refused(land(unrecorded, env=github(api)))
+
+    assert "no pass was found" in line and "not what the API documents" in line
+
+
+def test_the_token_stays_secret_when_the_api_refuses_it(
+    unrecorded: World, api: Api
+) -> None:
+    api.answer(COMMENTS, 401, '{"message": "Bad credentials: s3cret"}')
+
+    result = land(unrecorded, env=github(api, GITHUB_TOKEN="s3cret"))
+
+    assert result.returncode == 1
+    assert "s3cret" not in result.stdout + result.stderr
+
+
+def test_a_comment_whose_author_has_no_login_is_an_answer_the_api_does_not_document(
+    unrecorded: World, api: Api
+) -> None:
+    made = api.comment(report_comment(unrecorded))
+    made["user"] = "alice"
+
+    line = refused(land(unrecorded, env=github(api)))
+
+    assert "not what the API documents" in line
+
+
+def test_the_marker_of_another_check_is_not_a_pass_even_under_a_full_title(
+    unrecorded: World, api: Api
+) -> None:
+    other = report_comment(unrecorded).replace(
+        "<!-- prepush-ci:prepush-ci / full -->", "<!-- prepush-ci:prepush-ci / unit -->"
+    )
+    api.comment(other)
+
+    assert "no pass was found" in refused(land(unrecorded, env=github(api)))
