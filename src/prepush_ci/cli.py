@@ -12,6 +12,7 @@ from prepush_ci import (
     doctor_command,
     init_command,
     install_command,
+    land_command,
     post_push_hook,
     pre_push_hook,
     report_command,
@@ -29,6 +30,7 @@ from prepush_ci.core.app_setup import (
 from prepush_ci.core.doctor import MODES
 from prepush_ci.core.hook_managers import CHOICES
 from prepush_ci.core.init import CI_CHOICES, ConfigFlags
+from prepush_ci.core.land import parse_number
 from prepush_ci.core.report import (
     STARTED,
     Malformed,
@@ -188,6 +190,15 @@ def main(argv: list[str] | None = None) -> int:
         help="after a push of a checked commit, put the result on its pull request "
         "(reads a Claude Code PostToolUse payload on standard input)",
     )
+    land = commands.add_parser(
+        "land",
+        help="push the head of a checked pull request to the default branch of origin",
+    )
+    land.add_argument(
+        "number",
+        type=_parsed(parse_number),
+        help="the number of the pull request, read as refs/pull/<number>/head of origin",
+    )
     strip = commands.add_parser(
         "strip",
         help="remove the trailer from the commits since <base>, so a push needs no check",
@@ -320,6 +331,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.command == "skill":
         return skill_command.run(args.write, Path.cwd())
+    if args.command == "land":
+        return land_command.run(args.number, env, Path.cwd())
     if args.command == "strip":
         return strip_command.run(args.base, Path.cwd())
     if args.command == "run":
