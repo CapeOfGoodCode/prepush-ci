@@ -16,4 +16,4 @@
 
 ## 4. Close
 
-- [ ] 4.1 Run `sh scripts/ci` through the push hook; archive the change
+- [x] 4.1 Run `sh scripts/ci` through the push hook; archive the change

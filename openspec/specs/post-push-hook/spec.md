@@ -199,15 +199,19 @@ The hook SHALL find the repository and the API address as `report` does (its req
 - **THEN** the pulls request goes to the stub for `/repos/acme/widgets/pulls`
 
 ### Requirement: The comment is the Markdown of report
-The body of the comment SHALL be what `prepush-ci report --markdown --result passed --tree <the tree of HEAD>` prints for `HEAD`: no result files and the default name.
+The body of the comment SHALL begin with what `prepush-ci report --markdown --result passed --tree <the tree of HEAD>` prints for `HEAD`: no result files and the default name. When the recorded pass holds facts (see the `run-cache` capability), the body SHALL go on with a blank line and the block of facts defined in "The facts are one line and a collapsed block"; otherwise it SHALL end there.
 
 #### Scenario: The text is the markdown of report
-- **WHEN** the hook creates a comment for a commit
+- **WHEN** the hook creates a comment for a commit whose recorded pass holds no facts
 - **THEN** the body equals the standard output of `prepush-ci report --markdown --result passed --tree <the tree of HEAD>` run in that worktree
 
 #### Scenario: The commit is named
 - **WHEN** the hook creates a comment
 - **THEN** the body holds the 40-hex sha of `HEAD`
+
+#### Scenario: The facts follow the markdown
+- **WHEN** the hook creates a comment for a commit whose recorded pass holds facts
+- **THEN** the body starts with the standard output of `prepush-ci report --markdown --result passed --tree <the tree of HEAD>`, and the block of facts comes after a blank line
 
 ### Requirement: One comment per check, found by its marker
 The hook SHALL list the comments of the pull request (`GET /repos/<owner>/<repo>/issues/<number>/comments?per_page=100&page=<n>`, from page 1 while a page holds 100 comments) and take as the check's comment the first whose body starts with the first line of the new body, the marker.
@@ -385,3 +389,63 @@ A push that is recognized from a wrapped command SHALL be handled like a plain o
 #### Scenario: A wrapped push that did not land
 - **WHEN** the payload's command is `(time git push origin main) 2>&1 | tail` and `refs/remotes/origin/main` is not `HEAD`
 - **THEN** it prints nothing and sends no request
+
+### Requirement: The facts are those of the latest pass for the tree
+When the run cache holds more than one pass for the tree of `HEAD` (refs that differ in the part of the key after the tree), the facts SHALL be those of the pass whose result commit has the latest committer date; of equal dates, the last by ref name. The facts of an older pass SHALL NOT be shown, and when the latest pass holds no facts, the body SHALL have none, whatever the older ones hold.
+
+#### Scenario: Two passes for one tree
+- **WHEN** a unit run of `check = "pytest tests/unit"` passed on a tree with 40 passed cases, then `check` was changed to `scripts/ci`, which passed on the same tree with 812 passed cases, and the hook runs
+- **THEN** the body holds 812 passed and not 40
+
+#### Scenario: The latest pass has no facts
+- **WHEN** a pass with facts exists for the tree and a later pass for the same tree has none
+- **THEN** the body holds no facts
+
+#### Scenario: Equal dates
+- **WHEN** two passes for the tree have the same committer date
+- **THEN** the facts are those of the ref whose name sorts last
+
+### Requirement: The facts are one line and a collapsed block
+The block of facts SHALL start with one visible line, `Facts of the run: ` followed by the entries that the facts hold, in this order and joined by `; `: `<n> passed, <n> failed, <n> skipped`, `coverage <n>%` (the text of the facts, as written) and `duration <d>` (the form `report` shows a duration in, such as `8m 12s`). When the facts hold more than the duration, a collapsed block SHALL follow (see "The details are collapsed"). Nothing but the facts SHALL be in the block.
+
+#### Scenario: Coverage as the file wrote it
+- **WHEN** the facts hold coverage `100`
+- **THEN** the visible line holds `coverage 100%`, not `coverage 100.0%`
+
+#### Scenario: The visible line
+- **WHEN** the facts hold 812 passed, 0 failed and 3 skipped, coverage 94.5 and 492 seconds
+- **THEN** the body holds the line `Facts of the run: 812 passed, 0 failed, 3 skipped; coverage 94.5%; duration 8m 12s`
+
+#### Scenario: Only the duration
+- **WHEN** the facts hold only 492 seconds
+- **THEN** the line is `Facts of the run: duration 8m 12s` and the body holds no `<details>`
+
+#### Scenario: An older pass without facts
+- **WHEN** the recorded pass has no facts
+- **THEN** the body holds neither `Facts of the run` nor `<details>`
+
+#### Scenario: Nothing of the check's output
+- **WHEN** the check printed `TOKEN=abc123` and passed
+- **THEN** the comment does not hold `abc123`
+
+### Requirement: The details are collapsed
+The collapsed block SHALL be a `<details>` element with the `<summary>` `Details`, holding a table of the tools (tests, coverage, ruff and mypy, each only when the facts hold it) and, when the facts hold per-file counts, a table of the test files with their passed, failed and skipped numbers, each file name as a Markdown code span. The visible line SHALL NOT be inside it.
+
+#### Scenario: The details are collapsed
+- **WHEN** the facts hold test counts, coverage, one ruff error count, and the counts of two test files
+- **THEN** the body holds `<details>` after the visible line, its summary is `Details`, it holds a row for tests, coverage and ruff, and a row for each of the two files, and the visible line is not inside it
+
+### Requirement: The facts say which run they come from
+The line after the visible line of the facts SHALL say `Checked on this commit.` when the commit the facts name is `HEAD`, and otherwise `Reused from the run on <the first twelve characters of that commit>, same tree.`
+
+#### Scenario: This commit
+- **WHEN** the facts name `HEAD` as the commit that was checked
+- **THEN** the second line of the block is `Checked on this commit.`
+
+#### Scenario: An amended commit
+- **WHEN** the pass was recorded for a commit that was then amended with a new message (same tree) and the amended commit was pushed with `--no-verify`
+- **THEN** the second line of the block is `Reused from the run on <the first twelve characters of the earlier commit>, same tree.`
+
+#### Scenario: A pass that skipped the check
+- **WHEN** a commit was pushed twice and the second push skipped the check because the pass was cached
+- **THEN** the comment still holds the facts of the first run and says `Checked on this commit.`
