@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_93afe14790f192de_build_origin_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-25 19:08 +0000
+            created at 2026-10-25 20:10 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -195,7 +195,7 @@
     <p class="run"><span class="n"><a id="t111" href="#t111">111</a></span><span class="t">    <span class="key">try</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t112" href="#t112">112</a></span><span class="t">        <span class="nam">found</span> <span class="op">=</span> <span class="nam">json</span><span class="op">.</span><span class="nam">loads</span><span class="op">(</span><span class="nam">body</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t113" href="#t113">113</a></span><span class="t">        <span class="nam">app_id</span><span class="op">,</span> <span class="nam">slug</span><span class="op">,</span> <span class="nam">key</span> <span class="op">=</span> <span class="nam">found</span><span class="op">[</span><span class="str">&quot;id&quot;</span><span class="op">]</span><span class="op">,</span> <span class="nam">found</span><span class="op">[</span><span class="str">&quot;slug&quot;</span><span class="op">]</span><span class="op">,</span> <span class="nam">found</span><span class="op">[</span><span class="str">&quot;pem&quot;</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t114" href="#t114">114</a></span><span class="t">    <span class="key">except</span> <span class="op">(</span><span class="nam">ValueError</span><span class="op">,</span> <span class="nam">KeyError</span><span class="op">,</span> <span class="nam">TypeError</span><span class="op">)</span> <span class="key">as</span> <span class="nam">error</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t114" href="#t114">114</a></span><span class="t">    <span class="key">except</span> <span class="op">(</span><span class="nam">ValueError</span><span class="op">,</span> <span class="nam">KeyError</span><span class="op">,</span> <span class="nam">TypeError</span><span class="op">,</span> <span class="nam">RecursionError</span><span class="op">)</span> <span class="key">as</span> <span class="nam">error</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t115" href="#t115">115</a></span><span class="t">        <span class="key">raise</span> <span class="nam">ReportError</span><span class="op">(</span><span class="nam">_INCOMPLETE</span><span class="op">)</span> <span class="key">from</span> <span class="nam">error</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t116" href="#t116">116</a></span><span class="t">    <span class="key">if</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">app_id</span><span class="op">,</span> <span class="nam">int</span><span class="op">)</span> <span class="key">and</span> <span class="key">not</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">app_id</span><span class="op">,</span> <span class="nam">bool</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t117" href="#t117">117</a></span><span class="t">        <span class="nam">app_id</span> <span class="op">=</span> <span class="nam">str</span><span class="op">(</span><span class="nam">app_id</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -244,7 +244,7 @@
             <a class="nav" href="z_93afe14790f192de_build_origin_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-25 19:08 +0000
+            created at 2026-10-25 20:10 +0000
         </p>
     </div>
 </footer>
