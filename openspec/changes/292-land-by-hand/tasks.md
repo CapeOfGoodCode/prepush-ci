@@ -1,6 +1,6 @@
 ## 1. The pure logic
 
-- [ ] 1.1 Add `core/land.py`: the decisions (ancestry, already on the branch, which reason), the answer lines and the reading of git's refusal; verify with unit specs named after the scenarios of "Only a head on top of the tip lands", "The answer is one line" and "A refused push is reported, never forced"
+- [x] 1.1 Add `core/land.py`: the decisions (ancestry, already on the branch, which reason), the answer lines and the reading of git's refusal; verify with unit specs named after the scenarios of "Only a head on top of the tip lands", "The answer is one line" and "A refused push is reported, never forced"
 
 ## 2. The command
 
