@@ -4,7 +4,13 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
-from prepush_ci.checking import Refused, head, require_clean, run_check, worktree_root
+from prepush_ci.checking import (
+    Refused,
+    head,
+    require_clean,
+    run_recorded_check,
+    worktree_root,
+)
 from prepush_ci.core.commit_msg import InvalidMode, parse_mode
 from prepush_ci.core.config import Config, ConfigError
 from prepush_ci.core.pre_push import (
@@ -119,8 +125,8 @@ def _enforce(
     if passed is not None:  # it came from `origin`: nothing to publish
         print(message_skipped_from_origin(key.tree, passed), file=sys.stderr)
         return 0
-    code = run_check(config, root)
-    if code == 0 and record_pass(config, root, key, checked.sha):
+    code, facts = run_recorded_check(config, root, checked.tree)
+    if code == 0 and record_pass(config, root, key, checked.sha, facts):
         if to_origin:
             publish_pass(root, key)
         expire_passes(root, to_origin)

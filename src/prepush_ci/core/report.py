@@ -210,14 +210,23 @@ def count_junit(data: bytes, name: str) -> Counts:
     """The test cases of a JUnit file, by what each case holds, whatever the nesting of suites:
     pytest and `node --test` give the same numbers for the same tests."""
     counts = Counts()
-    for case in _junit_root(data, name).iter("testcase"):
-        if case.find("failure") is not None or case.find("error") is not None:
-            counts += Counts(failed=1)
-        elif case.find("skipped") is not None:
-            counts += Counts(skipped=1)
-        else:
-            counts += Counts(passed=1)
+    for case in junit_cases(data, name):
+        counts += case_counts(case)
     return counts
+
+
+def junit_cases(data: bytes, name: str) -> list[ET.Element]:
+    """The `testcase` elements of a JUnit file, whatever the nesting of suites."""
+    return list(_junit_root(data, name).iter("testcase"))
+
+
+def case_counts(case: ET.Element) -> Counts:
+    """One case as a count: failed when it holds a failure or an error, else skipped, else passed."""
+    if case.find("failure") is not None or case.find("error") is not None:
+        return Counts(failed=1)
+    if case.find("skipped") is not None:
+        return Counts(skipped=1)
+    return Counts(passed=1)
 
 
 @dataclass(frozen=True)

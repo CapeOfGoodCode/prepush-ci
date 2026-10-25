@@ -4,7 +4,13 @@ import sys
 from collections.abc import Mapping
 from pathlib import Path
 
-from prepush_ci.checking import Refused, head, require_clean, run_check, worktree_root
+from prepush_ci.checking import (
+    Refused,
+    head,
+    require_clean,
+    run_recorded_check,
+    worktree_root,
+)
 from prepush_ci.core.config import ConfigError
 from prepush_ci.core.run_cache import Key, fingerprint
 from prepush_ci.git import GitError
@@ -27,10 +33,10 @@ def run(env: Mapping[str, str], cwd: Path) -> int:
         checked = current_head(root)
         require_clean(root)
         output = run_preflight(config, env, root)
-        code = run_check(config, root)
+        code, facts = run_recorded_check(config, root, checked.tree)
         if code == 0:
             key = Key(checked.tree, fingerprint(config, output))
-            if record_pass(config, root, key, checked.sha):
+            if record_pass(config, root, key, checked.sha, facts):
                 expire_passes(root, to_origin=False)
         return code
     except ConfigError as error:
