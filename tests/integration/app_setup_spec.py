@@ -468,13 +468,29 @@ def test_a_path_other_than_the_page_and_the_callback_is_answered_404(
     assert running.finish().returncode == 0
 
 
-# --- The app asks for one permission -------------------------------------------------------------
+# --- The app asks for its permissions -------------------------------------------------------------
 
 
 def test_the_manifest_asks_for_checks_write_and_nothing_else(studio: Studio) -> None:
     running = studio.start()
 
     assert running.form().manifest["default_permissions"] == {"checks": "write"}
+    running.close()
+
+
+def test_the_manifest_of_a_landing_app_asks_for_four_permissions(
+    studio: Studio,
+) -> None:
+    running = studio.start("--land")
+
+    manifest = running.form().manifest
+    assert manifest["default_permissions"] == {
+        "checks": "write",
+        "contents": "write",
+        "pull_requests": "read",
+        "workflows": "write",
+    }
+    assert manifest["public"] is False
     running.close()
 
 
@@ -508,6 +524,9 @@ def test_the_manifest_redirects_to_the_port_the_command_printed(
     assert redirect.startswith(running.address().rstrip("/"))
     assert redirect.startswith("http://127.0.0.1:")
     running.close()
+
+
+# --- The app's name -------------------------------------------------------------------------------
 
 
 def test_the_default_name_is_the_owner_of_an_https_origin(studio: Studio) -> None:
@@ -1026,6 +1045,24 @@ def test_the_result_names_the_id_the_install_address_the_key_file_and_the_variab
     assert printed((studio.keys / f"{APP_ID}.pem").as_posix()) in result.stdout
     assert "PREPUSH_CI_APP_ID" in result.stdout
     assert "PREPUSH_CI_APP_KEY" in result.stdout
+
+
+def test_the_result_of_a_landing_app_names_the_ruleset_command_and_the_word_installed(
+    studio: Studio,
+) -> None:
+    result = studio.complete("--land")
+
+    assert result.returncode == 0
+    assert f"prepush-ci app ruleset --app {APP_ID}" in result.stdout
+    assert "installed" in result.stdout
+
+
+def test_the_result_of_an_app_without_the_flag_holds_no_ruleset_command(
+    studio: Studio,
+) -> None:
+    result = studio.complete()
+
+    assert "app ruleset" not in result.stdout
 
 
 def test_the_install_address_is_on_the_server_the_setup_used(studio: Studio) -> None:

@@ -4,7 +4,7 @@
 
 ## 2. The manifest
 
-- [ ] 2.1 Add `--land` to `app setup`: the permissions, the printed next step; verify with specs named after the scenarios of "The landing app", "The landing app names the next step", "The app asks for its permissions" and "The app's name"
+- [x] 2.1 Add `--land` to `app setup`: the permissions, the printed next step; verify with specs named after the scenarios of "The landing app", "The landing app names the next step", "The app asks for its permissions" and "The app's name"
 
 ## 3. The ruleset command
 

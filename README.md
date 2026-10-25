@@ -261,8 +261,10 @@ Creates the GitHub App that `report` posts check runs as (named "prepush-ci / fu
 
 The app is named "prepush-ci (<owner of origin>)" unless you pass `--name` (34 characters at most); `--org` creates it in an organization instead of your account. The private key is saved outside the repository, in `~/.config/prepush-ci/apps/<id>.pem` (`XDG_CONFIG_HOME` replaces `~/.config`), readable by you only, and an existing file is never overwritten. The command prints the app's id, the address where you install the app on your repositories, the path of the key file and the names of the two variables `report` reads: `PREPUSH_CI_APP_ID`, and `PREPUSH_CI_APP_KEY`, which holds the text of the key file. It prints neither the key nor the app's secrets.
 
+With `--land` the app also asks for `contents: write`, `pull_requests: read` and `workflows: write`, the permissions it needs to move the default branch, and the command prints the next step, `prepush-ci app ruleset --app <id>`, to run once the app is installed on the repository.
+
 ```
-prepush-ci app setup [--org ORG] [--name NAME] [--timeout TIMEOUT]
+prepush-ci app setup [--org ORG] [--name NAME] [--timeout TIMEOUT] [--land]
 ```
 
 ```sh

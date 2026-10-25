@@ -292,6 +292,12 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_TIMEOUT,
         help="seconds to wait for GitHub's answer (default: %(default)s)",
     )
+    setup.add_argument(
+        "--land",
+        action="store_true",
+        help="ask for the permissions an app needs to move the default branch "
+        "(contents: write, pull_requests: read, workflows: write) besides checks: write",
+    )
     ruleset = apps.add_parser(
         "ruleset",
         help="create the ruleset that lets only one actor move the default branch",
@@ -324,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.command == "app":
         return app_setup_command.run(
-            app_setup_command.Options(args.org, args.name, args.timeout),
+            app_setup_command.Options(args.org, args.name, args.timeout, args.land),
             env,
             Path.cwd(),
         )

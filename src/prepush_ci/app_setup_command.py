@@ -27,6 +27,7 @@ class Options:
     org: str | None
     name: str | None
     timeout: int
+    land: bool = False
 
 
 def run(options: Options, env: Mapping[str, str], cwd: Path) -> int:
@@ -54,7 +55,7 @@ def _setup(options: Options, env: Mapping[str, str], cwd: Path) -> str:
         # The manifest and the form are made once the port is known: the redirect names it.
         listener.page = app_setup.page(
             _form_action(server, options.org, state),
-            app_setup.manifest(name, f"{listener.address}{CALLBACK}"),
+            app_setup.manifest(name, f"{listener.address}{CALLBACK}", options.land),
         )
         print(f"open this address to create the app: {listener.address}/", flush=True)
         # A thread: a browser that runs in the terminal blocks until it is closed, and cannot be
@@ -65,7 +66,7 @@ def _setup(options: Options, env: Mapping[str, str], cwd: Path) -> str:
         code = listener.wait_for_the_code(options.timeout)
     app = app_setup.parse_app(github_api.convert_manifest(api_url, code))
     path = _save_the_key(directory, app)
-    return app_setup.result_text(app, server, text_io.text_of(path))
+    return app_setup.result_text(app, server, text_io.text_of(path), options.land)
 
 
 def _owner(cwd: Path, env: Mapping[str, str]) -> str:
