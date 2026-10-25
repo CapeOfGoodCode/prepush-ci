@@ -211,6 +211,8 @@ prepush-ci verify HEAD
 
 Pushes the head of a pull request to the default branch of `origin` by a fast-forward, only when the tip of the branch is an ancestor of the head, the head carries the trailer and its tree has a pass for the check, in this clone or on `origin`. The head is `refs/pull/NUMBER/head` of `origin` and the branch is the one `origin`'s `HEAD` points to; both are fetched first. It never runs the check, never forces, and runs none of the repository's hooks. It prints one line, `landed: SHA on BRANCH` or `not landed: REASON`.
 
+When neither the clone nor `origin` holds a result for the tree, `land` reads the comments of the pull request through the GitHub API and takes the first one that says the default check (prepush-ci / full) passed for this tree, with the `check` and the `preflight` committed in the head, and was written by someone with write access; a comment of a GitHub App never counts. A result wins over a comment, and `land` writes no comment and no result from one. Reading the comments needs `GITHUB_TOKEN` or `GH_TOKEN` and the repository that `origin` names, or `GITHUB_REPOSITORY`; without them, or when GitHub answers an error, the `not landed:` line says why.
+
 ```
 prepush-ci land NUMBER
 ```

@@ -593,11 +593,14 @@ def _failures_section(failures: tuple[Failure, ...]) -> str:
     return "### Failures\n\n" + "\n".join(lines) + "\n\n"
 
 
+def row_line(label: str, text: str) -> str:
+    """One row of the table of the summary. A pipe ends a table cell, also inside a code span:
+    GitHub reads a backslash before the pipe as the pipe itself."""
+    return f"| {label} | {text.replace('|', ESCAPED_PIPE)} |"
+
+
 def _table(rows: list[tuple[str, str]]) -> str:
-    # A pipe ends a table cell, also inside a code span: GitHub reads `\|` as the pipe.
-    table = "\n".join(
-        f"| {label} | {text.replace('|', ESCAPED_PIPE)} |" for label, text in rows
-    )
+    table = "\n".join(row_line(label, text) for label, text in rows)
     return f"| Fact | Value |\n| --- | --- |\n{table}\n"
 
 

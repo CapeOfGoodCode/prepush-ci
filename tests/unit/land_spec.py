@@ -206,3 +206,155 @@ def test_the_line_of_a_refused_push_without_a_reason_still_says_it_was_refused()
 
     assert line.startswith("not landed: origin refused the push to main")
     assert "ruleset" in line
+
+
+# --- A comment of the pull request is a pass ------------------------------------------------------
+
+TREE = "a" * 40
+MARKER = "<!-- prepush-ci:prepush-ci / full -->"
+
+
+def comment(
+    title: str = "Passed",
+    *,
+    first: str = MARKER,
+    tree_cell: str = f"` {TREE} `",
+    check_cell: str = "` sh scripts/ci `",
+    preflight_cell: str = "none",
+    more: str = "",
+) -> str:
+    """A comment as `report --markdown` writes it: marker, title line, commit line, the table."""
+    return (
+        f"{first}\n### prepush-ci / full: {title}\nCommit {SHA}\n\n"
+        f"{more}| Fact | Value |\n| --- | --- |\n| Commit | ` {SHA} ` |\n"
+        f"| Tree | {tree_cell} |\n| Check | {check_cell} |\n"
+        f"| Preflight | {preflight_cell} |\n| System | Linux |\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Passed",
+        "3 passed, 0 failed, 1 skipped",
+        "812 passed, 0 failed, 0 skipped",
+    ],
+)
+def test_a_comment_with_a_pass_title_states_a_pass(title: str) -> None:
+    assert land.states_a_pass(comment(title))
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Failed",
+        "Failed (3 passed, 0 failed, 0 skipped)",
+        "3 passed, 1 failed, 0 skipped",
+        "3 passed, 0 failed",
+        "passed",
+        "Passed.",
+    ],
+)
+def test_a_comment_with_another_title_states_no_pass(title: str) -> None:
+    assert not land.states_a_pass(comment(title))
+
+
+def test_a_pass_title_of_another_check_states_no_pass() -> None:
+    other = comment().replace("prepush-ci / full: Passed", "prepush-ci / unit: Passed")
+
+    assert not land.states_a_pass(other)
+
+
+def test_the_marker_of_another_check_states_no_pass() -> None:
+    assert not land.states_a_pass(
+        comment(first="<!-- prepush-ci:prepush-ci / unit -->")
+    )
+
+
+def test_a_marker_after_other_text_states_no_pass() -> None:
+    assert not land.states_a_pass("hello\n" + comment())
+
+
+def test_a_comment_with_a_failures_section_states_no_pass() -> None:
+    assert not land.states_a_pass(comment(more="### Failures\n\n- mypy `x`\n\n"))
+
+
+def test_a_failures_line_inside_other_text_is_not_the_section() -> None:
+    assert land.states_a_pass(comment(more="See ### Failures in the log\n\n"))
+
+
+def test_a_comment_with_windows_line_ends_states_a_pass() -> None:
+    assert land.states_a_pass(comment().replace("\n", "\r\n"))
+
+
+def test_an_empty_comment_states_no_pass() -> None:
+    assert not land.states_a_pass("")
+
+
+def names(
+    body: str, *, check: str = "sh scripts/ci", preflight: str | None = None
+) -> bool:
+    return land.names_this(body, TREE, check, preflight)
+
+
+def test_a_comment_names_the_tree_the_check_and_the_preflight_it_is_compared_with() -> (
+    None
+):
+    assert names(comment())
+    assert names(comment(preflight_cell="` uv --version `"), preflight="uv --version")
+
+
+def test_a_comment_of_another_tree_names_nothing_of_this_one() -> None:
+    assert not names(comment(tree_cell=f"` {'b' * 40} `"))
+
+
+def test_a_tree_that_is_not_in_a_code_span_is_not_named() -> None:
+    assert not names(comment(tree_cell=TREE))
+
+
+def test_a_comment_of_another_check_or_preflight_names_nothing_of_this_one() -> None:
+    assert not names(comment(), check="make test")
+    assert not names(comment(), preflight="uv --version")
+    assert not names(comment(preflight_cell="` uv --version `"))
+
+
+def test_the_cells_are_compared_as_report_writes_them_a_pipe_and_a_backtick() -> None:
+    check = "sh scripts/ci | tee ci.log && echo `x`"
+    cell = "`` sh scripts/ci \\| tee ci.log && echo `x` ``"
+
+    assert names(comment(check_cell=cell), check=check)
+    assert not names(comment(check_cell=cell.replace("\\|", "|")), check=check)
+
+
+def test_a_cell_is_never_compared_with_its_white_space_stripped() -> None:
+    assert not names(comment(check_cell="`  sh scripts/ci  `"))
+
+
+@pytest.mark.parametrize("permission", ["admin", "write"])
+def test_admin_and_write_are_a_permission_to_write(permission: str) -> None:
+    assert land.may_write(permission)
+
+
+@pytest.mark.parametrize(
+    "permission", ["read", "none", "maintain", "triage", "", "Write"]
+)
+def test_any_other_permission_is_no_permission_to_write(permission: str) -> None:
+    assert not land.may_write(permission)
+
+
+def test_the_line_of_a_tree_without_a_pass_says_where_it_looked() -> None:
+    line = land.no_pass(TREE).line
+
+    assert "no pass was found for tree aaaaaaaaaaaa" in line
+    assert "in this clone, on origin or in a comment of the pull request" in line
+
+
+def test_the_line_of_a_tree_without_a_pass_adds_why_github_could_not_be_asked() -> None:
+    line = land.no_pass(TREE, "no token: set GITHUB_TOKEN").line
+
+    assert "no pass was found for tree aaaaaaaaaaaa" in line
+    assert "GitHub could not be asked: no token: set GITHUB_TOKEN" in line
+
+
+def test_a_comment_that_is_only_the_marker_states_no_pass() -> None:
+    assert not land.states_a_pass(MARKER)

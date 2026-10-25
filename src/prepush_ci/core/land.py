@@ -5,13 +5,19 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
-from prepush_ci.core.report import Malformed
+from prepush_ci.core.report import CHECK_RUN_NAME, Malformed, code_span, row_line
 from prepush_ci.core.run_cache import SHORT
 from prepush_ci.core.verify import one_line
 
 _OBJECT = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 _SYMREF = "ref: refs/heads/"
 _REFUSED = re.compile(r"!\t[^\t]*\t\[[^\]]*\] \((?P<reason>.*)\)\s*")
+MARKER = f"<!-- prepush-ci:{CHECK_RUN_NAME} -->"
+_PASS_TITLE = re.compile(
+    rf"### {re.escape(CHECK_RUN_NAME)}: (?:Passed|\d+ passed, 0 failed, \d+ skipped)"
+)
+FAILURES = "### Failures"
+WRITERS = ("admin", "write")
 
 
 @dataclass(frozen=True)
@@ -154,9 +160,17 @@ def missing_variables(names: Sequence[str]) -> Answer:
     )
 
 
-def no_pass(tree: str) -> Answer:
+def no_pass(tree: str, why_not_asked: str | None = None) -> Answer:
+    """No pass in the clone, on origin or in a comment; `why_not_asked` says why GitHub could not
+    be asked for the comments, when that is so."""
+    if why_not_asked is None:
+        return refused(
+            f"no pass was found for tree {tree[:SHORT]} in this clone, on origin "
+            "or in a comment of the pull request"
+        )
     return refused(
-        f"no pass was found for tree {tree[:SHORT]} in this clone or on origin"
+        f"no pass was found for tree {tree[:SHORT]} in this clone or on origin, "
+        f"and GitHub could not be asked: {why_not_asked}"
     )
 
 
@@ -169,3 +183,40 @@ def push_refused(branch: str, reason: str | None) -> Answer:
         f"origin refused the push to {branch} ({reason or 'git gave no reason'}); "
         "a branch that a ruleset protects is moved by its bypass actors only"
     )
+
+
+# --- A comment of the pull request as a pass ------------------------------------------------------
+
+
+def _lines(body: str) -> list[str]:
+    """The lines of a comment, line feed or carriage return and line feed alike."""
+    return body.replace("\r\n", "\n").split("\n")
+
+
+def states_a_pass(body: str) -> bool:
+    """Whether a comment is the Markdown of `report` for the default check and says it passed: the
+    marker is its first line, the title line its second, and it has no `### Failures` section."""
+    lines = _lines(body)
+    return (
+        lines[0] == MARKER
+        and len(lines) > 1
+        and _PASS_TITLE.fullmatch(lines[1]) is not None
+        and FAILURES not in lines
+    )
+
+
+def names_this(body: str, tree: str, check: str, preflight: str | None) -> bool:
+    """Whether the table of a comment holds, cell for cell as `report` writes them, this tree and
+    the `check` and `preflight` committed in the head. It names the preflight command, not what it
+    printed."""
+    rows = {
+        row_line("Tree", code_span(tree)),
+        row_line("Check", code_span(check)),
+        row_line("Preflight", "none" if preflight is None else code_span(preflight)),
+    }
+    return rows <= set(_lines(body))
+
+
+def may_write(permission: str) -> bool:
+    """Whether the `permission` of a collaborator is one that can push."""
+    return permission in WRITERS
