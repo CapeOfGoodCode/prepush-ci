@@ -14,7 +14,7 @@ from prepush_ci.core.land import Answer, Position
 from prepush_ci.core.preflight import missing_env
 from prepush_ci.core.run_cache import Key, fingerprint
 from prepush_ci.core.verify import invalid_config
-from prepush_ci.git import GitError, committed_config, git
+from prepush_ci.git import GitError, committed_config, git, is_shallow
 from prepush_ci.pass_cache import fetch_pass, has_pass
 from prepush_ci.verify_command import verdict_of
 
@@ -61,6 +61,8 @@ def _land(number: int, env: Mapping[str, str], cwd: Path) -> Answer:
         return land.already_on(head, branch)
     if where is Position.MOVED:
         return land.branch_moved(branch)
+    if where is Position.CANNOT_TELL:
+        return land.shallow_cannot_tell(branch)
     verdict = verdict_of(head, cwd)
     if not verdict.verified:
         return land.refused(f"{head} {verdict.reason}")
@@ -111,7 +113,11 @@ def _fetch(
 
 
 def _position(tip: str, head: str, cwd: Path) -> Position:
-    return land.position(_is_ancestor(head, tip, cwd), _is_ancestor(tip, head, cwd))
+    return land.position(
+        _is_ancestor(head, tip, cwd),
+        _is_ancestor(tip, head, cwd),
+        shallow=is_shallow(cwd),
+    )
 
 
 def _is_ancestor(ancestor: str, descendant: str, cwd: Path) -> bool:

@@ -42,6 +42,10 @@ def git_bytes(cwd: Path, *args: str, stdin: bytes | None = None) -> bytes:
     return result.stdout
 
 
+def is_shallow(cwd: Path) -> bool:
+    return git(cwd, "rev-parse", "--is-shallow-repository").stdout.strip() == "true"
+
+
 def dirty(cwd: Path) -> list[str]:
     """Staged, unstaged and untracked paths (not the ignored ones) of the worktree."""
     return dirty_paths(

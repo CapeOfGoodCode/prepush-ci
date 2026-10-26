@@ -15,7 +15,14 @@ from prepush_ci.core.verify import (
     unresolved,
     usage_problem,
 )
-from prepush_ci.git import GitError, committed_config, git, resolve_commit, trailers
+from prepush_ci.git import (
+    GitError,
+    committed_config,
+    git,
+    is_shallow,
+    resolve_commit,
+    trailers,
+)
 
 
 def run(args: Sequence[str], cwd: Path) -> int:
@@ -42,17 +49,13 @@ def _decide(argument: str, cwd: Path) -> tuple[str | None, Verdict]:
         )
     sha = resolve_commit(argument, cwd)
     if sha is None:
-        return argument, unresolved(argument, _is_shallow(cwd))
+        return argument, unresolved(argument, is_shallow(cwd))
     try:
         return sha, verdict_of(sha, cwd)
     except ConfigError as error:
         return sha, invalid_config(error.problems)
     except GitError as error:
         return sha, unreadable(str(error))
-
-
-def _is_shallow(cwd: Path) -> bool:
-    return git(cwd, "rev-parse", "--is-shallow-repository").stdout.strip() == "true"
 
 
 def verdict_of(sha: str, cwd: Path) -> Verdict:
