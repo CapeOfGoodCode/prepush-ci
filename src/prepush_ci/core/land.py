@@ -41,15 +41,23 @@ class Position(Enum):
     ON_BRANCH = "on the branch"  # the head is the tip or behind it: nothing to push
     ON_TOP = "on top of the tip"  # the tip is an ancestor of the head: a fast-forward
     MOVED = "the branch moved"  # the tip has commits the head lacks
+    CANNOT_TELL = (
+        "a shallow clone cannot tell"  # the history that would answer is not here
+    )
 
 
-def position(head_is_behind_tip: bool, tip_is_behind_head: bool) -> Position:
+def position(
+    head_is_behind_tip: bool, tip_is_behind_head: bool, shallow: bool = False
+) -> Position:
     """Where a head stands, from two ancestry questions: is the head the tip or an ancestor of it,
     is the tip an ancestor of the head. The first answer wins: a head that is already on the branch
-    needs nothing, whatever the config says about being up to date."""
+    needs nothing, whatever the config says about being up to date. Two noes in a shallow clone
+    may only mean that the history which would say yes is missing: a yes is true in any clone."""
     if head_is_behind_tip:
         return Position.ON_BRANCH
-    return Position.ON_TOP if tip_is_behind_head else Position.MOVED
+    if tip_is_behind_head:
+        return Position.ON_TOP
+    return Position.CANNOT_TELL if shallow else Position.MOVED
 
 
 def parse_number(text: str) -> int:
@@ -163,6 +171,13 @@ def branch_moved(branch: str) -> Answer:
     return refused(
         f"{branch} of origin has commits that the head does not contain: "
         f"rebase onto {branch} and push again"
+    )
+
+
+def shallow_cannot_tell(branch: str) -> Answer:
+    return refused(
+        f"this clone is shallow, so it cannot tell whether {branch} of origin moved: "
+        "run `git fetch --unshallow` (with GitHub Actions' checkout, set `fetch-depth: 0`)"
     )
 
 

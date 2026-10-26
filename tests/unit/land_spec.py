@@ -24,6 +24,36 @@ def test_a_tip_with_commits_the_head_lacks_is_a_moved_branch() -> None:
     assert land.position(False, False) is Position.MOVED
 
 
+def test_a_shallow_clone_that_gets_two_noes_cannot_tell_whether_the_branch_moved() -> (
+    None
+):
+    assert land.position(False, False, shallow=True) is Position.CANNOT_TELL
+
+
+def test_a_shallow_clone_keeps_every_answer_it_can_give() -> None:
+    assert land.position(False, True, shallow=True) is Position.ON_TOP
+    assert land.position(True, False, shallow=True) is Position.ON_BRANCH
+    assert land.position(True, True, shallow=True) is Position.ON_BRANCH
+
+
+def test_a_complete_clone_with_two_noes_is_a_moved_branch() -> None:
+    assert land.position(False, False, shallow=False) is Position.MOVED
+
+
+def test_the_line_of_a_shallow_clone_says_so_and_names_the_two_ways_to_deepen_it() -> (
+    None
+):
+    answer = land.shallow_cannot_tell("main")
+
+    assert not answer.landed
+    assert answer.line.startswith("not landed: ")
+    assert "shallow" in answer.line
+    assert "cannot tell whether main of origin moved" in answer.line
+    assert "git fetch --unshallow" in answer.line
+    assert "fetch-depth" in answer.line
+    assert "rebase" not in answer.line
+
+
 def test_the_line_of_a_moved_branch_names_it_and_says_to_rebase_and_push_again() -> (
     None
 ):

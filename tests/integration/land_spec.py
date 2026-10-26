@@ -8,7 +8,7 @@ import subprocess
 import sys
 import threading
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -108,12 +108,14 @@ def build(
     files: dict[str, str] | None = None,
     local_files: dict[str, str] | None = None,
     record: bool = True,
+    flat: bool = False,
     env: dict[str, str] | None = None,
 ) -> World:
     """Pull request 7: a head on top of the tip of `main`, with a config that is committed in it and
     a result of its tree recorded by `prepush-ci run` (unless `record` is off). `@MARK@`, `@ORIGIN@`
     and `@SIBLING@` in `lines` and `check` stand for a file path, the path of `origin` and a commit.
-    `local_files` are ignored files of the clone, present while the result is recorded."""
+    `local_files` are ignored files of the clone, present while the result is recorded. A `flat`
+    head is the child of the tip, with no commit between them (`middle` is the tip)."""
     origin = tmp_path / "origin.git"
     git(tmp_path, "init", "-q", "--bare", str(origin))
     git(origin, "symbolic-ref", "HEAD", "refs/heads/main")
@@ -132,7 +134,8 @@ def build(
     sibling = git(repo, "rev-parse", "HEAD").stdout.strip()
     git(repo, "push", "-q", "origin", "sibling:refs/heads/sibling")
     git(repo, "checkout", "-q", "-b", "pr", "main")
-    git(repo, "commit", "--allow-empty", "-q", "-m", "the first step")
+    if not flat:
+        git(repo, "commit", "--allow-empty", "-q", "-m", "the first step")
     middle = git(repo, "rev-parse", "HEAD").stdout.strip()
 
     def fill(text: str) -> str:
@@ -940,6 +943,142 @@ def test_a_pull_request_that_is_no_commit_is_refused(world: World, git: Git) -> 
     line = refused(land(world, "9"))
 
     assert "did not send" in line
+
+
+# --- A shallow clone says what it cannot tell ---------------------------------------------------------------
+
+
+def shallow(
+    world: World, tmp_path: Path, git: Git, depth: int, *, head_depth: int | None = None
+) -> World:
+    """The world as seen from a shallow clone of `origin` made now, `depth` commits deep, which
+    also holds pull request 7 fetched `head_depth` commits deep (as deep as the clone by default)."""
+    git(world.clone, "push", "-q", "origin", f"{RESULTS}/*:{RESULTS}/*")
+    clone = tmp_path / "shallow"
+    git(
+        tmp_path,
+        "clone",
+        "-q",
+        "--depth",
+        str(depth),
+        world.origin.as_uri(),
+        str(clone),
+    )
+    git(
+        clone,
+        "fetch",
+        "-q",
+        "--depth",
+        str(head_depth or depth),
+        "origin",
+        "refs/pull/7/head:refs/pull/7/head",
+    )
+    assert git(clone, "rev-parse", "--is-shallow-repository").stdout.strip() == "true"
+    return replace(world, clone=clone)
+
+
+def test_a_head_one_commit_above_the_tip_in_a_clone_of_depth_1_is_told_the_clone_is_shallow(
+    repo: Path, tmp_path: Path, git: Git
+) -> None:
+    flat = build(repo, tmp_path, git, flat=True)
+    world = shallow(flat, tmp_path, git, 1)
+
+    line = refused(land(world))
+
+    assert "shallow" in line
+    assert "cannot tell whether main of origin moved" in line
+    assert "git fetch --unshallow" in line
+    assert "fetch-depth" in line
+    assert "rebase" not in line
+    assert main_of(world, git) == world.base
+
+
+def test_a_shallow_clone_that_is_deepened_lands(
+    repo: Path, tmp_path: Path, git: Git
+) -> None:
+    flat = build(repo, tmp_path, git, flat=True)
+    world = shallow(flat, tmp_path, git, 1)
+    refused(land(world))
+
+    git(world.clone, "fetch", "-q", "--unshallow", "origin")
+
+    assert landed(land(world)) == f"landed: {world.head} on main"
+    assert main_of(world, git) == world.head
+
+
+def test_a_branch_that_moved_in_a_shallow_clone_gets_the_shallow_line(
+    repo: Path, tmp_path: Path, git: Git
+) -> None:
+    flat = build(repo, tmp_path, git, flat=True)
+    world = shallow(flat, tmp_path, git, 1)
+    point_main_at(world, git, world.sibling)
+
+    line = refused(land(world))
+
+    assert "shallow" in line
+    assert "push again" not in line
+    assert main_of(world, git) == world.sibling
+
+
+def test_a_shallow_clone_that_can_see_the_tip_lands(
+    repo: Path, tmp_path: Path, git: Git
+) -> None:
+    flat = build(repo, tmp_path, git, flat=True)
+    world = shallow(flat, tmp_path, git, 1, head_depth=2)
+
+    assert landed(land(world)) == f"landed: {world.head} on main"
+    assert main_of(world, git) == world.head
+
+
+def test_a_shallow_clone_and_a_head_on_the_branch_is_already_on_the_branch(
+    repo: Path, tmp_path: Path, git: Git
+) -> None:
+    flat = build(repo, tmp_path, git, flat=True)
+    world = shallow(flat, tmp_path, git, 1)
+    point_main_at(world, git, world.head)
+    before = refs_of(world, git)
+
+    assert landed(land(world)) == f"landed: {world.head} already on main"
+    assert refs_of(world, git) == before
+
+
+def test_a_branch_that_moves_while_landing_in_a_shallow_clone_gets_the_line_of_a_moved_branch(
+    repo: Path, tmp_path: Path, git: Git
+) -> None:
+    flat = build(repo, tmp_path, git, flat=True)
+    world = shallow(flat, tmp_path, git, 1, head_depth=2)
+    decline_after(world, f"git update-ref refs/heads/main {world.sibling}")
+
+    line = refused(land(world))
+
+    assert "push again" in line
+    assert "shallow" not in line
+    assert main_of(world, git) == world.sibling
+
+
+def test_the_shallow_refusal_runs_no_command_of_the_head(
+    repo: Path, tmp_path: Path, git: Git
+) -> None:
+    flat = build(repo, tmp_path, git, flat=True, lines=[marking(tmp_path)])
+    flat.mark.unlink()
+    world = shallow(flat, tmp_path, git, 1)
+
+    line = refused(land(world))
+
+    assert "shallow" in line
+    assert not world.mark.exists()
+
+
+def test_a_complete_clone_is_told_that_the_branch_moved(world: World, git: Git) -> None:
+    assert git(world.clone, "rev-parse", "--is-shallow-repository").stdout.strip() == (
+        "false"
+    )
+    point_main_at(world, git, world.sibling)
+
+    line = refused(land(world))
+
+    assert "rebase onto main and push again" in line
+    assert "shallow" not in line
 
 
 # --- A comment of the pull request is a pass when no result is found ------------------------------
