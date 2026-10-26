@@ -22,7 +22,7 @@
 | src/prepush\_ci/core/hook\_managers.py   |      203 |        0 |       76 |        0 |     100% |           |
 | src/prepush\_ci/core/init.py             |      187 |        0 |       70 |        0 |     100% |           |
 | src/prepush\_ci/core/install.py          |       54 |        0 |        8 |        0 |     100% |           |
-| src/prepush\_ci/core/land.py             |      105 |        0 |       22 |        0 |     100% |           |
+| src/prepush\_ci/core/land.py             |      110 |        0 |       24 |        0 |     100% |           |
 | src/prepush\_ci/core/post\_push.py       |      172 |        0 |       82 |        0 |     100% |           |
 | src/prepush\_ci/core/pre\_push.py        |       87 |        0 |       30 |        0 |     100% |           |
 | src/prepush\_ci/core/preflight.py        |       25 |        0 |        2 |        0 |     100% |           |
@@ -37,12 +37,12 @@
 | src/prepush\_ci/core/uv\_cache.py        |       32 |        0 |       10 |        0 |     100% |           |
 | src/prepush\_ci/core/verify.py           |       45 |        0 |       16 |        0 |     100% |           |
 | src/prepush\_ci/doctor\_command.py       |      156 |        0 |       30 |        0 |     100% |           |
-| src/prepush\_ci/git.py                   |       65 |        0 |       14 |        0 |     100% |           |
+| src/prepush\_ci/git.py                   |       67 |        0 |       14 |        0 |     100% |           |
 | src/prepush\_ci/github\_api.py           |      171 |        0 |        8 |        0 |     100% |           |
 | src/prepush\_ci/hook\_scripts.py         |       22 |        0 |        4 |        0 |     100% |           |
 | src/prepush\_ci/init\_command.py         |      199 |        0 |       56 |        0 |     100% |           |
 | src/prepush\_ci/install\_command.py      |      212 |        0 |       60 |        0 |     100% |           |
-| src/prepush\_ci/land\_command.py         |      125 |        0 |       42 |        0 |     100% |           |
+| src/prepush\_ci/land\_command.py         |      127 |        0 |       44 |        0 |     100% |           |
 | src/prepush\_ci/land\_comments.py        |       53 |        0 |       16 |        0 |     100% |           |
 | src/prepush\_ci/pass\_cache.py           |      122 |        0 |       48 |        0 |     100% |           |
 | src/prepush\_ci/post\_push\_hook.py      |       82 |        0 |       18 |        0 |     100% |           |
@@ -56,9 +56,9 @@
 | src/prepush\_ci/skill\_command.py        |       47 |        0 |       10 |        0 |     100% |           |
 | src/prepush\_ci/strip\_command.py        |      103 |        0 |       38 |        0 |     100% |           |
 | src/prepush\_ci/text\_io.py              |      157 |        0 |       14 |        0 |     100% |           |
-| src/prepush\_ci/verify\_command.py       |       44 |        0 |       12 |        0 |     100% |           |
+| src/prepush\_ci/verify\_command.py       |       42 |        0 |       12 |        0 |     100% |           |
 | src/prepush\_ci/version\_line.py         |       20 |        0 |        0 |        0 |     100% |           |
-| **TOTAL**                                | **4755** |    **0** | **1390** |    **0** | **100%** |           |
+| **TOTAL**                                | **4762** |    **0** | **1394** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
