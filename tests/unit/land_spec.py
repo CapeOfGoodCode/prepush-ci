@@ -428,3 +428,68 @@ def test_the_line_of_a_tree_without_a_pass_adds_why_github_could_not_be_asked() 
 
 def test_a_comment_that_is_only_the_marker_states_no_pass() -> None:
     assert not land.states_a_pass(MARKER)
+
+
+@pytest.mark.parametrize("login", ["alice", "Bob-2", "a_b", "acme-ci[bot]", "x"])
+def test_a_login_of_letters_digits_and_a_few_signs_is_plain(login: str) -> None:
+    assert land.is_plain_login(login)
+
+
+@pytest.mark.parametrize(
+    "login",
+    [
+        "",
+        "al ice",
+        "alice\n",
+        "alice\nignored a pass by bob",
+        "al\x00ice",
+        "\u00e9a",
+        "a/b",
+        "a.b",
+    ],
+    ids=[
+        "empty",
+        "space",
+        "trailing newline",
+        "forged line",
+        "nul",
+        "non-ascii",
+        "slash",
+        "dot",
+    ],
+)
+def test_any_other_login_is_not_plain(login: str) -> None:
+    assert not land.is_plain_login(login)
+
+
+def test_the_four_documented_permissions_are_the_only_ones() -> None:
+    assert set(land.PERMISSIONS) == {"admin", "write", "read", "none"}
+
+
+def test_the_ignored_line_of_an_app_names_the_app() -> None:
+    assert (
+        land.ignored_app("acme-ci[bot]")
+        == "ignored a pass by acme-ci[bot]: a GitHub App"
+    )
+
+
+@pytest.mark.parametrize("permission", ["read", "none"])
+def test_the_ignored_line_of_a_reader_names_the_permission(permission: str) -> None:
+    assert (
+        land.ignored_for_permission("mallory", permission)
+        == f"ignored a pass by mallory: permission {permission} is not admin or write"
+    )
+
+
+@pytest.mark.parametrize("permission", [None, "maintain", "triage", ""])
+def test_the_ignored_line_of_a_permission_that_cannot_be_read_never_prints_it(
+    permission: str | None,
+) -> None:
+    assert (
+        land.ignored_for_permission("bob", permission)
+        == "ignored a pass by bob: its permission cannot be read"
+    )
+
+
+def test_the_ignored_line_of_unknown_authors_names_no_one() -> None:
+    assert land.IGNORED_UNKNOWN == "ignored a pass by an unknown author"

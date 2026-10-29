@@ -18,6 +18,10 @@ _PASS_TITLE = re.compile(
 )
 FAILURES = "### Failures"
 WRITERS = ("admin", "write")
+READERS = ("read", "none")
+PERMISSIONS = WRITERS + READERS  # the four values the API documents
+_PLAIN_LOGIN = re.compile(r"[A-Za-z0-9_\[\]-]+")
+IGNORED_UNKNOWN = "ignored a pass by an unknown author"
 
 
 @dataclass(frozen=True)
@@ -254,3 +258,25 @@ def names_this(body: str, tree: str, check: str, preflight: str | None) -> bool:
 def may_write(permission: str) -> bool:
     """Whether the `permission` of a collaborator is one that can push."""
     return permission in WRITERS
+
+
+def is_plain_login(login: str) -> bool:
+    """Whether a login is one that can be printed and sent in a request path: a non-empty string of
+    ASCII letters, digits, `-`, `_`, `[` and `]`. Any other is no login at all."""
+    return _PLAIN_LOGIN.fullmatch(login) is not None
+
+
+def ignored_app(login: str) -> str:
+    """The line on standard error for a pass by a GitHub App."""
+    return f"ignored a pass by {login}: a GitHub App"
+
+
+def ignored_for_permission(login: str, permission: str | None) -> str:
+    """The line on standard error for a pass by an author who is not a writer: `permission` is what
+    GitHub said (`read` or `none`), None when it could not be read. A value the API does not document
+    is never printed."""
+    if permission in READERS:
+        return (
+            f"ignored a pass by {login}: permission {permission} is not admin or write"
+        )
+    return f"ignored a pass by {login}: its permission cannot be read"

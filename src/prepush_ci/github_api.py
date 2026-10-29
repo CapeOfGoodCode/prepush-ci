@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import quote
 
 from prepush_ci import text_io
+from prepush_ci.core.land import PERMISSIONS
 from prepush_ci.core.report import ReportError, Repository
 
 TIMEOUT_SECONDS = 30
@@ -205,8 +206,8 @@ def _unexpected(method: str, path: str) -> ApiError:
 
 @dataclass(frozen=True)
 class Comment:
-    """A comment with its author: `login` is None when the author is unknown, `bot` when it is a
-    GitHub App."""
+    """A comment with its author: `login` is None when the comment has no user (any other login is
+    as GitHub sent it), `bot` when it is a GitHub App."""
 
     body: str
     login: str | None
@@ -217,7 +218,10 @@ def _authored(comment: Any) -> Comment:
     user = comment["user"]
     if user is None:
         return Comment(str(comment["body"]), None, False)
-    return Comment(str(comment["body"]), str(user["login"]), user["type"] == "Bot")
+    login, kind = user["login"], user["type"]
+    if not isinstance(login, str) or not isinstance(kind, str):
+        raise TypeError("the author has no login and type of text")
+    return Comment(str(comment["body"]), login, kind == "Bot")
 
 
 class PullRequestClient:
@@ -302,9 +306,32 @@ class PullRequestClient:
             permission = json.loads(text_io.decode(found))["permission"]
         except (ValueError, KeyError, TypeError, RecursionError) as error:
             raise _unexpected("GET", path) from error
-        if not isinstance(permission, str):
+        if permission not in PERMISSIONS:
             raise _unexpected("GET", path)
-        return permission
+        return str(permission)
+
+    def user(self) -> str:
+        """The login of the user the token acts for."""
+        found = self._call("GET", "/user")
+        try:
+            login = json.loads(text_io.decode(found))["login"]
+        except (ValueError, KeyError, TypeError, RecursionError) as error:
+            raise _unexpected("GET", "/user") from error
+        if not isinstance(login, str):
+            raise _unexpected("GET", "/user")
+        return login
+
+    def can_push(self) -> bool:
+        """Whether the repository says the token may push (`permissions.push`)."""
+        path = _repo_path(self._repository)
+        found = self._call("GET", path)
+        try:
+            push = json.loads(text_io.decode(found))["permissions"]["push"]
+        except (ValueError, KeyError, TypeError, RecursionError) as error:
+            raise _unexpected("GET", path) from error
+        if not isinstance(push, bool):
+            raise _unexpected("GET", path)
+        return push
 
     def create_comment(self, number: int, body: str) -> None:
         path = f"{_repo_path(self._repository)}/issues/{number}/comments"
