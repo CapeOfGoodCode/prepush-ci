@@ -7,4 +7,4 @@
 
 ## 2. Archive
 
-- [ ] 2.1 Run `sh scripts/ci` and verify it passes
+- [x] 2.1 Run `sh scripts/ci` and verify it passes
