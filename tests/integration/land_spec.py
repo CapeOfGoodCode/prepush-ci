@@ -1085,6 +1085,9 @@ def test_a_complete_clone_is_told_that_the_branch_moved(world: World, git: Git) 
 
 COMMENTS = "/repos/acme/widgets/issues/7/comments"
 WRITER = {"login": "alice", "type": "User"}
+REFUSED = json.dumps(
+    {"message": "Access to this GitHub API path is not permitted through this proxy."}
+)
 
 
 @dataclass
@@ -1111,6 +1114,15 @@ class Api:
     comments: list[dict[str, object]] = field(default_factory=list)
     permissions: dict[str, str] = field(default_factory=lambda: {"alice": "write"})
     answers: list[tuple[str, int, str]] = field(default_factory=list)
+    user: tuple[int, str] = (404, '{"message": "Not Found"}')  # the answer to `/user`
+    repository: tuple[int, str] = (404, '{"message": "Not Found"}')
+
+    def proxy(self, login: str = "alice", push: bool = True) -> None:
+        """Answer as Claude Code's proxy does: the permission path is refused, the token's own user
+        and what it may do are served."""
+        self.answer("/permission", 403, REFUSED)
+        self.user = (200, json.dumps({"login": login, "type": "User"}))
+        self.repository = (200, json.dumps({"permissions": {"push": push}}))
 
     def comment(
         self, body: str, user: dict[str, str] | None = None
@@ -1119,6 +1131,7 @@ class Api:
             "id": 100 + len(self.comments),
             "body": body,
             "user": user or WRITER,
+            "author_association": "MEMBER",
         }
         self.comments.append(made)
         return made
@@ -1132,6 +1145,10 @@ class Api:
         for where, status, body in self.answers:
             if where in line:
                 return status, body
+        if request.method == "GET" and request.route == "/user":
+            return self.user
+        if request.method == "GET" and request.route == "/repos/acme/widgets":
+            return self.repository
         if request.method == "GET" and request.route == COMMENTS:
             page, size = int(request.query["page"]), int(request.query["per_page"])
             return 200, json.dumps(self.comments[(page - 1) * size : page * size])
@@ -1453,6 +1470,15 @@ def test_an_answer_without_a_permission_is_no_pass(
     assert "no pass was found" in refused(land(unrecorded, env=github(api)))
 
 
+def test_a_permission_the_api_does_not_document_is_no_pass(
+    unrecorded: World, api: Api
+) -> None:
+    api.permissions["alice"] = "maintain"
+    api.comment(report_comment(unrecorded))
+
+    assert "no pass was found" in refused(land(unrecorded, env=github(api)))
+
+
 def test_a_readers_comment_beside_a_writers_lands(unrecorded: World, api: Api) -> None:
     api.permissions.update({"mallory": "read", "alice": "write"})
     api.comment(report_comment(unrecorded), {"login": "mallory", "type": "User"})
@@ -1483,6 +1509,15 @@ def test_only_matching_comments_are_asked_about(unrecorded: World, api: Api) -> 
     landed(land(unrecorded, env=github(api)))
 
     assert api.permission_asked_for() == ["alice"]
+
+
+def test_a_comment_that_does_not_match_sends_no_request(
+    unrecorded: World, api: Api
+) -> None:
+    api.comment(report_comment(unrecorded).replace(unrecorded.tree, "b" * 40))
+
+    assert "no pass was found" in refused(land(unrecorded, env=github(api)))
+    assert [r.route for r in api.requests] == [COMMENTS]
 
 
 def test_a_comment_whose_author_is_unknown_is_no_pass(
@@ -1623,3 +1658,395 @@ def test_the_marker_of_another_check_is_not_a_pass_even_under_a_full_title(
     api.comment(other)
 
     assert "no pass was found" in refused(land(unrecorded, env=github(api)))
+
+
+# --- A comment of the token's own user counts without a lookup -----------------------------------
+
+
+def named(result: "subprocess.CompletedProcess[str]") -> list[str]:
+    """The lines on standard error that name an ignored pass."""
+    return [
+        line for line in result.stderr.splitlines() if line.startswith("ignored a pass")
+    ]
+
+
+def by(login: str, kind: str = "User") -> dict[str, str]:
+    return {"login": login, "type": kind}
+
+
+def test_a_comment_of_the_token_s_user_lands_when_the_proxy_refuses_the_permission_path(
+    unrecorded: World, api: Api, git: Git
+) -> None:
+    api.proxy()
+    api.comment(report_comment(unrecorded))
+
+    result = land(unrecorded, env=github(api))
+
+    assert landed(result) == f"landed: {unrecorded.head} on main"
+    assert main_of(unrecorded, git) == unrecorded.head
+    assert api.permission_asked_for() == []
+
+
+def test_another_user_s_comment_does_not_land_through_the_proxy(
+    unrecorded: World, api: Api
+) -> None:
+    api.proxy()
+    made = api.comment(report_comment(unrecorded), by("bob"))
+    made["author_association"] = "OWNER"
+
+    line = refused(land(unrecorded, env=github(api)))
+
+    assert "403" in line
+    assert api.asked("/repos/acme/widgets") == []
+
+
+def test_the_token_s_user_who_cannot_push_does_not_land(
+    unrecorded: World, api: Api
+) -> None:
+    api.proxy(push=False)
+    api.comment(report_comment(unrecorded))
+
+    assert "no pass was found" in refused(land(unrecorded, env=github(api)))
+
+
+def test_a_repository_that_answers_without_permissions_leaves_the_author_to_the_lookup(
+    unrecorded: World, api: Api
+) -> None:
+    api.user = (200, json.dumps(by("alice")))
+    api.repository = (200, "{}")
+    api.comment(report_comment(unrecorded))
+
+    landed(land(unrecorded, env=github(api)))
+
+    assert api.permission_asked_for() == ["alice"]
+
+
+def test_the_token_s_user_after_another_author_lands(
+    unrecorded: World, api: Api
+) -> None:
+    api.proxy()
+    api.comment(report_comment(unrecorded), by("bob"))
+    api.comment(report_comment(unrecorded))
+
+    result = land(unrecorded, env=github(api))
+
+    landed(result)
+    assert len(api.asked("/user")) == 1 and len(api.asked("/repos/acme/widgets")) == 1
+    assert "ignored a pass by bob: its permission cannot be read" in named(result)
+
+
+def test_the_repository_is_asked_once(unrecorded: World, api: Api) -> None:
+    api.proxy(push=False)
+    api.comment(report_comment(unrecorded))
+    api.comment(report_comment(unrecorded))
+
+    result = land(unrecorded, env=github(api))
+
+    refused(result)
+    assert len(api.asked("/user")) == 1 and len(api.asked("/repos/acme/widgets")) == 1
+    assert api.permission_asked_for() == ["alice"]
+    assert named(result) == ["ignored a pass by alice: its permission cannot be read"]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [(403, REFUSED), (200, '{"type": "User"}')],
+    ids=["refused", "without a login"],
+)
+def test_a_token_user_that_cannot_be_read_leaves_every_author_to_the_lookup(
+    unrecorded: World, api: Api, answer: tuple[int, str]
+) -> None:
+    api.permissions.update({"bob": "read", "alice": "write"})
+    api.user = answer
+    api.comment(report_comment(unrecorded), by("bob"))
+    api.comment(report_comment(unrecorded))
+
+    landed(land(unrecorded, env=github(api)))
+
+    assert len(api.asked("/user")) == 1
+    assert api.asked("/repos/acme/widgets") == []
+    assert api.permission_asked_for() == ["bob", "alice"]
+
+
+def test_the_token_s_user_is_asked_once(unrecorded: World, api: Api) -> None:
+    api.user = (200, json.dumps(by("alice")))
+    api.permissions.update({"mallory": "read", "bob": "read"})
+    api.comment(report_comment(unrecorded), by("mallory"))
+    api.comment(report_comment(unrecorded), by("bob"))
+
+    refused(land(unrecorded, env=github(api)))
+
+    assert len(api.asked("/user")) == 1
+    assert api.asked("/repos/acme/widgets") == []
+
+
+def test_a_token_user_that_cannot_be_read_adds_no_reason(
+    unrecorded: World, api: Api
+) -> None:
+    api.user = (500, '{"message": "Server Error"}')
+    api.permissions["alice"] = "read"
+    api.comment(report_comment(unrecorded))
+
+    line = refused(land(unrecorded, env=github(api)))
+
+    assert "no pass was found" in line and "500" not in line
+
+
+def test_a_repository_that_cannot_be_read_adds_no_reason(
+    unrecorded: World, api: Api
+) -> None:
+    api.user = (200, json.dumps(by("alice")))
+    api.repository = (500, '{"message": "Server Error"}')
+    api.permissions["alice"] = "read"
+    api.comment(report_comment(unrecorded))
+
+    line = refused(land(unrecorded, env=github(api)))
+
+    assert "no pass was found" in line and "500" not in line
+    assert api.permission_asked_for() == ["alice"]
+
+
+@pytest.mark.parametrize("push", ['"yes"', "null"])
+def test_a_push_that_is_no_boolean_leaves_the_author_to_the_lookup(
+    unrecorded: World, api: Api, push: str
+) -> None:
+    api.user = (200, json.dumps(by("alice")))
+    api.repository = (200, '{"permissions": {"push": ' + push + "}}")
+    api.comment(report_comment(unrecorded))
+
+    landed(land(unrecorded, env=github(api)))
+
+    assert api.permission_asked_for() == ["alice"]
+
+
+def test_a_user_whose_login_is_no_text_leaves_the_author_to_the_lookup(
+    unrecorded: World, api: Api
+) -> None:
+    api.user = (200, '{"login": 3}')
+    api.comment(report_comment(unrecorded))
+
+    landed(land(unrecorded, env=github(api)))
+
+    assert api.asked("/repos/acme/widgets") == []
+
+
+# --- A comment of an unknown author does not count -----------------------------------------------
+
+
+def test_a_comment_without_a_user_sends_no_request_and_is_named(
+    unrecorded: World, api: Api
+) -> None:
+    api.comment(report_comment(unrecorded))["user"] = None
+
+    result = land(unrecorded, env=github(api))
+
+    assert "no pass was found" in refused(result)
+    assert [r.route for r in api.requests] == [COMMENTS]
+    assert named(result) == ["ignored a pass by an unknown author"]
+
+
+@pytest.mark.parametrize(
+    "login", ["", "alice\nignored a pass by bob"], ids=["empty", "newline"]
+)
+def test_a_login_that_is_not_plain_is_an_unknown_author(
+    unrecorded: World, api: Api, login: str
+) -> None:
+    api.permissions[login] = "write"
+    api.comment(report_comment(unrecorded), by(login))
+
+    result = land(unrecorded, env=github(api))
+
+    assert "no pass was found" in refused(result)
+    assert [r.route for r in api.requests] == [COMMENTS]
+    assert named(result) == ["ignored a pass by an unknown author"]
+
+
+@pytest.mark.parametrize(
+    "user",
+    [
+        '"alice"',
+        '{"type": "User"}',
+        '{"login": "alice"}',
+        '{"login": 3, "type": "User"}',
+        '{"login": "alice", "type": 3}',
+    ],
+    ids=["string", "no login", "no type", "number login", "number type"],
+)
+def test_an_author_the_api_does_not_document_is_an_answer_it_does_not_document(
+    unrecorded: World, api: Api, user: str
+) -> None:
+    api.comment(report_comment(unrecorded))
+    api.answer(
+        COMMENTS, 200, json.dumps([{**api.comments[0], "user": json.loads(user)}])
+    )
+
+    line = refused(land(unrecorded, env=github(api)))
+
+    assert "not what the API documents" in line
+
+
+# --- An ignored pass is named --------------------------------------------------------------------
+
+
+def test_a_reader_s_pass_is_named_on_standard_error(
+    unrecorded: World, api: Api
+) -> None:
+    api.permissions["mallory"] = "read"
+    api.comment(report_comment(unrecorded), by("mallory"))
+
+    result = land(unrecorded, env=github(api))
+
+    refused(result)
+    assert named(result) == [
+        "ignored a pass by mallory: permission read is not admin or write"
+    ]
+
+
+def test_a_pass_whose_permission_cannot_be_read_is_named(
+    unrecorded: World, api: Api
+) -> None:
+    api.proxy(login="alice")
+    api.comment(report_comment(unrecorded), by("bob"))
+
+    result = land(unrecorded, env=github(api))
+
+    refused(result)
+    assert named(result) == ["ignored a pass by bob: its permission cannot be read"]
+
+
+def test_an_undocumented_permission_is_not_printed(unrecorded: World, api: Api) -> None:
+    api.permissions["mallory"] = "maintain"
+    api.comment(report_comment(unrecorded), by("mallory"))
+
+    result = land(unrecorded, env=github(api))
+
+    assert "not what the API documents" in refused(result)
+    assert named(result) == ["ignored a pass by mallory: its permission cannot be read"]
+    assert "maintain" not in result.stderr + result.stdout
+
+
+def test_an_app_s_pass_is_named_and_sends_no_request(
+    unrecorded: World, api: Api
+) -> None:
+    api.comment(report_comment(unrecorded), by("acme-ci[bot]", "Bot"))
+
+    result = land(unrecorded, env=github(api))
+
+    refused(result)
+    assert named(result) == ["ignored a pass by acme-ci[bot]: a GitHub App"]
+    assert [r.route for r in api.requests] == [COMMENTS]
+
+
+def test_unknown_authors_are_named_once(unrecorded: World, api: Api) -> None:
+    api.comment(report_comment(unrecorded))["user"] = None
+    api.comment(report_comment(unrecorded), by("alice\nignored a pass by bob"))
+
+    result = land(unrecorded, env=github(api))
+
+    refused(result)
+    assert named(result) == ["ignored a pass by an unknown author"]
+    assert "\nignored a pass by bob" not in result.stderr
+
+
+def test_an_author_is_named_once(unrecorded: World, api: Api) -> None:
+    api.permissions["mallory"] = "read"
+    api.comment(report_comment(unrecorded), by("mallory"))
+    api.comment(report_comment(unrecorded), by("mallory"))
+
+    assert len(named(land(unrecorded, env=github(api)))) == 1
+
+
+def test_an_ignored_pass_is_named_before_a_landing(unrecorded: World, api: Api) -> None:
+    api.permissions["mallory"] = "read"
+    api.comment(report_comment(unrecorded), by("mallory"))
+    api.comment(report_comment(unrecorded))
+
+    result = land(unrecorded, env=github(api))
+
+    landed(result)
+    assert named(result) == [
+        "ignored a pass by mallory: permission read is not admin or write"
+    ]
+
+
+def test_a_comment_that_does_not_match_is_not_named(
+    unrecorded: World, api: Api
+) -> None:
+    api.permissions["mallory"] = "read"
+    api.comment(
+        report_comment(unrecorded).replace(unrecorded.tree, "b" * 40), by("mallory")
+    )
+
+    assert named(land(unrecorded, env=github(api))) == []
+
+
+# --- The comments are walked in order until one counts -------------------------------------------
+
+
+def test_a_later_page_is_not_read_after_a_pass_that_counts(
+    unrecorded: World, api: Api
+) -> None:
+    api.comment(report_comment(unrecorded))
+    for number in range(100):
+        api.comment(f"chatter {number}")
+
+    landed(land(unrecorded, env=github(api)))
+
+    assert len(api.asked(COMMENTS)) == 1
+
+
+def test_a_writer_s_comment_before_a_reader_s_asks_only_about_the_writer(
+    unrecorded: World, api: Api
+) -> None:
+    api.permissions["mallory"] = "read"
+    api.comment(report_comment(unrecorded))
+    api.comment(report_comment(unrecorded), by("mallory"))
+
+    result = land(unrecorded, env=github(api))
+
+    landed(result)
+    assert api.permission_asked_for() == ["alice"]
+    assert named(result) == []
+
+
+def test_a_writer_s_comment_before_the_token_s_user_asks_for_no_repository(
+    unrecorded: World, api: Api
+) -> None:
+    api.user = (200, json.dumps(by("alice")))
+    api.repository = (200, json.dumps({"permissions": {"push": True}}))
+    api.permissions["bob"] = "write"
+    api.comment(report_comment(unrecorded), by("bob"))
+    api.comment(report_comment(unrecorded))
+
+    landed(land(unrecorded, env=github(api)))
+
+    assert len(api.asked("/user")) == 1
+    assert api.asked("/repos/acme/widgets") == []
+    assert api.permission_asked_for() == ["bob"]
+
+
+def test_nothing_after_the_token_s_user_s_pass_is_asked_about(
+    unrecorded: World, api: Api
+) -> None:
+    api.proxy()
+    api.comment(report_comment(unrecorded))
+    api.comment(report_comment(unrecorded), by("mallory"))
+
+    result = land(unrecorded, env=github(api))
+
+    landed(result)
+    assert api.permission_asked_for() == []
+    assert named(result) == []
+
+
+def test_a_page_the_api_does_not_document_ends_the_walk(
+    unrecorded: World, api: Api
+) -> None:
+    api.comment(report_comment(unrecorded))
+    api.comment(report_comment(unrecorded))["user"] = "bob"
+
+    result = land(unrecorded, env=github(api))
+
+    assert "not what the API documents" in refused(result)
+    assert [r.route for r in api.requests] == [COMMENTS]
+    assert named(result) == []
