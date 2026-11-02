@@ -7,6 +7,7 @@ import stat
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -1116,6 +1117,8 @@ class Api:
     answers: list[tuple[str, int, str]] = field(default_factory=list)
     user: tuple[int, str] = (404, '{"message": "Not Found"}')  # the answer to `/user`
     repository: tuple[int, str] = (404, '{"message": "Not Found"}')
+    hang_on: str | None = None  # a request whose path ends with this is never answered
+    release: threading.Event = field(default_factory=threading.Event)
 
     def proxy(self, login: str = "alice", push: bool = True) -> None:
         """Answer as Claude Code's proxy does: the permission path is refused, the token's own user
@@ -1185,6 +1188,9 @@ def api() -> Iterator[Api]:
                 {key.lower(): value for key, value in self.headers.items()},
             )
             served.requests.append(request)
+            if served.hang_on is not None and request.path.endswith(served.hang_on):
+                served.release.wait()  # until the test ends: the lander gives up first
+                return
             status, body = served.respond(request)
             data = body.encode("utf-8")
             self.send_response(status)
@@ -1203,6 +1209,7 @@ def api() -> Iterator[Api]:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     yield served
+    served.release.set()
     server.shutdown()
     server.server_close()
     thread.join()
@@ -1685,6 +1692,26 @@ def test_a_comment_of_the_token_s_user_lands_when_the_proxy_refuses_the_permissi
     assert landed(result) == f"landed: {unrecorded.head} on main"
     assert main_of(unrecorded, git) == unrecorded.head
     assert api.permission_asked_for() == []
+
+
+@pytest.mark.parametrize("stalled", ["/user", "/repos/acme/widgets"])
+def test_a_stalled_shortcut_does_not_use_up_the_time_to_ask_for_the_permission(
+    unrecorded: World, api: Api, git: Git, stalled: str
+) -> None:
+    api.user = (200, json.dumps(by("alice")))
+    api.repository = (200, json.dumps({"permissions": {"push": True}}))
+    api.hang_on = stalled
+    api.comment(report_comment(unrecorded))
+    started = time.monotonic()
+
+    result = land(unrecorded, env=github(api))
+
+    assert landed(result) == f"landed: {unrecorded.head} on main"
+    assert main_of(unrecorded, git) == unrecorded.head
+    assert api.permission_asked_for() == ["alice"]
+    assert time.monotonic() - started < 30, (
+        "the stall of a shortcut is bounded by its own budget"
+    )
 
 
 def test_another_user_s_comment_does_not_land_through_the_proxy(
