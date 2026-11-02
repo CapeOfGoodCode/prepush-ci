@@ -18,6 +18,8 @@ from prepush_ci.core.land import PERMISSIONS
 from prepush_ci.core.report import ReportError, Repository
 
 TIMEOUT_SECONDS = 30
+# the most each shortcut (`GET /user`, `GET /repos/<owner>/<repo>`) takes from the shared deadline
+SHORTCUT_SECONDS = 10.0
 PER_PAGE = 100
 SHORTEST_WAIT = 0.001  # a request is never given no time at all
 
@@ -227,7 +229,8 @@ def _authored(comment: Any) -> Comment:
 class PullRequestClient:
     """The requests about the pull request of a pushed branch. All of them together end by one
     deadline: `timeout` bounds each step of a request, not the request, so a server that sends a
-    byte a second would never be given up on."""
+    byte a second would never be given up on. The shortcuts (`GET /user`, `GET /repos/<owner>/<repo>`) end
+    sooner, each after `SHORTCUT_SECONDS`, so a stall there leaves the others the rest of the time."""
 
     def __init__(
         self, api_url: str, repository: Repository, token: str | None, seconds: float
@@ -237,14 +240,26 @@ class PullRequestClient:
         self._token = token
         self._ends = time.monotonic() + seconds
 
-    def _left(self) -> float:
-        return max(self._ends - time.monotonic(), SHORTEST_WAIT)
+    def _shortcut_ends(self) -> float:
+        return min(self._ends, time.monotonic() + SHORTCUT_SECONDS)
 
-    def _call(self, method: str, path: str, payload: object = None) -> bytes:
-        """The answer's body, or an `ApiError` (`timed_out`) when the deadline comes first. The
-        request runs in a thread that is left behind when it is given up on."""
+    def _left(self, ends: float | None = None) -> float:
+        return max(
+            (self._ends if ends is None else ends) - time.monotonic(), SHORTEST_WAIT
+        )
+
+    def _call(
+        self,
+        method: str,
+        path: str,
+        payload: object = None,
+        ends: float | None = None,
+    ) -> bytes:
+        """The answer's body, or an `ApiError` (`timed_out`) when the deadline (`ends`, or the one of
+        all the requests) comes first. The request runs in a thread that is left behind when it is
+        given up on."""
         answers: queue.SimpleQueue[bytes | ApiError] = queue.SimpleQueue()
-        left = self._left()
+        left = self._left(ends)
 
         def work() -> None:
             try:
@@ -312,7 +327,7 @@ class PullRequestClient:
 
     def user(self) -> str:
         """The login of the user the token acts for."""
-        found = self._call("GET", "/user")
+        found = self._call("GET", "/user", ends=self._shortcut_ends())
         try:
             login = json.loads(text_io.decode(found))["login"]
         except (ValueError, KeyError, TypeError, RecursionError) as error:
@@ -324,7 +339,7 @@ class PullRequestClient:
     def can_push(self) -> bool:
         """Whether the repository says the token may push (`permissions.push`)."""
         path = _repo_path(self._repository)
-        found = self._call("GET", path)
+        found = self._call("GET", path, ends=self._shortcut_ends())
         try:
             push = json.loads(text_io.decode(found))["permissions"]["push"]
         except (ValueError, KeyError, TypeError, RecursionError) as error:
